@@ -1,0 +1,39 @@
+{% comment %}
+  ZollTool — Swiss Customs Declaration Tool
+  Place this file in your Shopify theme's /templates/ folder.
+  Then in the Shopify admin: Pages > Create page > Template = page.zolltool
+  Replace REPLACE_WITH_YOUR_GITHUB_PAGES_URL below with your actual GitHub Pages URL.
+{% endcomment %}
+
+<style>
+  .zolltool-wrap {
+    width: 100%;
+    /* Push past the theme's side padding so the tool has full width */
+    margin-left: calc(-1 * var(--page-width-padding, 0px));
+    margin-right: calc(-1 * var(--page-width-padding, 0px));
+    width: calc(100% + 2 * var(--page-width-padding, 0px));
+  }
+
+  .zolltool-frame {
+    display: block;
+    width: 100%;
+    /* Tall enough that most users never see a scrollbar inside the iframe */
+    height: 90vh;
+    min-height: 700px;
+    border: none;
+    background: #f4f5f6;
+  }
+
+  /* Hide the Shopify page title — the tool has its own header */
+  .page-title { display: none; }
+</style>
+
+<div class="zolltool-wrap">
+  <iframe
+    class="zolltool-frame"
+    src="REPLACE_WITH_YOUR_GITHUB_PAGES_URL"
+    title="ZollTool — Swiss Customs Declaration Tool"
+    loading="lazy"
+    allow="clipboard-write"
+  ></iframe>
+</div>

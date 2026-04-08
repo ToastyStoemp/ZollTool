@@ -1,0 +1,5 @@
+WorkingData.json
+*.pdf
+*.xml
+.DS_Store
+Thumbs.db

@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Swiss Customs Declaration Tool</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="app-header">
+  <div class="app-header-inner">
+    <div class="app-logo">
+      <span class="logo-cross">&#10010;</span>
+      <div>
+        <div class="app-title">ZollTool</div>
+        <div class="app-subtitle">Swiss Customs Declaration</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <label class="theme-toggle" title="Toggle dark mode">
+        <input type="checkbox" id="theme-toggle-cb" />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+      <button class="btn btn-ghost" id="btn-load-json" title="Load JSON file">Load JSON</button>
+      <button class="btn btn-primary" id="btn-save-json" title="Save as JSON file">Save JSON</button>
+      <input type="file" id="file-input" accept=".json" style="display:none" />
+    </div>
+  </div>
+</div>
+
+<main class="main-content">
+
+  <!-- ARTIST INFO SECTION -->
+  <section class="card collapsible" id="section-artist">
+    <div class="card-header collapsible-toggle" data-target="artist-body">
+      <div class="section-title-row">
+        <h2 class="section-title">Artist / Company Information</h2>
+        <span class="section-summary" id="artist-summary">Click to expand</span>
+      </div>
+      <span class="chevron" id="chevron-artist">&#9660;</span>
+    </div>
+    <div class="collapsible-body" id="artist-body" style="display:none">
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="artist-company">Company Name</label>
+          <input type="text" id="artist-company" placeholder="e.g. My Art Studio GmbH" data-key="artist.companyName" />
+        </div>
+        <div class="form-group">
+          <label for="artist-name">Full Name</label>
+          <input type="text" id="artist-name" placeholder="e.g. Jane Doe" data-key="artist.fullName" />
+        </div>
+        <div class="form-group">
+          <label for="artist-street">Street Address</label>
+          <input type="text" id="artist-street" placeholder="e.g. Hauptstrasse 42" data-key="artist.street" />
+        </div>
+        <div class="form-group">
+          <label for="artist-postcode">Postcode + City</label>
+          <input type="text" id="artist-postcode" placeholder="e.g. 1000 Brussels" data-key="artist.postCodeCity" />
+        </div>
+        <div class="form-group">
+          <label for="artist-country">Country</label>
+          <input type="text" id="artist-country" placeholder="Search country…" data-key="artist.countryOfOrigin" />
+        </div>
+        <div class="form-group">
+          <label for="artist-phone">Phone</label>
+          <input type="text" id="artist-phone" placeholder="e.g. +32 123 456 789" data-key="artist.phone" />
+        </div>
+        <div class="form-group form-group-wide">
+          <label for="artist-email">Email</label>
+          <input type="email" id="artist-email" placeholder="e.g. artist@example.com" data-key="artist.email" />
+        </div>
+        <div class="form-group">
+          <label for="company-code">Company Short Code <span class="field-hint-inline">(used in LRP)</span></label>
+          <input type="text" id="company-code" placeholder="e.g. PN" maxlength="6" data-key="meta.companyCode" style="text-transform:uppercase" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- EVENT INFO SECTION -->
+  <section class="card collapsible" id="section-event">
+    <div class="card-header collapsible-toggle" data-target="event-body">
+      <div class="section-title-row">
+        <h2 class="section-title">Event Information</h2>
+        <span class="section-summary" id="event-summary">Click to expand</span>
+      </div>
+      <span class="chevron" id="chevron-event">&#9660;</span>
+    </div>
+    <div class="collapsible-body" id="event-body" style="display:none">
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="event-name">Event Name</label>
+          <input type="text" id="event-name" placeholder="e.g. Fantasy Basel 2026" data-key="meta.event" />
+        </div>
+        <div class="form-group">
+          <label>Event Dates</label>
+          <div class="date-range-row">
+            <input type="text" id="event-date-start" data-key="meta.eventDateStart" placeholder="Start date" readonly />
+            <span class="date-range-sep">–</span>
+            <input type="text" id="event-date-end" data-key="meta.eventDateEnd" placeholder="End date" readonly />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="venue-contact">Venue Contact Name</label>
+          <input type="text" id="venue-contact" placeholder="e.g. Nguyen Phuong" data-key="meta.venueName" />
+          <span class="field-hint">Usually the artist's full name</span>
+        </div>
+        <div class="form-group">
+          <label for="venue-street">Venue Street Address</label>
+          <input type="text" id="venue-street" placeholder="e.g. Av. Bergières 10" data-key="meta.venueStreet" />
+        </div>
+        <div class="form-group">
+          <label for="venue-postcode">Venue Postcode</label>
+          <input type="text" id="venue-postcode" placeholder="e.g. 1004" data-key="meta.venuePostcode" />
+        </div>
+        <div class="form-group">
+          <label for="venue-city">Venue City</label>
+          <input type="text" id="venue-city" placeholder="e.g. Lausanne" data-key="meta.venueCity" />
+        </div>
+        <div class="form-group">
+          <label for="venue-tin">Swiss UID / TIN</label>
+          <input type="text" id="venue-tin" placeholder="e.g. CHE222251936" data-key="meta.venueTIN" />
+          <span class="field-hint">UID of the event organizer (starts with CHE)</span>
+        </div>
+        <div class="form-group lrp-group" style="display:none">
+          <label for="event-lrp">LRP Code <span class="field-hint-inline">(auto-generated)</span></label>
+          <div class="lrp-row">
+            <input type="text" id="event-lrp" data-key="meta.lrp" readonly style="background:var(--gray-100);color:var(--gray-600)" />
+            <select id="doc-number" title="Document type for LRP preview">
+              <option value="1">001 — Import</option>
+              <option value="2">002 — Sold goods</option>
+              <option value="3">003 — Return / re-export</option>
+            </select>
+          </div>
+          <span class="field-hint">Auto-generated · Format: {origin}CH_{code}_{YYYY}_{MM}_{001/002/003}</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TRANSPORT SECTION -->
+  <section class="card collapsible" id="section-transport">
+    <div class="card-header collapsible-toggle" data-target="transport-body">
+      <div class="section-title-row">
+        <h2 class="section-title">Transport</h2>
+        <span class="section-summary" id="transport-summary">Click to expand</span>
+      </div>
+      <span class="chevron" id="chevron-transport">&#9660;</span>
+    </div>
+    <div class="collapsible-body" id="transport-body" style="display:none">
+      <div class="form-grid">
+        <div class="form-group">
+          <label for="edec-mode">Transport Mode</label>
+          <select id="edec-mode" data-key="edec.transportMode">
+            <option value="1">1 — Sea</option>
+            <option value="2">2 — Rail</option>
+            <option value="3" selected>3 — Road</option>
+            <option value="4">4 — Air</option>
+            <option value="5">5 — Postal / Mail</option>
+            <option value="9">9 — Own propulsion</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="edec-transport-country">Vehicle Country</label>
+          <input type="text" id="edec-transport-country" data-key="edec.transportationCountry"
+                 placeholder="Search country…" />
+          <span class="field-hint">Country where the vehicle is registered</span>
+        </div>
+        <div class="form-group">
+          <label for="edec-transport-number">Vehicle / Plate Number</label>
+          <input type="text" id="edec-transport-number" data-key="edec.transportationNumber"
+                 placeholder="e.g. 1-KDE-308" />
+        </div>
+        <div class="form-group" id="reg-postcode-group" style="display:none">
+          <label for="edec-reg-postcode">Registration Postal Code</label>
+          <input type="text" id="edec-reg-postcode" data-key="edec.registrationPostcode"
+                 placeholder="e.g. 12349" />
+          <span class="field-hint">Postal code of the vehicle's registration origin (used in 11.74 field 5)</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRODUCTS SECTION -->
+  <section class="card" id="section-products">
+    <div class="card-header">
+      <h2 class="section-title">Product List</h2>
+      <div class="section-header-actions">
+        <button class="btn btn-ghost btn-sm" id="btn-export-import"  title="Export import declaration (001)">Form Import</button>
+        <button class="btn btn-ghost btn-sm" id="btn-export-sold"    title="Export sold goods update (002)">Form Sold</button>
+        <button class="btn btn-ghost btn-sm" id="btn-export-return"  title="Export return goods list (003)">Form Return</button>
+        <button class="btn btn-primary" id="btn-add-product">+ Add Product</button>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <table class="products-table" id="products-table">
+        <thead>
+          <tr>
+            <th class="col-handle"></th>
+            <th class="col-num">#</th>
+            <th class="col-title">Title</th>
+            <th class="col-sale">Sale</th>
+            <th class="col-type">Type</th>
+            <th class="col-amount">Amount</th>
+            <th class="col-weight">Unit Weight</th>
+            <th class="col-totalweight">Total Weight</th>
+            <th class="col-price">Unit Price</th>
+            <th class="col-totalval">Total Value CHF</th>
+            <th class="col-tariff">Tariff No.</th>
+            <th class="col-tariffrate">Tariff %</th>
+            <th class="col-vat">VAT %</th>
+            <th class="col-origin">Origin</th>
+            <th class="col-soldqty">Sold Qty</th>
+            <th class="col-soldval">Sold Value</th>
+            <th class="col-soldvat">VAT Sold</th>
+            <th class="col-soldweight">Sold Weight</th>
+            <th class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="products-tbody">
+          <!-- rows rendered by JS -->
+        </tbody>
+        <tfoot>
+          <tr id="totals-row">
+            <td colspan="5" class="totals-label">TOTALS</td>
+            <td class="col-amount" id="total-amount">0</td>
+            <td></td>
+            <td class="col-totalweight" id="total-weight">0 kg</td>
+            <td></td>
+            <td class="col-totalval" id="total-value">CHF 0</td>
+            <td colspan="4"></td>
+            <td class="col-soldqty" id="total-soldqty">0</td>
+            <td class="col-soldval" id="total-soldval">0</td>
+            <td class="col-soldvat" id="total-soldvat">0.00</td>
+            <td class="col-soldweight" id="total-soldweight">0 kg</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+      <div class="vat-estimate-bar" id="vat-estimate-bar">
+        Est. VAT on total import: <strong id="vat-estimate-total">CHF 0.00</strong>
+        <span class="vat-estimate-sep">·</span>
+        Est. VAT on sold goods: <strong id="vat-estimate-sold">CHF 0.00</strong>
+        <span class="vat-estimate-hint">estimated only · not included in any export</span>
+      </div>
+      <p class="empty-state" id="empty-state">No products added yet. Click "+ Add Product" to get started.</p>
+    </div>
+  </section>
+
+
+  <!-- FORM 11.74 SECTION -->
+  <section class="card collapsible" id="section-1174">
+    <div class="card-header collapsible-toggle" data-target="1174-body">
+      <div class="section-title-row">
+        <h2 class="section-title">Form 11.74 — Temporary Admission</h2>
+        <span class="section-summary" id="1174-summary">Preview pre-filled Swiss customs form</span>
+      </div>
+      <span class="chevron" id="chevron-1174">&#9660;</span>
+    </div>
+    <div class="collapsible-body" id="1174-body" style="display:none">
+
+      <div class="info-banner info-banner-warning">
+        <strong>Heads up:</strong> The field values suggested by this tool are based on common practice for convention artists importing goods temporarily into Switzerland. They are <strong>not official customs advice</strong>. Requirements may vary depending on your specific situation, country of origin, or goods type. When in doubt, always consult a <strong>licensed customs officer or freight agent</strong> before submitting.
+      </div>
+
+      <h3 class="subsection-title">Goods Grouping</h3>
+      <p class="subsection-hint">The form groups your products into up to two line items. Choose how they are grouped below.</p>
+
+      <div class="form-group" style="max-width:360px;margin-bottom:16px">
+        <label for="group-mode-select">Grouping Mode</label>
+        <select id="group-mode-select">
+          <option value="auto">Auto — group by HS code (highest value first)</option>
+          <option value="manual">Manual — drag products into groups</option>
+        </select>
+      </div>
+      <div id="group-auto-info"></div>
+      <div id="group-manual-ui" style="display:none">
+        <div class="group-cols">
+          <div class="group-col">
+            <div class="group-col-header">
+              <span class="group-col-title">Group 1</span>
+              <span class="group-col-summary" id="group-summary-1"></span>
+            </div>
+            <div class="group-drop-zone" id="group-drop-1" data-group="1"></div>
+          </div>
+          <div class="group-col">
+            <div class="group-col-header">
+              <span class="group-col-title">Group 2</span>
+              <span class="group-col-summary" id="group-summary-2"></span>
+            </div>
+            <div class="group-drop-zone" id="group-drop-2" data-group="2"></div>
+          </div>
+          <div class="group-col group-col-unassigned">
+            <div class="group-col-header">
+              <span class="group-col-title">Unassigned</span>
+              <span class="group-col-hint">(treated as Group 2)</span>
+            </div>
+            <div class="group-drop-zone" id="group-drop-0" data-group="0"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="edec-actions">
+        <button class="btn btn-primary btn-lg" id="btn-print-1174">Preview Form 11.74</button>
+        <p class="edec-actions-hint">Opens a print-ready preview of the pre-filled Formular 11.74.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- E-DEC SECTION -->
+  <section class="card collapsible" id="section-edec">
+    <div class="card-header collapsible-toggle" data-target="edec-body">
+      <div class="section-title-row">
+        <h2 class="section-title">E-dec Return Declaration</h2>
+        <span class="section-summary" id="edec-summary">Complete after the event</span>
+      </div>
+      <span class="chevron" id="chevron-edec">&#9660;</span>
+    </div>
+    <div class="collapsible-body" id="edec-body" style="display:none">
+
+      <div class="info-banner">
+        <strong>When to use this:</strong> After the event, you must re-export unsold goods from Switzerland.
+        Enter the sold quantities per product in the table above, then fill in the details below and click
+        <em>Generate E-dec XML</em> to produce the file for upload to the Swiss E-dec customs portal.
+        The declarant info is filled automatically from the Artist section.
+      </div>
+
+      <div class="edec-actions">
+        <button class="btn btn-primary btn-lg" id="btn-generate-edec">Generate E-dec XML</button>
+        <p class="edec-actions-hint">Only products with <strong>Sold Qty &gt; 0</strong> will be included in the XML.</p>
+      </div>
+
+    </div>
+  </section>
+
+</main>
+
+<!-- DISCLAIMER MODAL -->
+<div class="modal-overlay" id="disclaimer-overlay" style="display:none">
+  <div class="modal disclaimer-modal" role="dialog" aria-modal="true" aria-labelledby="disclaimer-title">
+    <div class="modal-header disclaimer-header">
+      <div class="disclaimer-logo">
+        <span class="logo-cross">&#10010;</span>
+        <span class="disclaimer-logo-name">ZollTool</span>
+      </div>
+      <p class="disclaimer-tagline">Made by artists, for artists</p>
+    </div>
+    <div class="modal-body disclaimer-body">
+
+      <div class="disclaimer-block disclaimer-block-warning">
+        <h3 class="disclaimer-block-title">No Liability</h3>
+        <p>This tool provides <strong>suggested field values based on common practice</strong>. It does not constitute official customs advice. The developers and contributors cannot be held liable for any errors, omissions, fines, or complications arising from the use of this tool. <strong>You are solely responsible for verifying the accuracy of your declarations.</strong> When in doubt, always consult a licensed customs officer or freight agent.</p>
+      </div>
+
+      <div class="disclaimer-block">
+        <h3 class="disclaimer-block-title">What this tool covers</h3>
+        <ul class="disclaimer-list">
+          <li>Temporary import declaration into Switzerland (Formular 11.74)</li>
+          <li>E-dec re-export declaration for unsold goods</li>
+          <li>Sold goods tracking and customs value calculation</li>
+        </ul>
+      </div>
+
+      <div class="disclaimer-block">
+        <h3 class="disclaimer-block-title">What this tool does NOT cover</h3>
+        <ul class="disclaimer-list">
+          <li><strong>Export documents from your home country</strong> — you are still required to obtain the correct export paperwork from the customs authority of the country you are based in before travelling to Switzerland.</li>
+          <li><strong>Proof of EU/home-country origin</strong> — keep your export documents safe. You will need them to prove the goods originated from the EU (or your country) when re-importing your unsold stock after the event.</li>
+          <li>Any goods permanently sold or left behind in Switzerland.</li>
+        </ul>
+      </div>
+
+      <div class="disclaimer-block">
+        <h3 class="disclaimer-block-title">Your privacy</h3>
+        <p>This tool runs entirely in your browser. <strong>No data is stored on any server. No data is collected.</strong> Everything you enter stays on your device.</p>
+      </div>
+
+      <div class="disclaimer-block disclaimer-block-light">
+        <h3 class="disclaimer-block-title">Help us improve</h3>
+        <p>Found a mistake, outdated information, or have a suggestion? We'd love to hear from you — please reach out so we can keep this tool accurate and useful for the whole community.</p>
+      </div>
+
+    </div>
+    <div class="modal-footer disclaimer-footer">
+      <label class="disclaimer-skip-label">
+        <input type="checkbox" id="disclaimer-skip-cb" />
+        Don't show this again
+      </label>
+      <button class="btn btn-primary btn-lg" id="disclaimer-accept">I Understand</button>
+    </div>
+  </div>
+</div>
+
+<!-- ADD/EDIT PRODUCT MODAL -->
+<div class="modal-overlay" id="modal-overlay" style="display:none">
+  <div class="modal" id="product-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal-header">
+      <h3 class="modal-title" id="modal-title">Add Product</h3>
+      <button class="modal-close" id="modal-close" aria-label="Close modal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="modal-form-grid">
+
+        <div class="form-group form-group-wide">
+          <label for="m-title">Title <span class="required">*</span></label>
+          <input type="text" id="m-title" placeholder="e.g. Art Print A4" />
+        </div>
+
+        <div class="form-group">
+          <label for="m-type">Type</label>
+          <input type="text" id="m-type" list="type-suggestions" placeholder="e.g. Print" />
+          <datalist id="type-suggestions">
+            <option value="Print">
+            <option value="Sticker">
+            <option value="Album">
+            <option value="Purse">
+            <option value="Bag">
+            <option value="Wallet">
+            <option value="Enamel Pin">
+            <option value="Keychain">
+            <option value="Desk Mat">
+            <option value="Mousepad">
+            <option value="Plush">
+            <option value="Book">
+            <option value="Poster">
+            <option value="Postcard">
+            <option value="Card">
+            <option value="Calendar">
+            <option value="Mug">
+            <option value="Apparel">
+            <option value="Pin">
+          </datalist>
+        </div>
+
+        <div class="form-group">
+          <label>For Sale</label>
+          <div class="radio-group">
+            <label class="radio-label">
+              <input type="radio" name="m-forsale" value="true" checked /> For Sale
+            </label>
+            <label class="radio-label">
+              <input type="radio" name="m-forsale" value="false" /> Not For Sale
+            </label>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="m-amount">Amount (quantity) <span class="required">*</span></label>
+          <input type="number" id="m-amount" min="0" step="1" placeholder="e.g. 100" />
+        </div>
+
+        <div class="form-group">
+          <label for="m-weight">Weight / item (g)</label>
+          <input type="number" id="m-weight" min="0" step="1" placeholder="e.g. 150" />
+          <span class="field-hint">Edit either field — the other auto-calculates</span>
+        </div>
+
+        <div class="form-group">
+          <label for="m-totalweight">Total weight (kg)</label>
+          <input type="number" id="m-totalweight" min="0" step="0.001" placeholder="auto" />
+        </div>
+
+        <div class="form-group">
+          <label for="m-price">Price / item (CHF)</label>
+          <input type="number" id="m-price" min="0" step="0.01" placeholder="e.g. 20.00" />
+          <span class="field-hint">Edit either field — the other auto-calculates</span>
+        </div>
+
+        <div class="form-group">
+          <label for="m-totalvalue">Total value (CHF)</label>
+          <input type="number" id="m-totalvalue" min="0" step="0.01" placeholder="auto" />
+        </div>
+
+        <div class="form-group form-group-wide">
+          <label for="m-pricenote">Price Note <span class="field-hint-inline">(optional — overrides price display if set)</span></label>
+          <input type="text" id="m-pricenote" placeholder='e.g. "See print list"' />
+        </div>
+
+        <div class="form-group form-group-wide">
+          <label for="m-packaging">Packaging Type</label>
+          <select id="m-packaging">
+            <option value="CT">CT — Carton (default)</option>
+            <option value="BX">BX — Box</option>
+            <option value="PK">PK — Package / Packet</option>
+            <option value="PL">PL — Pallet</option>
+            <option value="CS">CS — Case</option>
+            <option value="NE">NE — Unpacked / No packaging</option>
+          </select>
+        </div>
+
+        <div class="form-group form-group-wide">
+          <label for="m-hscode-input">HS Code / Tariff Number</label>
+          <div class="hs-combobox" id="hs-combobox">
+            <input type="text" id="m-hscode-input" placeholder="Type code or description keyword..." autocomplete="off" />
+            <div class="hs-dropdown" id="hs-dropdown" style="display:none"></div>
+          </div>
+          <span class="field-hint" id="hs-desc-hint"></span>
+        </div>
+
+        <div class="form-group">
+          <label for="m-origin">Origin Country <span class="field-hint-inline">(ISO 2-letter)</span></label>
+          <input type="text" id="m-origin" placeholder="Search country…" />
+          <span class="field-hint">Leave blank to use artist/company country</span>
+        </div>
+
+        <div class="form-group">
+          <label for="m-tariffrate">Tariff Rate (%)</label>
+          <input type="number" id="m-tariffrate" min="0" step="0.1" placeholder="e.g. 8.1" />
+        </div>
+
+        <div class="form-group">
+          <label for="m-vatrate">VAT Rate (%) <span class="field-hint-inline">(auto from HS code)</span></label>
+          <input type="number" id="m-vatrate" min="0" step="0.1" value="8.1" />
+          <span class="field-hint" id="vat-hint">Standard rate</span>
+        </div>
+
+      </div>
+
+      <!-- Live preview -->
+      <div class="modal-preview">
+        <div class="preview-item">
+          <span class="preview-label">Total Weight</span>
+          <span class="preview-value" id="preview-weight">— kg</span>
+        </div>
+        <div class="preview-item">
+          <span class="preview-label">Total Value</span>
+          <span class="preview-value" id="preview-value">CHF —</span>
+        </div>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
+      <button class="btn btn-primary" id="modal-save">Save Product</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="app.js"></script>
+</body>
+</html>
