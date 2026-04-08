@@ -419,23 +419,24 @@ function fmtRate(r) {
    CALCULATIONS
    ========================================================= */
 function calcProduct(p) {
-  const totalWeightG = (p.amount || 0) * (p.weightG || 0);
-  const totalWeightKg = totalWeightG / 1000;
+  const amount = p.amount || 0;
 
-  // totalValueCHF: use stored value OR calculate from price × amount
-  let totalValue = p.totalValueCHF;
+  // Weight: round to nearest gram first to eliminate floating-point noise, then convert to kg
+  const totalWeightKg = Math.round(amount * (p.weightG || 0)) / 1000;
+
+  // Value: round to whole CHF — the total is the authoritative number
+  let totalValue = p.totalValueCHF != null ? Math.round(parseFloat(p.totalValueCHF)) : null;
   if (totalValue == null && p.price != null && p.price !== '') {
-    totalValue = parseFloat(p.price) * (p.amount || 0);
+    totalValue = Math.round(parseFloat(p.price) * amount);
   }
 
-  // Sold goods derived
+  // Effective per-unit values derived from the rounded totals (not from raw stored inputs)
+  const effectiveUnitPrice   = (totalValue != null && amount > 0) ? totalValue / amount : null;
+  const effectiveUnitWeightG = amount > 0 ? (totalWeightKg * 1000) / amount : (p.weightG || 0);
+
   const soldWeightKg = (p.soldQty || 0) * (p.weightG || 0) / 1000;
 
-  return {
-    totalWeightKg,
-    totalValue: totalValue != null ? parseFloat(totalValue) : null,
-    soldWeightKg,
-  };
+  return { totalWeightKg, totalValue, effectiveUnitPrice, effectiveUnitWeightG, soldWeightKg };
 }
 
 function calcTotals() {
@@ -646,21 +647,20 @@ function buildProductRow(p, idx) {
     note.className = 'price-note';
     note.textContent = p.priceNote;
     priceCell.appendChild(note);
-  } else if (p.price != null && p.price !== '') {
-    priceCell.textContent = 'CHF ' + formatNum(p.price, 2);
+  } else if (c.effectiveUnitPrice != null) {
+    // Show per-unit derived from rounded total so it stays consistent with the total column
+    priceCell.textContent = 'CHF ' + formatNum(floorN(c.effectiveUnitPrice, 2), 2);
   } else {
     priceCell.textContent = '—';
   }
   tr.appendChild(priceCell);
 
-  // Total value CHF
+  // Total value CHF — already a whole CHF from calcProduct
   const valCell = document.createElement('td');
   valCell.className = 'col-totalval';
   valCell.style.textAlign = 'right';
-  if (p.priceNote && p.totalValueCHF != null) {
-    valCell.textContent = 'CHF ' + Math.floor(p.totalValueCHF);
-  } else if (c.totalValue != null) {
-    valCell.textContent = 'CHF ' + Math.floor(c.totalValue);
+  if (c.totalValue != null) {
+    valCell.textContent = 'CHF ' + c.totalValue;
   } else {
     valCell.textContent = '—';
   }
@@ -1524,8 +1524,8 @@ function printGoodsList(docNum) {
     let totAmt = 0, totWkg = 0, totVal = 0;
     const rows = state.products.map((p, i) => {
       const c = calcProduct(p);
-      const pd = p.priceNote || (p.price != null ? 'CHF ' + formatNum(floorN(p.price, 2), 2) : '—');
-      const tv = c.totalValue != null ? 'CHF ' + Math.floor(c.totalValue) : '—';
+      const pd = p.priceNote || (c.effectiveUnitPrice != null ? 'CHF ' + formatNum(floorN(c.effectiveUnitPrice, 2), 2) : '—');
+      const tv = c.totalValue != null ? 'CHF ' + c.totalValue : '—';
       const pOrig = (p.originCountry && p.originCountry.trim()) ? p.originCountry.trim().toUpperCase() : (countryToCode(a.countryOfOrigin) || '');
       totAmt += (p.amount || 0); totWkg += c.totalWeightKg;
       if (c.totalValue != null) totVal += c.totalValue;
@@ -1589,12 +1589,13 @@ function printGoodsList(docNum) {
       const retQty = (p.amount||0) - (p.soldQty||0);
       if (retQty <= 0) return '';
       rowNum++;
-      const retWkg = retQty * (p.weightG||0) / 1000;
-      const retVal = p.price != null ? retQty * parseFloat(p.price) : null;
+      const c = calcProduct(p);
+      const retWkg = Math.round(retQty * (p.weightG||0)) / 1000;
+      const retVal = c.effectiveUnitPrice != null ? Math.round(c.effectiveUnitPrice * retQty) : null;
       totRetQty += retQty; totRetWkg += retWkg;
       if (retVal != null) totRetVal += retVal;
-      const pd = p.priceNote || (p.price != null ? 'CHF ' + formatNum(floorN(p.price, 2), 2) : '—');
-      const retValStr = retVal != null ? 'CHF ' + Math.floor(retVal) : '—';
+      const pd = p.priceNote || (c.effectiveUnitPrice != null ? 'CHF ' + formatNum(floorN(c.effectiveUnitPrice, 2), 2) : '—');
+      const retValStr = retVal != null ? 'CHF ' + retVal : '—';
       const pOrig = (p.originCountry && p.originCountry.trim()) ? p.originCountry.trim().toUpperCase() : (countryToCode(a.countryOfOrigin) || '');
       return `<tr><td class="c">${rowNum}</td><td>${esc(p.title||'')}</td><td>${esc(p.type||'')}</td>
         <td class="r">${p.amount??''}</td><td class="r">${p.soldQty||0}</td>
