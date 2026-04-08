@@ -275,6 +275,7 @@ const DEFAULT_STATE = {
     transportationType:     '1',
     transportationCountry:    '',
     transportationNumber:     '',
+    flightNumber:             '',
     registrationPostcode:     '',
     importerCountry:          'CH',
   },
@@ -1902,6 +1903,8 @@ function print1174() {
   const field5Value         = ['VTS', vehicleCC || '______', field5PostCode]
                                 .filter(Boolean).join(' ');
   const field5Warn          = !sameCountry && !!vehicleCC && !regPC;
+  const isAir               = (e.transportMode || '3') === '4';
+  const flightNumber        = (e.flightNumber || '').trim();
 
   // ── Product grouping ──
   const { g1, g2, hasG2 } = compute1174Groups();
@@ -2143,7 +2146,7 @@ col.n-27 { width: 7.5%; }
         <div class="rc-top">
           <div class="cell">
             ${cellHead('6', 'Vordokument / Document précédent / Documento precedente')}
-            <div class="cv" style="font-size:5pt;color:#888">Nr. / No / N. ___________</div>
+            <div class="cv">${isAir && flightNumber ? fv(flightNumber) : '<span style="font-size:5pt;color:#888">Nr. / No / N. ___________</span>'}</div>
           </div>
           <div class="cell">
             ${cellHead('7', 'Konto-Nr. / Compte No / Conto N.')}
@@ -2668,11 +2671,14 @@ function init() {
     document.getElementById('edec-transport-country'),
     document.getElementById('edec-transport-number'),
   ].map(el => el && el.closest('.form-group')).filter(Boolean);
-  const regPostcodeGroup = document.getElementById('reg-postcode-group');
+  const regPostcodeGroup  = document.getElementById('reg-postcode-group');
+  const flightNumberGroup = document.getElementById('flight-number-group');
 
   function syncTransportFields() {
-    const isRoad      = transportModeEl.value === '3';
+    const isRoad = transportModeEl.value === '3';
+    const isAir  = transportModeEl.value === '4';
     transportVehicleFields.forEach(fg => { fg.style.display = isRoad ? '' : 'none'; });
+    if (flightNumberGroup) flightNumberGroup.style.display = isAir ? '' : 'none';
 
     const vehicleCC = (state.edec.transportationCountry || '').trim().toUpperCase();
     const artistCC  = countryToCode(state.artist.countryOfOrigin) || '';
