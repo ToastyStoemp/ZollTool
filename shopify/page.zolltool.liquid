@@ -1,0 +1,53 @@
+{% comment %}
+  ZollTool — Swiss Customs Declaration Tool
+  Place this file in your Shopify theme's /templates/ folder.
+  Then in the Shopify admin: Pages > Create page > Template = page.zolltool
+{% endcomment %}
+
+<style>
+  .zolltool-wrap {
+    /* Push past the theme's side padding so the tool has full width */
+    margin-left: calc(-1 * var(--page-width-padding, 0px));
+    margin-right: calc(-1 * var(--page-width-padding, 0px));
+    width: calc(100% + 2 * var(--page-width-padding, 0px));
+  }
+
+  .zolltool-frame {
+    display: block;
+    width: 100%;
+    /* Start with a sensible fallback; JS will expand this to full content height */
+    height: 800px;
+    border: none;
+    background: #f4f5f6;
+    overflow: hidden;
+  }
+
+  /* Hide the Shopify page title — the tool has its own header */
+  .page-title { display: none; }
+</style>
+
+<div class="zolltool-wrap">
+  <iframe
+    id="zolltool-frame"
+    class="zolltool-frame"
+    src="https://toastystoemp.github.io/ZollTool/"
+    title="ZollTool — Swiss Customs Declaration Tool"
+    loading="lazy"
+    allow="clipboard-write"
+    scrolling="no"
+  ></iframe>
+</div>
+
+<script>
+  window.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'zolltool-height') {
+      var frame = document.getElementById('zolltool-frame');
+      if (frame) {
+        // Add extra space so content doesn't hide behind the Shopify footer
+        var footer = document.querySelector('footer') || document.querySelector('.footer');
+        var buffer = footer ? footer.offsetHeight + 40 : 80;
+        frame.style.height = (e.data.height + buffer) + 'px';
+      }
+    }
+  });
+</script>
