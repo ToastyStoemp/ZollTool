@@ -2849,4 +2849,23 @@ function initDisclaimer() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => { init(); initDisclaimer(); });
+/* =========================================================
+   IFRAME HEIGHT BRIDGE
+   Notifies a parent page (e.g. Shopify) of the document's full
+   scroll height so the iframe can be resized to fit without its
+   own scrollbar appearing.
+   ========================================================= */
+function initHeightBridge() {
+  if (window.parent === window) return; // not inside an iframe
+  function postHeight() {
+    window.parent.postMessage(
+      { type: 'zolltool-height', height: document.documentElement.scrollHeight },
+      '*'
+    );
+  }
+  // Fire on any size change (collapsibles opening, products added, etc.)
+  new ResizeObserver(postHeight).observe(document.body);
+  postHeight();
+}
+
+document.addEventListener('DOMContentLoaded', () => { init(); initDisclaimer(); initHeightBridge(); });
