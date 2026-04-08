@@ -1940,12 +1940,13 @@ function print1174() {
     </tr>`;
   }
 
-  function gtNumRow(rowNum, f20, f23, f24, f25) {
+  function gtNumRow(rowNum, f20, f22, f23, f24, f25) {
     return `<tr>
       <td class="rn">${rowNum}</td>
       <td></td><td></td>
       ${gtCell(f20, 'center')}
-      <td></td><td></td>
+      <td></td>
+      ${gtCell(f22, 'right')}
       ${gtCell(f23, 'center')}
       ${gtCell(f24, 'right')}
       ${gtCell(f25, 'right')}
@@ -2267,11 +2268,13 @@ col.n-27 { width: 7.5%; }
         <tbody>
           ${gtNumRow(1,
               g1.tariffNo !== '—' ? g1.tariffNo : '',
+              String(Math.round(g1.weightKg)),
               String(g1.qty),
               String(Math.round(g1.weightKg)),
               String(Math.floor(g1.value)))}
           ${hasG2 ? gtNumRow(2,
               g2.tariffNo !== '—' ? g2.tariffNo : '',
+              String(Math.round(g2.weightKg)),
               String(g2.qty),
               String(Math.round(g2.weightKg)),
               String(Math.floor(g2.value))) : ''}
