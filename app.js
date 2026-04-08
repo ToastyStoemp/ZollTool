@@ -2210,7 +2210,7 @@ col.n-27 { width: 7.5%; }
           <div style="display:flex;gap:2mm;align-items:flex-start;margin-top:1mm">
             <div style="flex:0 0 auto;border-right:0.5px solid #ccc;padding-right:2mm">
               <div style="font-size:4pt;color:#666;margin-bottom:0.5mm">VTS/SMT</div>
-              <span class="fv">[${esc(vtsCode)}]</span>
+              <span class="fv">${esc(vtsCode)}</span>
             </div>
             <div style="flex:0 0 auto;border-right:0.5px solid #ccc;padding-right:2mm">
               <div style="font-size:4pt;color:#666;margin-bottom:0.5mm">Immat. Land / Pays / Paese</div>
