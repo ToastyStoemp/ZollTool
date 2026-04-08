@@ -2207,7 +2207,20 @@ col.n-27 { width: 7.5%; }
         </div>
         <div class="cell">
           ${cellHead('5', 'VTS/SMT · Immat. Land / Pays d\'immatr. / Paese d\'immatr. · PLZ/NPA/CAP')}
-          <div class="cv">${fv(field5Value)}</div>
+          <div style="display:flex;gap:2mm;align-items:flex-start;margin-top:1mm">
+            <div style="flex:0 0 auto;border-right:0.5px solid #ccc;padding-right:2mm">
+              <div style="font-size:4pt;color:#666;margin-bottom:0.5mm">VTS/SMT</div>
+              <span class="fv">[${esc(vtsCode)}]</span>
+            </div>
+            <div style="flex:0 0 auto;border-right:0.5px solid #ccc;padding-right:2mm">
+              <div style="font-size:4pt;color:#666;margin-bottom:0.5mm">Immat. Land / Pays / Paese</div>
+              <span class="fv">${esc(field5CC || '______')}</span>
+            </div>
+            <div style="flex:0 0 auto">
+              <div style="font-size:4pt;color:#666;margin-bottom:0.5mm">PLZ/NPA/CAP</div>
+              <span class="fv">${esc(field5PostCode)}</span>
+            </div>
+          </div>
         </div>
       </div>
       <div class="mr">
