@@ -2858,10 +2858,14 @@ function initDisclaimer() {
 function initHeightBridge() {
   if (window.parent === window) return; // not inside an iframe
   function postHeight() {
-    window.parent.postMessage(
-      { type: 'zolltool-height', height: document.documentElement.scrollHeight },
-      '*'
+    // Use the largest of all height measurements to avoid clipping
+    const h = Math.max(
+      document.body.scrollHeight,
+      document.body.offsetHeight,
+      document.documentElement.scrollHeight,
+      document.documentElement.offsetHeight
     );
+    window.parent.postMessage({ type: 'zolltool-height', height: h }, '*');
   }
   // Fire on any size change (collapsibles opening, products added, etc.)
   new ResizeObserver(postHeight).observe(document.body);
