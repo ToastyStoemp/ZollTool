@@ -1895,16 +1895,20 @@ function print1174() {
                               [m.venuePostcode, m.venueCity].filter(Boolean).join(' '), 'Switzerland']
                               .filter(Boolean).join('\n');
 
-  const vehicleCC           = (e.transportationCountry || '').trim().toUpperCase();
-  const { postCode: artPC } = parsePostCodeCity(a.postCodeCity || '');
-  const sameCountry         = !vehicleCC || vehicleCC === artistCC;
-  const regPC               = (e.registrationPostcode || '').trim();
-  const field5PostCode      = sameCountry ? artPC : (regPC || '______');
-  const field5Value         = ['VTS', vehicleCC || '______', field5PostCode]
-                                .filter(Boolean).join(' ');
-  const field5Warn          = !sameCountry && !!vehicleCC && !regPC;
-  const isAir               = (e.transportMode || '3') === '4';
-  const flightNumber        = (e.flightNumber || '').trim();
+  const vehicleCC    = (e.transportationCountry || '').trim().toUpperCase();
+  const transportMode = (e.transportMode || '3');
+  const isAir        = transportMode === '4';
+  const flightNumber = (e.flightNumber || '').trim();
+
+  // VTS code per transport mode
+  const VTS_CODE = { '1':'80', '2':'20', '3':'30', '4':'40', '5':'50', '9':'90' };
+  const vtsCode  = VTS_CODE[transportMode] || '30';
+
+  // Country: vehicle CC for road; artist CC for air, rail, and all other modes
+  const field5CC       = transportMode === '3' ? (vehicleCC || artistCC) : artistCC;
+  // Postal code: always the event/venue postal code
+  const field5PostCode = (m.venuePostcode || '').trim() || '______';
+  const field5Value    = `[${vtsCode}] ${field5CC || '______'} ${field5PostCode}`;
 
   // ── Product grouping ──
   const { g1, g2, hasG2 } = compute1174Groups();
@@ -2201,8 +2205,7 @@ col.n-27 { width: 7.5%; }
         </div>
         <div class="cell">
           ${cellHead('5', 'VTS/SMT · Immat. Land / Pays d\'immatr. / Paese d\'immatr. · PLZ/NPA/CAP')}
-          <div class="cv">${fv(field5Value, field5Warn)}</div>
-          ${field5Warn ? `<div class="warn-note">⚠ Vehicle country (${esc(vehicleCC)}) differs from artist country (${esc(artistCC)}) — enter the Registration Postal Code in the Transport section</div>` : ''}
+          <div class="cv">${fv(field5Value)}</div>
         </div>
       </div>
       <div class="mr">
@@ -2664,14 +2667,12 @@ function init() {
   initCountryPicker(document.getElementById('artist-country'), { showName: true });
   initCountryPicker(document.getElementById('edec-transport-country'));
 
-  // Show vehicle country + plate only for Road (mode 3)
-  // Show registration postcode only when vehicle country differs from artist country
+  // Show vehicle country + plate only for Road (mode 3); flight number only for Air (mode 4)
   const transportModeEl    = document.getElementById('edec-mode');
   const transportVehicleFields = [
     document.getElementById('edec-transport-country'),
     document.getElementById('edec-transport-number'),
   ].map(el => el && el.closest('.form-group')).filter(Boolean);
-  const regPostcodeGroup  = document.getElementById('reg-postcode-group');
   const flightNumberGroup = document.getElementById('flight-number-group');
 
   function syncTransportFields() {
@@ -2679,19 +2680,11 @@ function init() {
     const isAir  = transportModeEl.value === '4';
     transportVehicleFields.forEach(fg => { fg.style.display = isRoad ? '' : 'none'; });
     if (flightNumberGroup) flightNumberGroup.style.display = isAir ? '' : 'none';
-
-    const vehicleCC = (state.edec.transportationCountry || '').trim().toUpperCase();
-    const artistCC  = countryToCode(state.artist.countryOfOrigin) || '';
-    const mismatch  = isRoad && !!vehicleCC && vehicleCC !== artistCC;
-    if (regPostcodeGroup) regPostcodeGroup.style.display = mismatch ? '' : 'none';
   }
 
   transportModeEl.addEventListener('change', syncTransportFields);
   // Re-check when vehicle country or artist country changes
   const transportCountryEl = document.getElementById('edec-transport-country');
-  const artistCountryEl    = document.getElementById('artist-country');
-  if (transportCountryEl) transportCountryEl.addEventListener('change', syncTransportFields);
-  if (artistCountryEl)    artistCountryEl.addEventListener('change', syncTransportFields);
   syncTransportFields();
 
   // Modal country picker (modal DOM always present)
