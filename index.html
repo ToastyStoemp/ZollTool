@@ -23,8 +23,14 @@
         <input type="checkbox" id="theme-toggle-cb" />
         <span class="toggle-track"><span class="toggle-thumb"></span></span>
       </label>
-      <button class="btn btn-ghost" id="btn-load-json" title="Load JSON file">Load JSON</button>
-      <button class="btn btn-primary" id="btn-save-json" title="Save as JSON file">Save JSON</button>
+      <button class="btn btn-ghost" id="btn-load-json" title="Load JSON file">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        Load JSON
+      </button>
+      <button class="btn btn-primary" id="btn-save-json" title="Save as JSON file">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Save JSON
+      </button>
       <input type="file" id="file-input" accept=".json" style="display:none" />
     </div>
   </div>
@@ -188,10 +194,22 @@
     <div class="card-header">
       <h2 class="section-title">Product List</h2>
       <div class="section-header-actions">
-        <button class="btn btn-ghost btn-sm" id="btn-export-import"  title="Export import declaration (001)">Form Import</button>
-        <button class="btn btn-ghost btn-sm" id="btn-export-sold"    title="Export sold goods update (002)">Form Sold</button>
-        <button class="btn btn-ghost btn-sm" id="btn-export-return"  title="Export return goods list (003)">Form Return</button>
-        <button class="btn btn-primary" id="btn-add-product">+ Add Product</button>
+        <button class="btn btn-ghost btn-sm" id="btn-export-import" title="Export import declaration (001)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Import
+        </button>
+        <button class="btn btn-ghost btn-sm" id="btn-export-sold" title="Export sold goods update (002)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Sold
+        </button>
+        <button class="btn btn-ghost btn-sm" id="btn-export-return" title="Export return goods list (003)">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+          Return
+        </button>
+        <button class="btn btn-primary" id="btn-add-product">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Add Product
+        </button>
       </div>
     </div>
 
@@ -304,7 +322,10 @@
       </div>
 
       <div class="edec-actions">
-        <button class="btn btn-primary btn-lg" id="btn-print-1174">Preview Form 11.74</button>
+        <button class="btn btn-primary btn-lg" id="btn-print-1174">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          Preview Form 11.74
+        </button>
         <p class="edec-actions-hint">Opens a print-ready preview of the pre-filled Formular 11.74.</p>
       </div>
 
@@ -330,7 +351,10 @@
       </div>
 
       <div class="edec-actions">
-        <button class="btn btn-primary btn-lg" id="btn-generate-edec">Generate E-dec XML</button>
+        <button class="btn btn-primary btn-lg" id="btn-generate-edec">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+          Generate E-dec XML
+        </button>
         <p class="edec-actions-hint">Only products with <strong>Sold Qty &gt; 0</strong> will be included in the XML.</p>
       </div>
 

@@ -2807,10 +2807,10 @@ function init() {
   // VAT hint update when VAT rate manually changed
   document.getElementById('m-vatrate').addEventListener('input', updateVatHint);
 
-  // Dark theme toggle
+  // Dark theme toggle — dark is the default unless user has explicitly chosen light
   const themeCb = document.getElementById('theme-toggle-cb');
   const savedTheme = localStorage.getItem('zolltool_theme');
-  if (savedTheme === 'dark') {
+  if (savedTheme !== 'light') {
     document.documentElement.setAttribute('data-theme', 'dark');
     themeCb.checked = true;
   }
