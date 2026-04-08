@@ -1908,7 +1908,7 @@ function print1174() {
   const field5CC       = transportMode === '3' ? (vehicleCC || artistCC) : artistCC;
   // Postal code: always the event/venue postal code
   const field5PostCode = (m.venuePostcode || '').trim() || '______';
-  const field5Value    = `[${vtsCode}] ${field5CC || '______'} ${field5PostCode}`;
+  const field5Value    = `${vtsCode} ${field5CC || '______'} ${field5PostCode}`;
 
   // ── Product grouping ──
   const { g1, g2, hasG2 } = compute1174Groups();
