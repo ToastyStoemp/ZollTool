@@ -42,12 +42,7 @@
   window.addEventListener('message', function(e) {
     if (e.data && e.data.type === 'zolltool-height') {
       var frame = document.getElementById('zolltool-frame');
-      if (frame) {
-        // Add extra space so content doesn't hide behind the Shopify footer
-        var footer = document.querySelector('footer') || document.querySelector('.footer');
-        var buffer = footer ? footer.offsetHeight + 40 : 80;
-        frame.style.height = (e.data.height + buffer) + 'px';
-      }
+      if (frame) frame.style.height = e.data.height + 'px';
     }
   });
 </script>
