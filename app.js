@@ -1697,6 +1697,69 @@ function escHtml(str) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function updateRouteGuidance() {
+  const el = document.getElementById('route-guidance');
+  if (!el) return;
+
+  if (!state.products.length) {
+    el.innerHTML = `
+      <div class="route-card route-card-neutral">
+        <div class="route-header">
+          <div class="route-title">Which customs route applies to you?</div>
+          <div class="route-amounts">Add your products to find out</div>
+        </div>
+        <div class="route-subtitle">The tool will automatically determine the right route once you've entered your products.</div>
+        <div class="route-thresholds">
+          <div class="route-threshold"><span class="route-badge route-badge-green">Form 11.61</span> Under CHF 2,000 total value and under 100 kg — simple VAT deposit at the border, no pre-registration</div>
+          <div class="route-threshold"><span class="route-badge route-badge-amber">Form 11.74 / e-dec</span> Over CHF 2,000 or over 100 kg — electronic pre-registration required</div>
+        </div>
+      </div>`;
+    return;
+  }
+
+  const { totalValue, totalWeightKg } = calcTotals();
+  const deposit = Math.ceil(totalValue * 0.081);
+  const fmtVal  = v => Math.round(v).toLocaleString('de-CH');
+  const fmtKg   = kg => (Math.round(kg * 10) / 10).toLocaleString('de-CH');
+
+  if (totalValue < 2000 && totalWeightKg < 100) {
+    el.innerHTML = `
+      <div class="route-card route-card-1161">
+        <div class="route-header">
+          <span class="route-badge route-badge-green">Form 11.61 — Recommended</span>
+          <span class="route-amounts">CHF ${fmtVal(totalValue)} · ${fmtKg(totalWeightKg)} kg</span>
+        </div>
+        <div class="route-title">Simplified route: Uncertain Sale Deposit</div>
+        <div class="route-subtitle">Your declared value qualifies for the simplified Form 11.61 procedure. No pre-registration needed — customs issues the form at the border.</div>
+        <ol class="route-steps">
+          <li>Print your <strong>goods list</strong> (Products section) and bring it to the border</li>
+          <li>Stop at a <strong>manned Swiss border crossing</strong> and declare your goods for uncertain sale</li>
+          <li>Pay a deposit of <strong>CHF ${fmtVal(deposit)}</strong> (8.1% of CHF ${fmtVal(totalValue)}) in cash or by card</li>
+          <li>Customs issues Form 11.61 — <strong>keep it at your stand</strong> at all times during the event</li>
+          <li>On departure, present Form 11.61 at the border — deposit is refunded minus VAT on what you sold</li>
+        </ol>
+        <div class="route-note">Form 11.74 is also accepted and pre-registers your goods in more detail. Use it if your event organiser specifically requires it, or if you prefer pre-registration over a border deposit.</div>
+      </div>`;
+  } else {
+    el.innerHTML = `
+      <div class="route-card route-card-1174">
+        <div class="route-header">
+          <span class="route-badge route-badge-amber">Form 11.74 / e-dec Required</span>
+          <span class="route-amounts">CHF ${fmtVal(totalValue)} · ${fmtKg(totalWeightKg)} kg</span>
+        </div>
+        <div class="route-title">Standard route: Electronic Pre-registration</div>
+        <div class="route-subtitle">Your total value or weight exceeds the CHF 2,000 / 100 kg threshold for the simplified Form 11.61 procedure.</div>
+        <ol class="route-steps">
+          <li>Complete an <strong>e-dec import declaration</strong> electronically in advance (see E-dec section below)</li>
+          <li>Use <strong>Form 11.74</strong> to pre-register your goods at the border</li>
+          <li>Stop at a manned Swiss border crossing and present your declaration</li>
+          <li>VAT assessment is done at customs or at the trade fair customs desk</li>
+        </ol>
+        <div class="route-note">If you can reduce your declared value below CHF 2,000 and weight below 100 kg, the simpler Form 11.61 deposit route becomes available.</div>
+      </div>`;
+  }
+}
+
 function render1174GroupUI() {
   if (!state.form1174) return;
 
@@ -1717,6 +1780,7 @@ function render1174GroupUI() {
     autoInfo.style.display = '';
     renderAuto1174Info();
   }
+  updateRouteGuidance();
   updateSectionSummaries(); // refresh section header
 }
 
