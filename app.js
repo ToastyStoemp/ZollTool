@@ -260,6 +260,7 @@ const DEFAULT_STATE = {
     venuePostcode:   '',
     venueCity:       '',
     venueTIN:        'CHE222251936',
+    currency:        'CHF',
   },
   artist: {
     companyName:     '',
@@ -395,9 +396,13 @@ function fmtWeightKg(kg) {
   return formatNum(kg, 2).replace('.', ',') + ' kg';
 }
 
+function getCurrency() {
+  return (state.meta && state.meta.currency) ? state.meta.currency : 'CHF';
+}
+
 function fmtCHF(val) {
   if (val == null || isNaN(val)) return '—';
-  return 'CHF ' + formatNum(val, 2);
+  return getCurrency() + ' ' + formatNum(val, 2);
 }
 
 function formatNum(n, decimals) {
@@ -542,6 +547,12 @@ function bindFormFields() {
       state[section][field] = input.value;
       updateSectionSummaries();
       saveToStorage();
+      // Re-render table and totals when currency changes so labels update immediately
+      if (section === 'meta' && field === 'currency') {
+        renderTable();
+        renderTotals();
+        updateRouteGuidance();
+      }
     };
     input.addEventListener('input', handler);
     input.addEventListener('change', handler);
@@ -649,7 +660,7 @@ function buildProductRow(p, idx) {
     priceCell.appendChild(note);
   } else if (c.effectiveUnitPrice != null) {
     // Show per-unit derived from rounded total so it stays consistent with the total column
-    priceCell.textContent = 'CHF ' + formatNum(floorN(c.effectiveUnitPrice, 2), 2);
+    priceCell.textContent = getCurrency() + ' ' + formatNum(floorN(c.effectiveUnitPrice, 2), 2);
   } else {
     priceCell.textContent = '—';
   }
@@ -660,7 +671,7 @@ function buildProductRow(p, idx) {
   valCell.className = 'col-totalval';
   valCell.style.textAlign = 'right';
   if (c.totalValue != null) {
-    valCell.textContent = 'CHF ' + c.totalValue;
+    valCell.textContent = getCurrency() + ' ' + c.totalValue;
   } else {
     valCell.textContent = '—';
   }
@@ -753,16 +764,25 @@ function buildProductRow(p, idx) {
   actionsDiv.className = 'row-actions';
 
   const editBtn = document.createElement('button');
-  editBtn.className = 'btn btn-ghost btn-sm';
-  editBtn.textContent = 'Edit';
+  editBtn.className = 'btn btn-ghost btn-icon';
+  editBtn.title = 'Edit';
+  editBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>`;
   editBtn.addEventListener('click', () => openEditModal(p.id));
 
+  const dupBtn = document.createElement('button');
+  dupBtn.className = 'btn btn-ghost btn-icon';
+  dupBtn.title = 'Duplicate';
+  dupBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`;
+  dupBtn.addEventListener('click', () => duplicateProduct(p.id));
+
   const delBtn = document.createElement('button');
-  delBtn.className = 'btn btn-danger btn-sm';
-  delBtn.textContent = 'Del';
+  delBtn.className = 'btn btn-danger btn-icon';
+  delBtn.title = 'Delete';
+  delBtn.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>`;
   delBtn.addEventListener('click', () => deleteProduct(p.id));
 
   actionsDiv.appendChild(editBtn);
+  actionsDiv.appendChild(dupBtn);
   actionsDiv.appendChild(delBtn);
   actionsCell.appendChild(actionsDiv);
   tr.appendChild(actionsCell);
@@ -775,26 +795,32 @@ function renderTotals() {
   document.getElementById('total-amount').textContent    = t.totalAmount.toLocaleString();
   document.getElementById('total-weight').textContent    = fmtWeightKg(t.totalWeightKg);
   document.getElementById('total-soldqty').textContent   = t.totalSoldQty.toLocaleString();
-  document.getElementById('total-soldval').textContent   = 'CHF ' + Math.floor(t.totalSoldVal);
+  const cur = getCurrency();
+  const colHdr = document.getElementById('col-header-totalval');
+  if (colHdr) colHdr.textContent = `Total Value ${cur}`;
+  const lblPrice = document.getElementById('label-m-price');
+  if (lblPrice) lblPrice.textContent = `Price / item (${cur})`;
+  const lblTotal = document.getElementById('label-m-totalvalue');
+  if (lblTotal) lblTotal.textContent = `Total value (${cur})`;
+  document.getElementById('total-soldval').textContent   = cur + ' ' + Math.floor(t.totalSoldVal);
   document.getElementById('total-soldvat').textContent   = formatNum(t.totalSoldVat, 2);
   document.getElementById('total-soldweight').textContent = fmtWeightKg(t.totalSoldWeight);
   const vatEstEl = document.getElementById('vat-estimate-total');
-  if (vatEstEl) vatEstEl.textContent = 'CHF ' + formatNum(t.totalImportVat, 2);
+  if (vatEstEl) vatEstEl.textContent = cur + ' ' + formatNum(t.totalImportVat, 2);
   const vatEstSoldEl = document.getElementById('vat-estimate-sold');
-  if (vatEstSoldEl) vatEstSoldEl.textContent = 'CHF ' + formatNum(t.totalSoldVat, 2);
+  if (vatEstSoldEl) vatEstSoldEl.textContent = cur + ' ' + formatNum(t.totalSoldVat, 2);
 
   // Total value: show overall total + per-rate breakdown + import VAT estimate
   const totalValEl = document.getElementById('total-value');
   const rateKeys = Object.keys(t.byTariffRate).sort((a, b) => parseFloat(a) - parseFloat(b));
-  const vatLine = `<div class="total-vat-est">est. VAT CHF ${formatNum(t.totalImportVat, 2)}</div>`;
   if (rateKeys.length > 1) {
     const lines = rateKeys.map(r => {
       const rateLabel = r === '?' ? '?' : parseFloat(r).toFixed(1) + '%';
-      return `<div class="total-by-rate">${rateLabel} · CHF ${Math.floor(t.byTariffRate[r].value)}</div>`;
+      return `<div class="total-by-rate">${rateLabel} · ${cur} ${Math.floor(t.byTariffRate[r].value)}</div>`;
     }).join('');
-    totalValEl.innerHTML = `<div class="total-main">CHF ${Math.floor(t.totalValue)}</div>${lines}`;
+    totalValEl.innerHTML = `<div class="total-main">${cur} ${Math.floor(t.totalValue)}</div>${lines}`;
   } else {
-    totalValEl.innerHTML = `<div class="total-main">CHF ${Math.floor(t.totalValue)}</div>`;
+    totalValEl.innerHTML = `<div class="total-main">${cur} ${Math.floor(t.totalValue)}</div>`;
   }
 }
 
@@ -826,6 +852,16 @@ function deleteProduct(id) {
   renderTable();
 }
 
+function duplicateProduct(id) {
+  const original = state.products.find(p => p.id === id);
+  if (!original) return;
+  const copy = Object.assign({}, original, { id: uuid(), soldQty: 0, soldValue: 0, soldVAT: 0 });
+  const idx = state.products.findIndex(p => p.id === id);
+  state.products.splice(idx + 1, 0, copy);
+  saveToStorage();
+  renderTable();
+}
+
 function addProduct(productData) {
   const product = Object.assign(
     {
@@ -839,8 +875,8 @@ function addProduct(productData) {
       priceNote:   '',
       totalValueCHF: null,
       tariffNo:      '',
-      tariffRate:    8.1,
-      vatRate:       8.1,
+      tariffRate:    null,
+      vatRate:       null,
       packagingType: 'CT',
       soldQty:       0,
       soldValue:   0,
@@ -905,7 +941,7 @@ function resetModalForm() {
   document.getElementById('m-pricenote').value   = '';
   document.getElementById('m-hscode-input').value = '';
   document.getElementById('m-tariffrate').value  = '';
-  document.getElementById('m-vatrate').value     = '8.1';
+  document.getElementById('m-vatrate').value     = '';
   document.getElementById('m-origin').value      = '';
   document.getElementById('hs-desc-hint').textContent = '';
   document.getElementById('m-totalweight').value = '';
@@ -927,7 +963,7 @@ function populateModalForm(p) {
   document.getElementById('m-pricenote').value    = p.priceNote    || '';
   document.getElementById('m-hscode-input').value = p.tariffNo     || '';
   document.getElementById('m-tariffrate').value   = p.tariffRate   != null ? p.tariffRate : '';
-  document.getElementById('m-vatrate').value      = p.vatRate      != null ? p.vatRate    : '8.1';
+  document.getElementById('m-vatrate').value      = p.vatRate      != null ? p.vatRate    : '';
   document.getElementById('m-origin').value       = p.originCountry || '';
 
   // Show HS description hint if code is known
@@ -996,7 +1032,7 @@ function collectModalForm() {
     totalValueCHF,
     tariffNo,
     tariffRate:    tariffRate !== '' ? parseFloat(tariffRate) : null,
-    vatRate:       vatRate    !== '' ? parseFloat(vatRate)    : 8.1,
+    vatRate:       vatRate    !== '' ? parseFloat(vatRate)    : null,
     packagingType,
     originCountry,
   };
@@ -1519,13 +1555,17 @@ function printGoodsList(docNum) {
 
   let tableHtml = '';
 
+  const hasCustomsInfo = p => !!(p.tariffNo && p.tariffNo.trim()) || (p.vatRate != null && p.vatRate !== '');
+
   if (docNum === 1) {
     // ── IMPORT: no sold columns ──
     let totAmt = 0, totWkg = 0, totVal = 0;
-    const rows = state.products.map((p, i) => {
+    let rowNum = 0;
+    const rows = state.products.filter(hasCustomsInfo).map(p => {
+      const i = rowNum++;
       const c = calcProduct(p);
-      const pd = p.priceNote || (c.effectiveUnitPrice != null ? 'CHF ' + formatNum(floorN(c.effectiveUnitPrice, 2), 2) : '—');
-      const tv = c.totalValue != null ? 'CHF ' + c.totalValue : '—';
+      const pd = p.priceNote || (c.effectiveUnitPrice != null ? formatNum(floorN(c.effectiveUnitPrice, 2), 2) : '—');
+      const tv = c.totalValue != null ? c.totalValue : '—';
       const pOrig = (p.originCountry && p.originCountry.trim()) ? p.originCountry.trim().toUpperCase() : (countryToCode(a.countryOfOrigin) || '');
       totAmt += (p.amount || 0); totWkg += c.totalWeightKg;
       if (c.totalValue != null) totVal += c.totalValue;
@@ -1542,12 +1582,12 @@ function printGoodsList(docNum) {
 <table class="goods"><thead><tr>
   <th>#</th><th>Title</th><th>For Sale / Not For Sale</th><th>Type</th>
   <th class="r">Amount</th><th class="r">Variant Weight</th><th class="r">Total Weight</th>
-  <th class="r">Variant Price</th><th class="r">Total Value (CHF)</th>
+  <th class="r">Unit Price (${getCurrency()})</th><th class="r">Total Value (${getCurrency()})</th>
   <th class="r">Tariff no.</th><th class="r">Tariff Rate</th><th class="r">VAT Rate</th><th class="c">Origin</th>
 </tr></thead><tbody>${rows}</tbody><tfoot><tr>
   <td colspan="4" style="text-align:right">TOTALS</td>
   <td class="r">${totAmt}</td><td></td><td class="r">${fmtWeightKg(totWkg)}</td><td></td>
-  <td class="r" style="color:#c00">CHF ${Math.floor(totVal)}</td><td colspan="4"></td>
+  <td class="r" style="color:#c00">${Math.floor(totVal)}</td><td colspan="4"></td>
 </tr></tfoot></table>`;
 
   } else if (docNum === 2) {
@@ -1556,6 +1596,7 @@ function printGoodsList(docNum) {
     let rowNum = 0;
     const rows = state.products.map(p => {
       if (!(p.soldQty > 0)) return '';
+      if (!hasCustomsInfo(p)) return '';
       rowNum++;
       const c = calcProduct(p);
       const rowSV  = floorN(p.soldValue || 0, 2);
@@ -1564,7 +1605,7 @@ function printGoodsList(docNum) {
       return `<tr><td class="c">${rowNum}</td><td>${esc(p.title||'')}</td><td>${esc(p.type||'')}</td>
         <td class="r">${esc(p.tariffNo||'')}</td>
         <td class="r">${p.soldQty||0}</td>
-        <td class="r">CHF ${formatNum(rowSV,2)}</td>
+        <td class="r">${formatNum(rowSV,2)}</td>
         <td class="r">${fmtWeightKg(c.soldWeightKg)}</td></tr>`;
     }).filter(r => r).join('');
     const emptyRow = rows ? '' : `<tr><td colspan="7" style="text-align:center;color:#888;padding:8px">No sold quantities entered</td></tr>`;
@@ -1572,12 +1613,12 @@ function printGoodsList(docNum) {
 <table class="goods"><thead><tr>
   <th>#</th><th>Title</th><th>Type</th>
   <th class="r">Tariff no.</th>
-  <th class="r">Qty Sold</th><th class="r">Value Sold (CHF)</th>
+  <th class="r">Qty Sold</th><th class="r">Value Sold (${getCurrency()})</th>
   <th class="r">Sold Weight</th>
 </tr></thead><tbody>${rows}${emptyRow}</tbody><tfoot><tr>
   <td colspan="4" style="text-align:right">TOTALS</td>
   <td class="r">${totSQ}</td>
-  <td class="r">CHF ${formatNum(floorN(totSV,2),2)}</td>
+  <td class="r">${formatNum(floorN(totSV,2),2)}</td>
   <td class="r">${fmtWeightKg(totSWkg)}</td>
 </tr></tfoot></table>`;
 
@@ -1588,14 +1629,15 @@ function printGoodsList(docNum) {
     const rows = state.products.map(p => {
       const retQty = (p.amount||0) - (p.soldQty||0);
       if (retQty <= 0) return '';
+      if (!hasCustomsInfo(p)) return '';
       rowNum++;
       const c = calcProduct(p);
       const retWkg = Math.round(retQty * (p.weightG||0)) / 1000;
       const retVal = c.effectiveUnitPrice != null ? Math.round(c.effectiveUnitPrice * retQty) : null;
       totRetQty += retQty; totRetWkg += retWkg;
       if (retVal != null) totRetVal += retVal;
-      const pd = p.priceNote || (c.effectiveUnitPrice != null ? 'CHF ' + formatNum(floorN(c.effectiveUnitPrice, 2), 2) : '—');
-      const retValStr = retVal != null ? 'CHF ' + retVal : '—';
+      const pd = p.priceNote || (c.effectiveUnitPrice != null ? formatNum(floorN(c.effectiveUnitPrice, 2), 2) : '—');
+      const retValStr = retVal != null ? retVal : '—';
       const pOrig = (p.originCountry && p.originCountry.trim()) ? p.originCountry.trim().toUpperCase() : (countryToCode(a.countryOfOrigin) || '');
       return `<tr><td class="c">${rowNum}</td><td>${esc(p.title||'')}</td><td>${esc(p.type||'')}</td>
         <td class="r">${p.amount??''}</td><td class="r">${p.soldQty||0}</td>
@@ -1615,13 +1657,13 @@ function printGoodsList(docNum) {
   <th>#</th><th>Title</th><th>Type</th>
   <th class="r">Original Qty</th><th class="r">Sold Qty</th><th class="r">Return Qty</th>
   <th class="r">Unit Weight</th><th class="r">Return Weight</th>
-  <th class="r">Unit Price</th><th class="r">Return Value (CHF)</th>
+  <th class="r">Unit Price (${getCurrency()})</th><th class="r">Return Value (${getCurrency()})</th>
   <th class="r">Tariff no.</th><th class="r">Tariff Rate</th><th class="r">VAT Rate</th><th class="c">Origin</th>
 </tr></thead><tbody>${rows}${emptyRow}</tbody><tfoot><tr>
   <td colspan="5" style="text-align:right">TOTALS</td>
   <td class="r"><strong>${totRetQty}</strong></td><td></td>
   <td class="r">${fmtWeightKg(totRetWkg)}</td><td></td>
-  <td class="r" style="color:#c00">CHF ${Math.floor(totRetVal)}</td><td colspan="4"></td>
+  <td class="r" style="color:#c00">${Math.floor(totRetVal)}</td><td colspan="4"></td>
 </tr></tfoot></table>`;
   }
 
@@ -1712,6 +1754,7 @@ function updateRouteGuidance() {
         <div class="route-thresholds">
           <div class="route-threshold"><span class="route-badge route-badge-green">Form 11.61</span> Under CHF 2,000 total value and under 100 kg — simple VAT deposit at the border, no pre-registration</div>
           <div class="route-threshold"><span class="route-badge route-badge-amber">Form 11.74 / e-dec</span> Over CHF 2,000 or over 100 kg — electronic pre-registration required</div>
+          <div class="route-note" style="margin-top:8px;font-size:12px">These thresholds apply to Swiss customs (CHF). If you have set a different currency, the thresholds may not apply.</div>
         </div>
       </div>`;
     return;
@@ -1727,14 +1770,14 @@ function updateRouteGuidance() {
       <div class="route-card route-card-1161">
         <div class="route-header">
           <span class="route-badge route-badge-green">Form 11.61 — Recommended</span>
-          <span class="route-amounts">CHF ${fmtVal(totalValue)} · ${fmtKg(totalWeightKg)} kg</span>
+          <span class="route-amounts">${getCurrency()} ${fmtVal(totalValue)} · ${fmtKg(totalWeightKg)} kg</span>
         </div>
         <div class="route-title">Simplified route: Uncertain Sale Deposit</div>
         <div class="route-subtitle">Your declared value qualifies for the simplified Form 11.61 procedure. No pre-registration needed — customs issues the form at the border.</div>
         <ol class="route-steps">
           <li>Print your <strong>goods list</strong> (Products section) and bring it to the border</li>
           <li>Stop at a <strong>manned Swiss border crossing</strong> and declare your goods for uncertain sale</li>
-          <li>Pay a deposit of <strong>CHF ${fmtVal(deposit)}</strong> (8.1% of CHF ${fmtVal(totalValue)}) in cash or by card</li>
+          <li>Pay a deposit of <strong>CHF ${fmtVal(deposit)}</strong> (8.1% of total value) in cash or by card</li>
           <li>Customs issues Form 11.61 — <strong>keep it at your stand</strong> at all times during the event</li>
           <li>On departure, present Form 11.61 at the border — deposit is refunded minus VAT on what you sold</li>
         </ol>
@@ -1745,7 +1788,7 @@ function updateRouteGuidance() {
       <div class="route-card route-card-1174">
         <div class="route-header">
           <span class="route-badge route-badge-amber">Form 11.74 / e-dec Required</span>
-          <span class="route-amounts">CHF ${fmtVal(totalValue)} · ${fmtKg(totalWeightKg)} kg</span>
+          <span class="route-amounts">${getCurrency()} ${fmtVal(totalValue)} · ${fmtKg(totalWeightKg)} kg</span>
         </div>
         <div class="route-title">Standard route: Electronic Pre-registration</div>
         <div class="route-subtitle">Your total value or weight exceeds the CHF 2,000 / 100 kg threshold for the simplified Form 11.61 procedure.</div>
@@ -1805,7 +1848,7 @@ function renderManual1174Cards() {
       card.innerHTML = `<span class="g-card-handle">&#8942;&#8942;</span>
         <span class="g-card-title">${escHtml(p.title || '(untitled)')}</span>
         <span class="g-card-hs">${escHtml(p.tariffNo || '—')}</span>
-        <span class="g-card-val">CHF ${val}</span>`;
+        <span class="g-card-val">${getCurrency()} ${val}</span>`;
       zone.appendChild(card);
     });
   });
@@ -1824,7 +1867,7 @@ function update1174GroupSummaries() {
       const c = calcProduct(p);
       if (c.totalValue != null) val += c.totalValue;
     });
-    summaryEl.textContent = `${inGroup.length} product${inGroup.length !== 1 ? 's' : ''} · ${qty} items · CHF ${Math.floor(val)}`;
+    summaryEl.textContent = `${inGroup.length} product${inGroup.length !== 1 ? 's' : ''} · ${qty} items · ${getCurrency()} ${Math.floor(val)}`;
   });
 }
 
@@ -1852,7 +1895,7 @@ function renderAuto1174Info() {
       const val = c.totalValue != null ? Math.floor(c.totalValue) : 0;
       return `<div class="g-auto-item"><span class="g-card-title">${escHtml(p.title || '(untitled)')}</span>
         <span class="g-card-hs">${escHtml(p.tariffNo || '—')}</span>
-        <span class="g-card-val">CHF ${val}</span></div>`;
+        <span class="g-card-val">${getCurrency()} ${val}</span></div>`;
     }).join('');
     return `<div class="group-auto-col">
       <div class="group-col-header"><span class="group-col-title">${label}</span>

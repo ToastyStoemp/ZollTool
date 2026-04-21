@@ -130,6 +130,28 @@
           <input type="text" id="venue-tin" placeholder="e.g. CHE222251936" data-key="meta.venueTIN" />
           <span class="field-hint">UID of the event organizer (starts with CHE)</span>
         </div>
+        <div class="form-group">
+          <label for="meta-currency">Currency</label>
+          <div style="display:flex;gap:8px;align-items:center">
+            <select id="meta-currency" data-key="meta.currency">
+              <option value="CHF">CHF — Swiss Franc</option>
+              <option value="EUR">EUR — Euro</option>
+              <option value="USD">USD — US Dollar</option>
+              <option value="GBP">GBP — British Pound</option>
+              <option value="JPY">JPY — Japanese Yen</option>
+              <option value="CAD">CAD — Canadian Dollar</option>
+              <option value="AUD">AUD — Australian Dollar</option>
+              <option value="NOK">NOK — Norwegian Krone</option>
+              <option value="SEK">SEK — Swedish Krona</option>
+              <option value="DKK">DKK — Danish Krone</option>
+              <option value="PLN">PLN — Polish Złoty</option>
+              <option value="CZK">CZK — Czech Koruna</option>
+              <option value="HUF">HUF — Hungarian Forint</option>
+              <option value="SGD">SGD — Singapore Dollar</option>
+            </select>
+          </div>
+          <span class="field-hint">Used in all value displays, goods lists, and exports</span>
+        </div>
         <div class="form-group lrp-group" style="display:none">
           <label for="event-lrp">LRP Code <span class="field-hint-inline">(auto-generated)</span></label>
           <div class="lrp-row">
@@ -226,7 +248,7 @@
             <th class="col-weight">Unit Weight</th>
             <th class="col-totalweight">Total Weight</th>
             <th class="col-price">Unit Price</th>
-            <th class="col-totalval">Total Value CHF</th>
+            <th class="col-totalval" id="col-header-totalval">Total Value CHF</th>
             <th class="col-tariff">Tariff No.</th>
             <th class="col-tariffrate">Tariff %</th>
             <th class="col-vat">VAT %</th>
@@ -495,13 +517,13 @@
         </div>
 
         <div class="form-group">
-          <label for="m-price">Price / item (CHF)</label>
+          <label for="m-price" id="label-m-price">Price / item (CHF)</label>
           <input type="number" id="m-price" min="0" step="0.01" placeholder="e.g. 20.00" />
           <span class="field-hint">Edit either field — the other auto-calculates</span>
         </div>
 
         <div class="form-group">
-          <label for="m-totalvalue">Total value (CHF)</label>
+          <label for="m-totalvalue" id="label-m-totalvalue">Total value (CHF)</label>
           <input type="number" id="m-totalvalue" min="0" step="0.01" placeholder="auto" />
         </div>
 

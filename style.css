@@ -233,6 +233,14 @@ body {
   font-size: 12px;
 }
 
+.btn-icon {
+  padding: 4px 8px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 /* ---- Main Content ---- */
 .main-content {
   max-width: 1600px;
@@ -713,7 +721,7 @@ tr.drag-over td  { background: var(--red-light) !important; }
 .col-soldval     { width: 96px;  text-align: right; }
 .col-soldvat     { display: none; }
 .col-soldweight  { width: 92px;  text-align: right; }
-.col-actions     { width: 92px;  text-align: center; white-space: nowrap; }
+.col-actions     { width: 100px; text-align: center; white-space: nowrap; }
 
 /* Divider between product columns and sold columns */
 .products-table th.col-soldqty,
