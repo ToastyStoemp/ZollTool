@@ -1,5 +1,5 @@
 /**
- * ZollTool — Swiss Customs Declaration Tool
+ * ZollTool -Swiss Customs Declaration Tool
  * app.js
  *
  * Vanilla JS, no dependencies.
@@ -430,7 +430,7 @@ function calcProduct(p) {
   // Weight: round to nearest gram first to eliminate floating-point noise, then convert to kg
   const totalWeightKg = Math.round(amount * (p.weightG || 0)) / 1000;
 
-  // Value: round to whole CHF — the total is the authoritative number
+  // Value: round to whole CHF -the total is the authoritative number
   let totalValue = p.totalValueCHF != null ? Math.round(parseFloat(p.totalValueCHF)) : null;
   if (totalValue == null && p.price != null && p.price !== '') {
     totalValue = Math.round(parseFloat(p.price) * amount);
@@ -520,10 +520,10 @@ function updateSectionSummaries() {
       edecSummary.textContent = 'Ready to generate XML';
       edecSummary.style.color = '#1a7a3e';
     } else if (hasSoldItems) {
-      edecSummary.textContent = 'Sold quantities entered — complete transport & importer info';
+      edecSummary.textContent = 'Sold quantities entered - complete transport & importer info';
       edecSummary.style.color = '';
     } else {
-      edecSummary.textContent = 'Complete after the event — enter sold quantities first';
+      edecSummary.textContent = 'Complete after the event - enter sold quantities first';
       edecSummary.style.color = '';
     }
   }
@@ -542,7 +542,7 @@ function bindFormFields() {
       input.value = state[section][field];
     }
 
-    // Listen for changes — use both 'input' and 'change' to cover inputs and selects
+    // Listen for changes -use both 'input' and 'change' to cover inputs and selects
     const handler = () => {
       if (!state[section]) state[section] = {};
       state[section][field] = input.value;
@@ -553,6 +553,9 @@ function bindFormFields() {
         renderTable();
         renderTotals();
         updateRouteGuidance();
+      }
+      if (section === 'meta' && field === 'venueCountry') {
+        updateSwitzerlandSections();
       }
     };
     input.addEventListener('input', handler);
@@ -608,7 +611,7 @@ function buildProductRow(p, idx) {
   tr.insertBefore(handleCell, tr.firstChild);
   tr.draggable = true;
 
-  // # — row number
+  // # -row number
   tr.appendChild(td('col-num', idx + 1));
 
   // Title
@@ -667,7 +670,7 @@ function buildProductRow(p, idx) {
   }
   tr.appendChild(priceCell);
 
-  // Total value CHF — already a whole CHF from calcProduct
+  // Total value CHF -already a whole CHF from calcProduct
   const valCell = document.createElement('td');
   valCell.className = 'col-totalval';
   valCell.style.textAlign = 'right';
@@ -1256,7 +1259,7 @@ function initCountryPicker(inputEl, opts = {}) {
     if (showName) {
       // Normalise to full name
       if (code) {
-        // user typed a code like "DE" — expand to name
+        // user typed a code like "DE" -expand to name
         inputEl.value = COUNTRY_BY_CODE[code];
         inputEl.dispatchEvent(new Event('input',  { bubbles: true }));
         inputEl.dispatchEvent(new Event('change', { bubbles: true }));
@@ -1440,6 +1443,7 @@ function syncFormFields() {
   // Sync flatpickr instances (second arg false = no onChange callback)
   if (fpStart) fpStart.setDate(state.meta.eventDateStart || null, false);
   if (fpEnd)   fpEnd.setDate(state.meta.eventDateEnd   || null, false);
+  updateSwitzerlandSections();
   // Sync doc-number select
   const docNumEl = document.getElementById('doc-number');
   if (docNumEl && state.meta.documentNumber) docNumEl.value = String(state.meta.documentNumber);
@@ -1495,7 +1499,7 @@ function autoGenerateLRP() {
 }
 
 /* =========================================================
-   PRINT / PDF EXPORT — AUXILIARY DOCUMENT
+   PRINT / PDF EXPORT -AUXILIARY DOCUMENT
    ========================================================= */
 function printGoodsList(docNum) {
   const m   = state.meta;
@@ -1503,9 +1507,9 @@ function printGoodsList(docNum) {
   const lrp = computeLRP(docNum);
 
   const docTitles = {
-    1: 'Auxiliary Document for the Customs Declaration — Import',
-    2: 'Auxiliary Document for the Customs Declaration — Sold Goods',
-    3: 'Return Goods List — Re-export Declaration',
+    1: 'Auxiliary Document for the Customs Declaration - Import',
+    2: 'Auxiliary Document for the Customs Declaration - Sold Goods',
+    3: 'Return Goods List - Re-export Declaration',
   };
 
   const CSS = `
@@ -1652,7 +1656,7 @@ function printGoodsList(docNum) {
         <td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td>
         <td class="c">${esc(pOrig)}</td></tr>`;
     }).filter(r => r).join('');
-    const emptyRow = rows ? '' : `<tr><td colspan="14" style="text-align:center;color:#888;padding:8px">All items sold — no return goods</td></tr>`;
+    const emptyRow = rows ? '' : `<tr><td colspan="14" style="text-align:center;color:#888;padding:8px">All items sold - no return goods</td></tr>`;
     tableHtml = `<div class="section-title">Return goods list (re-export)</div>
 <table class="goods"><thead><tr>
   <th>#</th><th>Title</th><th>Type</th>
@@ -1669,7 +1673,7 @@ function printGoodsList(docNum) {
   }
 
   const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-<title>${esc(docTitles[docNum])} — ${esc(m.event || 'ZollTool')}</title>
+<title>${esc(docTitles[docNum])} -${esc(m.event || 'ZollTool')}</title>
 <style>${CSS}</style></head><body>
 ${header}
 ${tableHtml}
@@ -1677,7 +1681,7 @@ ${tableHtml}
 </body></html>`;
 
   const win = window.open('', '_blank', 'width=1200,height=800');
-  if (!win) { showToast('Pop-up blocked — allow pop-ups and try again.', 'error'); return; }
+  if (!win) { showToast('Pop-up blocked - allow pop-ups and try again.', 'error'); return; }
   win.document.write(html);
   win.document.close();
 }
@@ -1766,7 +1770,7 @@ function printProformaInvoice() {
   ].filter(Boolean).join('<br>');
 
   const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
-<title>Proforma Invoice — ${esc(m.event || 'ZollTool')}</title>
+<title>Proforma Invoice -${esc(m.event || 'ZollTool')}</title>
 <style>${CSS}</style></head><body>
 <div class="watermark">For Customs Clearance Purposes Only &mdash; Not for Commercial Use</div>
 <div class="doc-title">Proforma Invoice</div>
@@ -1834,13 +1838,13 @@ function printProformaInvoice() {
 </body></html>`;
 
   const w = window.open('', '_blank');
-  if (!w) { showToast('Pop-up blocked — please allow pop-ups for this page.', 'error'); return; }
+  if (!w) { showToast('Pop-up blocked - please allow pop-ups for this page.', 'error'); return; }
   w.document.write(html);
   w.document.close();
 }
 
 /* =========================================================
-   11.74 GOODS GROUPING — COMPUTE / RENDER / INIT
+   11.74 GOODS GROUPING -COMPUTE / RENDER / INIT
    ========================================================= */
 function compute1174Groups() {
   // ensure assignments array is in sync
@@ -1876,7 +1880,7 @@ function compute1174Groups() {
     return { g1, g2, hasG2: g2.qty > 0, g1prods, g2prods };
   }
 
-  // auto mode — group by tariff code, top value = g1, rest = g2
+  // auto mode -group by tariff code, top value = g1, rest = g2
   const tariffValues = {};
   state.products.forEach(p => {
     const key = (p.tariffNo || '').trim() || '—';
@@ -1897,6 +1901,14 @@ function escHtml(str) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function updateSwitzerlandSections() {
+  const isSwiss = (state.meta.venueCountry || '').trim().toLowerCase() === 'switzerland';
+  ['section-1174', 'section-edec'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = isSwiss ? '' : 'none';
+  });
+}
+
 function updateRouteGuidance() {
   const el = document.getElementById('route-guidance');
   if (!el) return;
@@ -1908,11 +1920,10 @@ function updateRouteGuidance() {
           <div class="route-title">Which customs route applies to you?</div>
           <div class="route-amounts">Add your products to find out</div>
         </div>
-        <div class="route-subtitle">The tool will automatically determine the right route once you've entered your products.</div>
+        <div class="route-subtitle">The tool will show the recommended route once you've entered your products.</div>
         <div class="route-thresholds">
-          <div class="route-threshold"><span class="route-badge route-badge-green">Form 11.61</span> Under CHF 2,000 total value and under 100 kg — simple VAT deposit at the border, no pre-registration</div>
-          <div class="route-threshold"><span class="route-badge route-badge-amber">Form 11.74 / e-dec</span> Over CHF 2,000 or over 100 kg — electronic pre-registration required</div>
-          <div class="route-note" style="margin-top:8px;font-size:12px">These thresholds apply to Swiss customs (CHF). If you have set a different currency, the thresholds may not apply.</div>
+          <div class="route-threshold"><span class="route-badge route-badge-green">Form 11.61</span> Recommended - VAT deposit at the border, e-dec pre-registration required</div>
+          <div class="route-threshold"><span class="route-badge route-badge-amber">Form 11.74 / e-dec</span> Fallback if Form 11.61 is not available - full pre-registration at the border</div>
         </div>
       </div>`;
     return;
@@ -1923,42 +1934,24 @@ function updateRouteGuidance() {
   const fmtVal  = v => Math.round(v).toLocaleString('de-CH');
   const fmtKg   = kg => (Math.round(kg * 10) / 10).toLocaleString('de-CH');
 
-  if (totalValue < 2000 && totalWeightKg < 100) {
-    el.innerHTML = `
-      <div class="route-card route-card-1161">
-        <div class="route-header">
-          <span class="route-badge route-badge-green">Form 11.61 — Recommended</span>
-          <span class="route-amounts">${getCurrency()} ${fmtVal(totalValue)} · ${fmtKg(totalWeightKg)} kg</span>
-        </div>
-        <div class="route-title">Simplified route: Uncertain Sale Deposit</div>
-        <div class="route-subtitle">Your declared value qualifies for the simplified Form 11.61 procedure. No pre-registration needed — customs issues the form at the border.</div>
-        <ol class="route-steps">
-          <li>Print your <strong>goods list</strong> (Products section) and bring it to the border</li>
-          <li>Stop at a <strong>manned Swiss border crossing</strong> and declare your goods for uncertain sale</li>
-          <li>Pay a deposit of <strong>CHF ${fmtVal(deposit)}</strong> (8.1% of total value) in cash or by card</li>
-          <li>Customs issues Form 11.61 — <strong>keep it at your stand</strong> at all times during the event</li>
-          <li>On departure, present Form 11.61 at the border — deposit is refunded minus VAT on what you sold</li>
-        </ol>
-        <div class="route-note">Form 11.74 is also accepted and pre-registers your goods in more detail. Use it if your event organiser specifically requires it, or if you prefer pre-registration over a border deposit.</div>
-      </div>`;
-  } else {
-    el.innerHTML = `
-      <div class="route-card route-card-1174">
-        <div class="route-header">
-          <span class="route-badge route-badge-amber">Form 11.74 / e-dec Required</span>
-          <span class="route-amounts">${getCurrency()} ${fmtVal(totalValue)} · ${fmtKg(totalWeightKg)} kg</span>
-        </div>
-        <div class="route-title">Standard route: Electronic Pre-registration</div>
-        <div class="route-subtitle">Your total value or weight exceeds the CHF 2,000 / 100 kg threshold for the simplified Form 11.61 procedure.</div>
-        <ol class="route-steps">
-          <li>Complete an <strong>e-dec import declaration</strong> electronically in advance (see E-dec section below)</li>
-          <li>Use <strong>Form 11.74</strong> to pre-register your goods at the border</li>
-          <li>Stop at a manned Swiss border crossing and present your declaration</li>
-          <li>VAT assessment is done at customs or at the trade fair customs desk</li>
-        </ol>
-        <div class="route-note">If you can reduce your declared value below CHF 2,000 and weight below 100 kg, the simpler Form 11.61 deposit route becomes available.</div>
-      </div>`;
-  }
+  el.innerHTML = `
+    <div class="route-card route-card-1161">
+      <div class="route-header">
+        <span class="route-badge route-badge-green">Form 11.61 - Recommended</span>
+        <span class="route-amounts">${getCurrency()} ${fmtVal(totalValue)} · ${fmtKg(totalWeightKg)} kg</span>
+      </div>
+      <div class="route-title">Uncertain Sale Deposit</div>
+      <div class="route-subtitle">Request Form 11.61 at the border using your goods list. A VAT deposit is held and refunded once sold items are permanently imported via e-dec.</div>
+      <ol class="route-steps">
+        <li>Print your <strong>Import Declaration</strong> and bring it to the border <button type="button" class="btn btn-secondary btn-sm" onclick="printGoodsList(1)">Print Import Declaration</button></li>
+        <li>Stop at a <strong>manned Swiss border crossing</strong>, present your goods list, and request <strong>Form 11.61</strong> - pay a deposit of approx. <strong>CHF ${fmtVal(deposit)}</strong> (8.1% of total value) in cash or by card</li>
+        <li>Attend the event and <strong>keep detailed track of sold items</strong> in the Products section</li>
+        <li>After the event, print your <strong>Sold Items List</strong> and <strong>Return List</strong>, then file an <strong>e-dec</strong> to permanently import sold items (see E-dec section below) <button type="button" class="btn btn-secondary btn-sm" onclick="printGoodsList(2)">Print Sold Items List</button> <button type="button" class="btn btn-secondary btn-sm" onclick="printGoodsList(3)">Print Return List</button></li>
+        <li>Pay the e-dec import VAT - at the <strong>on-site customs office</strong> (e.g. Fantasy Basel has one at the venue), or at the border or airport</li>
+        <li>Once the e-dec is paid, present <strong>Form 11.61</strong> at the border on departure - the <strong>full deposit is refunded</strong></li>
+      </ol>
+      <div class="route-note"><strong>If Form 11.61 is not available:</strong> use <strong>Form 11.74</strong> instead - e-dec and the rest of the procedure remain the same.</div>
+    </div>`;
 }
 
 function render1174GroupUI() {
@@ -2145,7 +2138,7 @@ function init1174GroupUI() {
 }
 
 /* =========================================================
-   PRINT / PDF EXPORT — FORMULAR 11.74 PREVIEW
+   PRINT / PDF EXPORT -FORMULAR 11.74 PREVIEW
    ========================================================= */
 function print1174() {
   const m = state.meta;
@@ -2325,7 +2318,7 @@ col.d-rn { width: 3%; }
 col.d-16 { width: 14%; }
 /* col.d-17 fills remaining */
 
-/* Numeric table (18–27) column widths — must total 100% */
+/* Numeric table (18–27) column widths -must total 100% */
 col.n-rn { width: 3%; }
 col.n-18 { width: 5%; }
 col.n-19 { width: 5%; }
@@ -2365,7 +2358,7 @@ col.n-27 { width: 7.5%; }
 }`;
 
   const html = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
-<title>Formular 11.74 — ${esc(m.event || 'ZollTool')}</title>
+<title>Formular 11.74 -${esc(m.event || 'ZollTool')}</title>
 <style>${CSS}</style></head><body>
 
 <div class="print-bar">
@@ -2533,16 +2526,16 @@ col.n-27 { width: 7.5%; }
         </colgroup>
         <thead><tr>
           <th></th>
-          <th>18<br>NHW<br>MNC<br><span class="th-hint">Statistical goods code — leave blank if unknown</span></th>
-          <th>19<br>VC<br>CT<br><span class="th-hint">Mode of transport carrier code — leave blank</span></th>
+          <th>18<br>NHW<br>MNC<br><span class="th-hint">Statistical goods code - leave blank if unknown</span></th>
+          <th>19<br>VC<br>CT<br><span class="th-hint">Mode of transport carrier code - leave blank</span></th>
           <th>20 Tarif-Nr.<br>No de tarif<br>Voce di tariffa<br><span class="th-hint">HS tariff number of the goods</span></th>
-          <th>21<br>Schlüssel<br>Clé<br>N.conv.<br><span class="th-hint">Quantity unit/conversion key — leave blank</span></th>
+          <th>21<br>Schlüssel<br>Clé<br>N.conv.<br><span class="th-hint">Quantity unit/conversion key - leave blank</span></th>
           <th>22 Eigenmasse<br>Masse nette<br>Massa netta<br><span class="th-hint">Net weight in kg (without packaging)</span></th>
           <th>23 Zusatzmenge<br>Unités suppl.<br>Unità suppl.<br><span class="th-hint">Total number of individual items</span></th>
           <th>24 Rohmasse<br>Masse brute<br>Massa lorda<br><span class="th-hint">Gross weight in kg (incl. packaging)</span></th>
           <th>25 Stat. Wert in CHF<br>Valeur stat. CHF<br>Valore stat. CHF<br><span class="th-hint">Total value in CHF (numbers only, no currency symbol)</span></th>
-          <th>26 Ansatz<br>Taux<br>Aliquota<br><span class="th-hint">Duty rate in % — customs fills this in</span></th>
-          <th>27 Betrag<br>Montant<br>Importo<br><span class="th-hint">Duty amount in CHF — customs fills this in</span></th>
+          <th>26 Ansatz<br>Taux<br>Aliquota<br><span class="th-hint">Duty rate in % - customs fills this in</span></th>
+          <th>27 Betrag<br>Montant<br>Importo<br><span class="th-hint">Duty amount in CHF - customs fills this in</span></th>
         </tr></thead>
         <tbody>
           ${gtNumRow(1,
@@ -2623,13 +2616,13 @@ col.n-27 { width: 7.5%; }
 </body></html>`;
 
   const win = window.open('', '_blank', 'width=960,height=1000');
-  if (!win) { showToast('Pop-up blocked — allow pop-ups and try again.', 'error'); return; }
+  if (!win) { showToast('Pop-up blocked - allow pop-ups and try again.', 'error'); return; }
   win.document.write(html);
   win.document.close();
 }
 
 /* =========================================================
-   PRINT / PDF EXPORT — FORMULAR 11.87 PREVIEW
+   PRINT / PDF EXPORT -FORMULAR 11.87 PREVIEW
    ========================================================= */
 function print1187() {
   const m = state.meta;
@@ -2774,11 +2767,11 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 6pt; color: #000; b
 }`;
 
   const html = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">
-<title>Formular 11.87 — ${X(m.event || 'ZollTool')}</title>
+<title>Formular 11.87 -${X(m.event || 'ZollTool')}</title>
 <style>${CSS}</style></head><body>
 <div class="print-bar">
   <button onclick="window.print()">Print / Save PDF</button>
-  <span class="hint">Formular 11.87 — Vorübergehende Verwendung / Abschluss · pre-filled preview</span>
+  <span class="hint">Formular 11.87 - Vorübergehende Verwendung / Abschluss · pre-filled preview</span>
 </div>
 <div class="page">
 
@@ -3012,7 +3005,7 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 6pt; color: #000; b
 </body></html>`;
 
   const win = window.open('', '_blank', 'width=960,height=1100');
-  if (!win) { showToast('Pop-up blocked — allow pop-ups and try again.', 'error'); return; }
+  if (!win) { showToast('Pop-up blocked - allow pop-ups and try again.', 'error'); return; }
   win.document.write(html);
   win.document.close();
 }
@@ -3333,11 +3326,13 @@ function init() {
   // Drag-and-drop reordering
   initDragDrop();
 
+  updateSwitzerlandSections();
   render1174GroupUI();
   init1174GroupUI();
 
   // Country pickers for persistent fields
   initCountryPicker(document.getElementById('artist-country'), { showName: true });
+  initCountryPicker(document.getElementById('venue-country'), { showName: true });
   initCountryPicker(document.getElementById('edec-transport-country'));
 
   // Show vehicle country + plate only for Road (mode 3); flight number only for Air (mode 4)
@@ -3406,7 +3401,7 @@ function init() {
     });
   }
 
-  // Doc-number select — triggers LRP re-generation
+  // Doc-number select -triggers LRP re-generation
   const docNumEl = document.getElementById('doc-number');
   if (state.meta.documentNumber) docNumEl.value = String(state.meta.documentNumber);
   docNumEl.addEventListener('change', (e) => {
@@ -3437,7 +3432,7 @@ function init() {
   // Initial LRP generation
   autoGenerateLRP();
 
-  // Export buttons — each passes its own doc number
+  // Export buttons -each passes its own doc number
   document.getElementById('btn-proforma').addEventListener('click', printProformaInvoice);
   document.getElementById('btn-export-import').addEventListener('click', () => printGoodsList(1));
   document.getElementById('btn-export-sold').addEventListener('click',   () => printGoodsList(2));
@@ -3481,7 +3476,7 @@ function init() {
   // VAT hint update when VAT rate manually changed
   document.getElementById('m-vatrate').addEventListener('input', updateVatHint);
 
-  // Dark theme toggle — dark is the default unless user has explicitly chosen light
+  // Dark theme toggle -dark is the default unless user has explicitly chosen light
   const themeCb = document.getElementById('theme-toggle-cb');
   const savedTheme = localStorage.getItem('zolltool_theme');
   if (savedTheme !== 'light') {
@@ -3496,6 +3491,66 @@ function init() {
       document.documentElement.removeAttribute('data-theme');
       localStorage.setItem('zolltool_theme', 'light');
     }
+  });
+}
+
+/* =========================================================
+   EVENT PRESETS (events.json)
+   ========================================================= */
+let eventPresets = [];
+
+async function loadEventPresets() {
+  const sel = document.getElementById('event-selector');
+  if (!sel) return;
+
+  try {
+    const res = await fetch('events.json');
+    if (!res.ok) throw new Error(res.status);
+    eventPresets = await res.json();
+  } catch {
+    // Fallback for local file:// access -reads events.js if loaded
+    eventPresets = window.ZOLLTOOL_EVENTS || [];
+  }
+
+  if (eventPresets.length === 0) {
+    document.getElementById('event-selector-group').style.display = 'none';
+    return;
+  }
+
+  eventPresets.forEach(ev => {
+    const opt = document.createElement('option');
+    opt.value = ev.id;
+    opt.textContent = ev.name;
+    sel.appendChild(opt);
+  });
+
+  sel.addEventListener('change', () => {
+    const ev = eventPresets.find(e => e.id === sel.value);
+    if (!ev) return;
+
+    const metaMap = {
+      name:          'event',
+      dateStart:     'eventDateStart',
+      dateEnd:       'eventDateEnd',
+      venueName:     'venueName',
+      venueStreet:   'venueStreet',
+      venuePostcode: 'venuePostcode',
+      venueCity:     'venueCity',
+      venueCountry:  'venueCountry',
+      venueTIN:      'venueTIN',
+      currency:      'currency',
+    };
+
+    Object.entries(metaMap).forEach(([jsonKey, stateKey]) => {
+      if (ev[jsonKey] != null) state.meta[stateKey] = ev[jsonKey];
+    });
+
+    syncFormFields();
+    updateSectionSummaries();
+    saveToStorage();
+    renderTable();
+    renderTotals();
+    showToast('Event preset applied: ' + ev.name, 'success');
   });
 }
 
@@ -3542,4 +3597,4 @@ function initHeightBridge() {
   postHeight();
 }
 
-document.addEventListener('DOMContentLoaded', () => { init(); initDisclaimer(); initHeightBridge(); });
+document.addEventListener('DOMContentLoaded', () => { init(); initDisclaimer(); initHeightBridge(); loadEventPresets(); });

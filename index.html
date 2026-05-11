@@ -95,6 +95,14 @@
       <span class="chevron" id="chevron-event">&#9660;</span>
     </div>
     <div class="collapsible-body" id="event-body" style="display:none">
+      <div class="form-group" id="event-selector-group">
+        <label for="event-selector">Load Event Preset</label>
+        <select id="event-selector">
+          <option value="">- select a preset to fill fields -</option>
+        </select>
+        <span class="field-hint">Defined in <code>events.json</code> · selecting one overwrites all event fields below</span>
+      </div>
+      <hr style="border:none;border-top:1px solid var(--gray-200);margin:4px 0 8px">
       <div class="form-grid">
         <div class="form-group">
           <label for="event-name">Event Name</label>
@@ -138,20 +146,20 @@
           <label for="meta-currency">Currency</label>
           <div style="display:flex;gap:8px;align-items:center">
             <select id="meta-currency" data-key="meta.currency">
-              <option value="CHF">CHF — Swiss Franc</option>
-              <option value="EUR">EUR — Euro</option>
-              <option value="USD">USD — US Dollar</option>
-              <option value="GBP">GBP — British Pound</option>
-              <option value="JPY">JPY — Japanese Yen</option>
-              <option value="CAD">CAD — Canadian Dollar</option>
-              <option value="AUD">AUD — Australian Dollar</option>
-              <option value="NOK">NOK — Norwegian Krone</option>
-              <option value="SEK">SEK — Swedish Krona</option>
-              <option value="DKK">DKK — Danish Krone</option>
-              <option value="PLN">PLN — Polish Złoty</option>
-              <option value="CZK">CZK — Czech Koruna</option>
-              <option value="HUF">HUF — Hungarian Forint</option>
-              <option value="SGD">SGD — Singapore Dollar</option>
+              <option value="CHF">CHF - Swiss Franc</option>
+              <option value="EUR">EUR - Euro</option>
+              <option value="USD">USD - US Dollar</option>
+              <option value="GBP">GBP - British Pound</option>
+              <option value="JPY">JPY - Japanese Yen</option>
+              <option value="CAD">CAD - Canadian Dollar</option>
+              <option value="AUD">AUD - Australian Dollar</option>
+              <option value="NOK">NOK - Norwegian Krone</option>
+              <option value="SEK">SEK - Swedish Krona</option>
+              <option value="DKK">DKK - Danish Krone</option>
+              <option value="PLN">PLN - Polish Złoty</option>
+              <option value="CZK">CZK - Czech Koruna</option>
+              <option value="HUF">HUF - Hungarian Forint</option>
+              <option value="SGD">SGD - Singapore Dollar</option>
             </select>
           </div>
           <span class="field-hint">Used in all value displays, goods lists, and exports</span>
@@ -161,9 +169,9 @@
           <div class="lrp-row">
             <input type="text" id="event-lrp" data-key="meta.lrp" readonly style="background:var(--gray-100);color:var(--gray-600)" />
             <select id="doc-number" title="Document type for LRP preview">
-              <option value="1">001 — Import</option>
-              <option value="2">002 — Sold goods</option>
-              <option value="3">003 — Return / re-export</option>
+              <option value="1">001 - Import</option>
+              <option value="2">002 - Sold goods</option>
+              <option value="3">003 - Return / re-export</option>
             </select>
           </div>
           <span class="field-hint">Auto-generated · Format: {origin}CH_{code}_{YYYY}_{MM}_{001/002/003}</span>
@@ -186,12 +194,12 @@
         <div class="form-group">
           <label for="edec-mode">Transport Mode</label>
           <select id="edec-mode" data-key="edec.transportMode">
-            <option value="1">1 — Sea</option>
-            <option value="2">2 — Rail</option>
-            <option value="3" selected>3 — Road</option>
-            <option value="4">4 — Air</option>
-            <option value="5">5 — Postal / Mail</option>
-            <option value="9">9 — Own propulsion</option>
+            <option value="1">1 - Sea</option>
+            <option value="2">2 - Rail</option>
+            <option value="3" selected>3 - Road</option>
+            <option value="4">4 - Air</option>
+            <option value="5">5 - Postal / Mail</option>
+            <option value="9">9 - Own propulsion</option>
           </select>
         </div>
         <div class="form-group">
@@ -303,8 +311,8 @@
   <section class="card collapsible" id="section-1174">
     <div class="card-header collapsible-toggle" data-target="1174-body">
       <div class="section-title-row">
-        <h2 class="section-title">Form 11.74 — Temporary Admission</h2>
-        <span class="section-summary" id="1174-summary">Preview pre-filled Swiss customs form</span>
+        <h2 class="section-title">Form 11.61 / 11.74 - Temporary Admission</h2>
+        <span class="section-summary" id="1174-summary">Form 11.61 requires e-dec · 11.74 only if 11.61 unavailable</span>
       </div>
       <span class="chevron" id="chevron-1174">&#9660;</span>
     </div>
@@ -322,8 +330,8 @@
       <div class="form-group" style="max-width:360px;margin-bottom:16px">
         <label for="group-mode-select">Grouping Mode</label>
         <select id="group-mode-select">
-          <option value="auto">Auto — group by HS code (highest value first)</option>
-          <option value="manual">Manual — drag products into groups</option>
+          <option value="auto">Auto - group by HS code (highest value first)</option>
+          <option value="manual">Manual - drag products into groups</option>
         </select>
       </div>
       <div id="group-auto-info"></div>
@@ -428,8 +436,8 @@
       <div class="disclaimer-block">
         <h3 class="disclaimer-block-title">What this tool does NOT cover</h3>
         <ul class="disclaimer-list">
-          <li><strong>Export documents from your home country</strong> — you are still required to obtain the correct export paperwork from the customs authority of the country you are based in before travelling to Switzerland.</li>
-          <li><strong>Proof of EU/home-country origin</strong> — keep your export documents safe. You will need them to prove the goods originated from the EU (or your country) when re-importing your unsold stock after the event.</li>
+          <li><strong>Export documents from your home country</strong> - you are still required to obtain the correct export paperwork from the customs authority of the country you are based in before travelling to Switzerland.</li>
+          <li><strong>Proof of EU/home-country origin</strong> - keep your export documents safe. You will need them to prove the goods originated from the EU (or your country) when re-importing your unsold stock after the event.</li>
           <li>Any goods permanently sold or left behind in Switzerland.</li>
         </ul>
       </div>
@@ -441,7 +449,7 @@
 
       <div class="disclaimer-block disclaimer-block-light">
         <h3 class="disclaimer-block-title">Help us improve</h3>
-        <p>Found a mistake, outdated information, or have a suggestion? We'd love to hear from you — please reach out so we can keep this tool accurate and useful for the whole community.</p>
+        <p>Found a mistake, outdated information, or have a suggestion? We'd love to hear from you - please reach out so we can keep this tool accurate and useful for the whole community.</p>
       </div>
 
     </div>
@@ -516,7 +524,7 @@
         <div class="form-group">
           <label for="m-weight">Weight / item (g)</label>
           <input type="number" id="m-weight" min="0" step="1" placeholder="e.g. 150" />
-          <span class="field-hint">Edit either field — the other auto-calculates</span>
+          <span class="field-hint">Edit either field - the other auto-calculates</span>
         </div>
 
         <div class="form-group">
@@ -527,7 +535,7 @@
         <div class="form-group">
           <label for="m-price" id="label-m-price">Price / item (CHF)</label>
           <input type="number" id="m-price" min="0" step="0.01" placeholder="e.g. 20.00" />
-          <span class="field-hint">Edit either field — the other auto-calculates</span>
+          <span class="field-hint">Edit either field - the other auto-calculates</span>
         </div>
 
         <div class="form-group">
@@ -536,19 +544,19 @@
         </div>
 
         <div class="form-group form-group-wide">
-          <label for="m-pricenote">Price Note <span class="field-hint-inline">(optional — overrides price display if set)</span></label>
+          <label for="m-pricenote">Price Note <span class="field-hint-inline">(optional - overrides price display if set)</span></label>
           <input type="text" id="m-pricenote" placeholder='e.g. "See print list"' />
         </div>
 
         <div class="form-group form-group-wide">
           <label for="m-packaging">Packaging Type</label>
           <select id="m-packaging">
-            <option value="CT">CT — Carton (default)</option>
-            <option value="BX">BX — Box</option>
-            <option value="PK">PK — Package / Packet</option>
-            <option value="PL">PL — Pallet</option>
-            <option value="CS">CS — Case</option>
-            <option value="NE">NE — Unpacked / No packaging</option>
+            <option value="CT">CT - Carton (default)</option>
+            <option value="BX">BX - Box</option>
+            <option value="PK">PK - Package / Packet</option>
+            <option value="PL">PL - Pallet</option>
+            <option value="CS">CS - Case</option>
+            <option value="NE">NE - Unpacked / No packaging</option>
           </select>
         </div>
 
@@ -601,6 +609,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script src="events.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

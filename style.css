@@ -1089,6 +1089,10 @@ select:focus {
 [data-theme="dark"] .route-card-neutral { background: var(--gray-800); border-color: var(--gray-600); color: var(--gray-300); }
 [data-theme="dark"] .route-card-1161    { background: #0d2b1a; border-color: #2e7d4f; color: #a8f0c6; }
 [data-theme="dark"] .route-card-1174    { background: #2b2000; border-color: #8a6000; color: #f5d87a; }
+[data-theme="dark"] .route-card-1161 .btn-secondary,
+[data-theme="dark"] .route-card-1174 .btn-secondary { background: var(--gray-600); color: #fff; border-color: var(--gray-400); }
+[data-theme="dark"] .route-card-1161 .btn-secondary:hover,
+[data-theme="dark"] .route-card-1174 .btn-secondary:hover { background: var(--gray-500); }
 .route-header   { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
 .route-title    { font-size: 13px; font-weight: 600; margin-bottom: 3px; }
 .route-subtitle { font-size: 12px; margin-bottom: 10px; opacity: 0.85; }
