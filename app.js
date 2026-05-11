@@ -555,7 +555,7 @@ function bindFormFields() {
         updateRouteGuidance();
       }
       if (section === 'meta' && field === 'venueCountry') {
-        updateSwitzerlandSections();
+
       }
     };
     input.addEventListener('input', handler);
@@ -1417,6 +1417,7 @@ function handleFileLoad(e) {
       saveToStorage();
       syncFormFields();
       updateSectionSummaries();
+    
       renderTable();
       showToast('Loaded: ' + file.name, 'success');
     } catch (err) {
@@ -1443,7 +1444,7 @@ function syncFormFields() {
   // Sync flatpickr instances (second arg false = no onChange callback)
   if (fpStart) fpStart.setDate(state.meta.eventDateStart || null, false);
   if (fpEnd)   fpEnd.setDate(state.meta.eventDateEnd   || null, false);
-  updateSwitzerlandSections();
+
   // Sync doc-number select
   const docNumEl = document.getElementById('doc-number');
   if (docNumEl && state.meta.documentNumber) docNumEl.value = String(state.meta.documentNumber);
@@ -1901,13 +1902,6 @@ function escHtml(str) {
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function updateSwitzerlandSections() {
-  const isSwiss = (state.meta.venueCountry || '').trim().toLowerCase() === 'switzerland';
-  ['section-1174', 'section-edec'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.style.display = isSwiss ? '' : 'none';
-  });
-}
 
 function updateRouteGuidance() {
   const el = document.getElementById('route-guidance');
@@ -1950,7 +1944,11 @@ function updateRouteGuidance() {
         <li>Pay the e-dec import VAT - at the <strong>on-site customs office</strong> (e.g. Fantasy Basel has one at the venue), or at the border or airport</li>
         <li>Once the e-dec is paid, present <strong>Form 11.61</strong> at the border on departure - the <strong>full deposit is refunded</strong></li>
       </ol>
-      <div class="route-note"><strong>If Form 11.61 is not available:</strong> use <strong>Form 11.74</strong> instead - e-dec and the rest of the procedure remain the same.</div>
+      <div class="route-note" style="margin-bottom:8px"><strong>If Form 11.61 is not available</strong> - use Form 11.74 instead. Steps 1–4 are identical. On departure, replace step 6 with:</div>
+      <ol class="route-steps" start="6">
+        <li>Go to the <strong>customs office at your point of departure</strong> and present your <strong>e-dec</strong> and <strong>Form 11.74</strong></li>
+        <li>Fill in and submit <strong>Form 11.87</strong> (re-export / closure) at the customs counter</li>
+      </ol>
     </div>`;
 }
 
@@ -3326,7 +3324,7 @@ function init() {
   // Drag-and-drop reordering
   initDragDrop();
 
-  updateSwitzerlandSections();
+
   render1174GroupUI();
   init1174GroupUI();
 
