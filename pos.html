@@ -57,6 +57,7 @@
     .pos-event { font-size: 13px; color: var(--text-muted);
                  padding-left: 12px; border-left: 1px solid var(--border-mid); }
     .pos-header-right { display: flex; align-items: center; gap: 6px; }
+    .shortcuts-help-desktop { display: inline-flex; }
 
     /* ── Buttons ── */
     .btn { border: none; border-radius: var(--radius); padding: 7px 14px; font-size: 13px;
@@ -81,6 +82,11 @@
                           flex-shrink: 0; }
     .panel-title { font-size: 11px; font-weight: 600; text-transform: uppercase;
                    letter-spacing: .06em; color: var(--text-muted); }
+    .product-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .scanner-input { width: min(280px, 36vw); padding: 7px 10px; border: 1.5px solid var(--border-mid);
+                     border-radius: var(--radius); background: var(--surface); color: var(--text);
+                     font-size: 13px; outline: none; }
+    .scanner-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,91,219,.15); }
     .view-toggle { display: flex; border: 1px solid var(--border-mid); border-radius: var(--radius);
                    overflow: hidden; background: var(--surface); }
     .view-toggle-btn { background: transparent; border: none; padding: 5px 12px; font-size: 12px;
@@ -98,7 +104,7 @@
                  border-radius: var(--radius); padding: 18px 12px; cursor: pointer;
                  text-align: center; transition: border-color .15s, box-shadow .15s;
                  display: flex; flex-direction: column; gap: 5px;
-                 box-shadow: var(--shadow-sm); }
+                 box-shadow: var(--shadow-sm); position: relative; }
     .type-card:hover { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,91,219,.15), var(--shadow-sm); }
     .type-card.out-of-stock { opacity: .55; }
     .tc-name { font-size: 14px; font-weight: 700; color: var(--text); }
@@ -110,7 +116,7 @@
                    border-radius: var(--radius); padding: 12px 10px; cursor: pointer;
                    text-align: center; transition: border-color .15s, box-shadow .15s;
                    display: flex; flex-direction: column; gap: 4px;
-                   box-shadow: var(--shadow-sm); }
+                   box-shadow: var(--shadow-sm); position: relative; }
     .product-btn:hover { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,91,219,.15), var(--shadow-sm); }
     .product-btn.out-of-stock { opacity: .5; }
     .product-btn.out-of-stock:hover { border-color: var(--red); box-shadow: 0 0 0 3px rgba(212,0,0,.12); }
@@ -124,6 +130,11 @@
     .pb-stock { font-size: 11px; color: var(--text-muted); }
     .pb-stock.low  { color: var(--amber); font-weight: 600; }
     .pb-stock.none { color: var(--red);   font-weight: 600; }
+    .shortcut-index { position: absolute; top: 6px; right: 6px; min-width: 22px; height: 22px;
+                      display: flex; align-items: center; justify-content: center;
+                      border-radius: 999px; background: var(--surface-2); border: 1px solid var(--border-mid);
+                      color: var(--text-muted); font-size: 11px; font-weight: 800;
+                      font-family: 'SF Mono', 'Fira Mono', Consolas, monospace; pointer-events: none; }
     .empty-msg { color: var(--text-muted); font-size: 14px; text-align: center;
                  padding: 48px 20px; grid-column: 1/-1; line-height: 1.6; }
 
@@ -210,6 +221,22 @@
     .confirm-btns { display: flex; gap: 10px; margin-top: 16px; }
     .confirm-btns .btn { flex: 1; justify-content: center; padding: 12px; font-size: 14px; }
 
+    .shortcuts-modal { background: var(--surface); border-radius: 12px; width: min(520px, 92vw);
+                       box-shadow: 0 16px 48px rgba(0,0,0,.28); overflow: hidden; }
+    .shortcuts-modal-hdr { display: flex; align-items: center; justify-content: space-between;
+                           padding: 14px 18px; border-bottom: 1px solid var(--border); }
+    .shortcuts-modal-title { font-size: 16px; font-weight: 700; }
+    .shortcuts-modal-body { padding: 14px 18px 18px; }
+    .shortcut-list { display: grid; gap: 8px; }
+    .shortcut-row { display: grid; grid-template-columns: 140px 1fr; align-items: center; gap: 14px;
+                    padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .shortcut-row:last-child { border-bottom: none; }
+    .shortcut-key { display: inline-flex; align-items: center; justify-content: center;
+                    min-height: 28px; padding: 4px 10px; border: 1px solid var(--border-mid);
+                    border-radius: var(--radius); background: var(--surface-2); font-weight: 800;
+                    font-family: 'SF Mono', 'Fira Mono', Consolas, monospace; font-size: 12px; }
+    .shortcut-desc { font-size: 13px; color: var(--text); }
+
     /* ── Cash section ── */
     .cash-section { text-align: left; border-top: 1px solid var(--border); padding-top: 14px; margin-top: 4px; }
     .cash-shortcuts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
@@ -234,6 +261,21 @@
     .change-val { font-size: 22px; font-weight: 800; }
     .change-val.ok   { color: var(--green); }
     .change-val.low  { color: var(--red); }
+
+    .split-section { text-align: left; border-top: 1px solid var(--border); padding-top: 14px; margin-top: 4px; }
+    .split-row { display: grid; grid-template-columns: 72px 1fr; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .split-row label { font-size: 13px; color: var(--text-muted); }
+    .split-row input { padding: 9px 12px; border: 1.5px solid var(--border-mid); border-radius: var(--radius);
+                       background: var(--surface-2); color: var(--text); font-size: 15px; font-weight: 600;
+                       text-align: right; outline: none; }
+    .split-row input:focus { border-color: var(--blue); }
+    .split-shortcuts { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 10px 82px; }
+    .split-section-title { font-size: 11px; font-weight: 700; color: var(--text-muted);
+                           text-transform: uppercase; letter-spacing: .05em; margin: 12px 0 8px; }
+    .split-summary { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px;
+                     background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+                     font-size: 13px; }
+    .split-summary strong { font-size: 15px; }
 
     /* ── Discount badge on product card ── */
     .pb-discount { font-size: 10px; font-weight: 700; color: var(--green);
@@ -280,6 +322,7 @@
                 border-radius: var(--radius); background: var(--surface-2); color: var(--text);
                 font-size: 14px; outline: none; transition: border-color .15s; }
     .df-input:focus { border-color: var(--blue); }
+    .df-search { margin-bottom: 8px; }
     .type-options { display: flex; flex-direction: column; gap: 6px; }
     .type-option { display: flex; align-items: center; gap: 10px; padding: 9px 12px;
                    border: 1.5px solid var(--border); border-radius: var(--radius); cursor: pointer;
@@ -307,6 +350,8 @@
     .product-check:has(input:checked) { border-color: var(--blue); background: rgba(59,91,219,.07); }
     [data-theme="dark"] .product-check:has(input:checked) { background: rgba(59,91,219,.15); }
     .product-check input { accent-color: var(--blue); }
+    .product-check.hidden { display: none; }
+    .product-check-empty { color: var(--text-muted); font-size: 12px; padding: 8px 2px; }
 
     /* ── Mobile cart bottom-sheet ── */
     .cart-fab {
@@ -372,11 +417,16 @@
       .pos-event { display: none; }
       .pos-header-right .btn-label { display: none; }
       .pos-header-right .btn { padding: 6px 9px; }
+      .shortcuts-help-desktop { display: none; }
 
       /* Modals: narrower on tablets */
       .disc-modal { width: min(440px, 94vw); }
       .disc-form-modal { width: min(460px, 94vw); }
       .confirm-modal { width: min(380px, 92vw); }
+    }
+
+    @media (min-width: 768px) {
+      .shortcuts-help-desktop { display: inline-flex; }
     }
 
     @media (max-width: 480px) {
@@ -433,6 +483,10 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
       <span class="btn-label">ZollTool</span>
     </a>
+    <button class="btn btn-ghost shortcuts-help-desktop" id="btn-shortcuts-help" title="POS keyboard shortcuts">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 1 1 5.82 1c0 2-3 2-3 4"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      <span class="btn-label">Shortcuts</span>
+    </button>
     <button class="btn btn-ghost" id="btn-toggle-theme" title="Toggle dark mode">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </button>
@@ -445,7 +499,9 @@
   <div class="products-panel">
     <div class="products-panel-hdr">
       <div class="panel-title">Products</div>
-      <div style="display:flex;gap:8px;align-items:center">
+      <div class="product-tools">
+        <input class="scanner-input" id="barcode-input" type="text" inputmode="text"
+               placeholder="Scan barcode or SKU" autocomplete="off" title="Scan barcode or SKU (press / to focus)" />
         <div class="view-toggle">
           <button class="view-toggle-btn active" id="btn-sort-default">Default</button>
           <button class="view-toggle-btn" id="btn-sort-az">A → Z</button>
@@ -487,11 +543,36 @@
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
           Pay with Card
         </button>
+        <button class="btn btn-amber" id="btn-split" disabled>
+          Split Payment
+        </button>
       </div>
       <button class="btn btn-ghost btn-clear" id="btn-clear">Clear cart</button>
     </div>
   </div>
 
+</div>
+
+<!-- Shortcuts help overlay -->
+<div class="overlay hidden" id="shortcuts-overlay">
+  <div class="shortcuts-modal">
+    <div class="shortcuts-modal-hdr">
+      <span class="shortcuts-modal-title">POS Shortcuts</span>
+      <button class="btn btn-ghost" id="shortcuts-close" style="padding:4px 9px">x</button>
+    </div>
+    <div class="shortcuts-modal-body">
+      <div class="shortcut-list">
+        <div class="shortcut-row"><span class="shortcut-key">/</span><span class="shortcut-desc">Focus barcode or SKU scanner</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">1-9</span><span class="shortcut-desc">Add the matching visible product, type, or variant</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Enter</span><span class="shortcut-desc">Add scanned barcode/SKU or confirm an open payment</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Esc</span><span class="shortcut-desc">Close payment, product, or help dialogs</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Alt + C</span><span class="shortcut-desc">Open cash payment</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Alt + V</span><span class="shortcut-desc">Open card payment</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Alt + S</span><span class="shortcut-desc">Open split payment</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Alt + X</span><span class="shortcut-desc">Clear the current cart</span></div>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Payment confirm overlay -->
@@ -510,6 +591,24 @@
       <div class="change-row">
         <span class="change-label">Change</span>
         <span class="change-val" id="change-val">—</span>
+      </div>
+    </div>
+    <div class="split-section" id="split-section" style="display:none">
+      <div class="split-section-title">Cash portion</div>
+      <div class="split-row">
+        <label for="split-cash">Cash</label>
+        <input type="number" id="split-cash" min="0" step="0.01" placeholder="0.00" />
+      </div>
+      <div class="split-shortcuts" id="split-cash-shortcuts"></div>
+      <div class="split-section-title">Card portion</div>
+      <div class="split-row">
+        <label for="split-card">Card</label>
+        <input type="number" id="split-card" min="0" step="0.01" placeholder="0.00" />
+      </div>
+      <div class="split-shortcuts" id="split-card-shortcuts"></div>
+      <div class="split-summary">
+        <span id="split-status">Remaining</span>
+        <strong id="split-remaining">-</strong>
       </div>
     </div>
     <div class="confirm-btns">
@@ -609,7 +708,9 @@
       </div>
       <div>
         <div class="df-label">Applies to (select one or more products)</div>
+        <input id="df-product-search" class="df-input df-search" type="search" placeholder="Search products by name, SKU, or type" autocomplete="off" />
         <div class="products-check-list" id="df-products"></div>
+        <div class="product-check-empty" id="df-products-empty" style="display:none">No matching products.</div>
       </div>
     </div>
     <div class="df-footer">
@@ -649,7 +750,7 @@
   // ── State ──────────────────────────────────────────────────────────────────
   let appState = null;   // full ZollTool state from localStorage
   let cart = {};         // { productId: qty }
-  let pendingPayment = null; // { method: 'cash'|'card' }
+  let pendingPayment = null; // { method: 'cash'|'card'|'split', total, payments? }
 
   function loadState() {
     try {
@@ -743,8 +844,31 @@
     if (!p) return;
     if (hasVariants(p) && !variantId) { openVariantPicker(productId); return; }
     const key = variantId ? `${productId}:${variantId}` : productId;
+    if (remainingStock(p, variantId) <= 0) { showToast('Out of stock.', 'error'); return; }
     cart[key] = (cart[key] || 0) + 1;
     render();
+  }
+
+  function findBarcodeMatch(code) {
+    const needle = String(code || '').trim().toLowerCase();
+    if (!needle || !appState) return null;
+    for (const p of appState.products || []) {
+      if (p.forSale === false) continue;
+      if ((p.sku || '').trim().toLowerCase() === needle) return { productId: p.id, variantId: null, label: p.title };
+      for (const v of p.variants || []) {
+        if ((v.sku || '').trim().toLowerCase() === needle) {
+          return { productId: p.id, variantId: v.id, label: `${p.title || '(untitled)'} - ${v.name || v.sku}` };
+        }
+      }
+    }
+    return null;
+  }
+
+  function scanBarcode(code) {
+    const match = findBarcodeMatch(code);
+    if (!match) { showToast('No product found for that barcode/SKU.', 'error'); return; }
+    addToCart(match.productId, match.variantId);
+    showToast(`Added ${match.label || 'product'}`, 'success');
   }
 
   function setCartQty(key, qty) {
@@ -784,6 +908,7 @@
       </button>`;
     }).join('');
     document.getElementById('variant-overlay').classList.remove('hidden');
+    applyNumberShortcuts(body);
   }
 
   function closeVariantPicker() {
@@ -795,6 +920,41 @@
   document.getElementById('variant-overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('variant-overlay')) closeVariantPicker();
   });
+
+  function applyNumberShortcuts(root) {
+    if (!root) return;
+    root.querySelectorAll('.shortcut-index').forEach(el => el.remove());
+    const buttons = [...root.querySelectorAll('button.product-btn, button.type-card')]
+      .slice(0, 9);
+    buttons.forEach((btn, idx) => {
+      const badge = document.createElement('span');
+      badge.className = 'shortcut-index';
+      badge.textContent = String(idx + 1);
+      btn.appendChild(badge);
+    });
+  }
+
+  function activeShortcutContainer() {
+    if (!document.getElementById('variant-overlay').classList.contains('hidden')) {
+      return document.getElementById('variant-modal-body');
+    }
+    if (!document.getElementById('type-overlay').classList.contains('hidden')) {
+      return document.getElementById('type-modal-body');
+    }
+    return document.getElementById('products-grid');
+  }
+
+  function triggerNumberShortcut(key) {
+    const idx = parseInt(key, 10) - 1;
+    if (idx < 0 || idx > 8) return false;
+    const container = activeShortcutContainer();
+    const buttons = [...container.querySelectorAll('button.product-btn, button.type-card')]
+      .filter(btn => btn.offsetParent !== null);
+    const btn = buttons[idx];
+    if (!btn) return false;
+    btn.click();
+    return true;
+  }
 
   // ── Discounts ──────────────────────────────────────────────────────────────
   // Discounts live in appState.discounts so they are included in the exported JSON.
@@ -908,6 +1068,28 @@
   };
 
   function buildCashShortcuts(total, currency) {
+    const amounts = cashShortcutAmounts(total, currency);
+    const container = document.getElementById('cash-shortcuts');
+    container.innerHTML = '';
+
+    const exactBtn = document.createElement('button');
+    exactBtn.className = 'shortcut-btn exact';
+    exactBtn.textContent = 'Exact';
+    exactBtn.type = 'button';
+    exactBtn.onclick = () => setCashReceived(total);
+    container.appendChild(exactBtn);
+
+    amounts.forEach(amount => {
+      const btn = document.createElement('button');
+      btn.className = 'shortcut-btn';
+      btn.textContent = Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+      btn.type = 'button';
+      btn.onclick = () => setCashReceived(amount);
+      container.appendChild(btn);
+    });
+  }
+
+  function cashShortcutAmounts(total, currency) {
     const bills = CURRENCY_BILLS[currency] || [5, 10, 20, 50, 100, 200];
     const candidates = new Set();
 
@@ -936,26 +1118,20 @@
       }
     }
 
-    const amounts = [...candidates].sort((a, b) => a - b).slice(0, 4);
-    const container = document.getElementById('cash-shortcuts');
-    container.innerHTML = '';
+    return [...candidates].sort((a, b) => a - b).slice(0, 4);
+  }
 
-    // Exact button always first
-    const exactBtn = document.createElement('button');
-    exactBtn.className = 'shortcut-btn exact';
-    exactBtn.textContent = 'Exact';
-    exactBtn.type = 'button';
-    exactBtn.onclick = () => setCashReceived(total);
-    container.appendChild(exactBtn);
-
-    amounts.forEach(amount => {
-      const btn = document.createElement('button');
-      btn.className = 'shortcut-btn';
-      btn.textContent = Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
-      btn.type = 'button';
-      btn.onclick = () => setCashReceived(amount);
-      container.appendChild(btn);
+  function splitCashPortionAmounts(total, currency) {
+    const bills = CURRENCY_BILLS[currency] || [5, 10, 20, 50, 100, 200];
+    const candidates = new Set();
+    bills.forEach(b => {
+      if (b > 0 && b < total) candidates.add(b);
     });
+    [0.25, 0.5, 0.75].forEach(part => {
+      const amount = Math.round(total * part * 100) / 100;
+      if (amount > 0 && amount < total) candidates.add(amount);
+    });
+    return [...candidates].sort((a, b) => a - b).slice(0, 5);
   }
 
   function setCashReceived(amount) {
@@ -963,6 +1139,59 @@
     input.value = Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
     updateChange();
     input.focus();
+  }
+
+  function setSplitAmount(field, amount) {
+    const input = document.getElementById(field === 'cash' ? 'split-cash' : 'split-card');
+    input.value = Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+    updateSplitPayment();
+    input.focus();
+  }
+
+  function buildSplitShortcuts() {
+    if (!pendingPayment || pendingPayment.method !== 'split') return;
+    const total = pendingPayment.total;
+    const cur = getCurrency();
+    const cash = parseFloat(document.getElementById('split-cash').value) || 0;
+    const card = parseFloat(document.getElementById('split-card').value) || 0;
+    const remainingAfterCash = Math.max(0, total - card);
+    const remainingAfterCard = Math.max(0, total - cash);
+    renderSplitShortcutButtons('split-cash-shortcuts', 'cash', remainingAfterCash, cur, true);
+    renderSplitShortcutButtons('split-card-shortcuts', 'card', remainingAfterCard, cur, false);
+  }
+
+  function renderSplitShortcutButtons(containerId, field, remaining, currency, includeBills) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+
+    const exactBtn = document.createElement('button');
+    exactBtn.className = 'shortcut-btn exact';
+    exactBtn.type = 'button';
+    exactBtn.textContent = field === 'cash' ? 'Remaining' : 'Card remainder';
+    exactBtn.onclick = () => setSplitAmount(field, remaining);
+    container.appendChild(exactBtn);
+
+    if (includeBills) {
+      splitCashPortionAmounts(remaining, currency).forEach(amount => {
+        const btn = document.createElement('button');
+        btn.className = 'shortcut-btn';
+        btn.type = 'button';
+        btn.textContent = Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+        btn.onclick = () => setSplitAmount(field, amount);
+        container.appendChild(btn);
+      });
+    } else {
+      [0.25, 0.5, 0.75].forEach(part => {
+        const amount = Math.round(remaining * part * 100) / 100;
+        if (amount <= 0) return;
+        const btn = document.createElement('button');
+        btn.className = 'shortcut-btn';
+        btn.type = 'button';
+        btn.textContent = `${Math.round(part * 100)}%`;
+        btn.onclick = () => setSplitAmount(field, amount);
+        container.appendChild(btn);
+      });
+    }
   }
 
   function updateChange() {
@@ -987,6 +1216,41 @@
     }
 
     document.getElementById('confirm-ok').disabled = received < total - 0.001;
+  }
+
+  function updateSplitPayment() {
+    if (!pendingPayment || pendingPayment.method !== 'split') return;
+    const total = pendingPayment.total;
+    const cash = parseFloat(document.getElementById('split-cash').value) || 0;
+    const card = parseFloat(document.getElementById('split-card').value) || 0;
+    const paid = cash + card;
+    const remaining = total - paid;
+    const cur = getCurrency();
+    const status = document.getElementById('split-status');
+    const amount = document.getElementById('split-remaining');
+    const ok = document.getElementById('confirm-ok');
+
+    if (remaining > 0.001) {
+      status.textContent = 'Remaining';
+      amount.textContent = cur + ' ' + remaining.toFixed(2);
+      amount.style.color = 'var(--red)';
+      ok.disabled = true;
+    } else if (remaining < -0.001) {
+      status.textContent = 'Over by';
+      amount.textContent = cur + ' ' + Math.abs(remaining).toFixed(2);
+      amount.style.color = 'var(--amber)';
+      ok.disabled = true;
+    } else {
+      status.textContent = 'Paid';
+      amount.textContent = cur + ' ' + paid.toFixed(2);
+      amount.style.color = 'var(--green)';
+      ok.disabled = cash <= 0 && card <= 0;
+    }
+    pendingPayment.payments = [
+      { method: 'cash', amount: Math.max(0, cash) },
+      { method: 'card', amount: Math.max(0, card) },
+    ].filter(p => p.amount > 0);
+    buildSplitShortcuts();
   }
 
   // ── Payment ────────────────────────────────────────────────────────────────
@@ -1053,6 +1317,7 @@
       id: uuid(),
       timestamp: Date.now(),
       method: pendingPayment.method,
+      payments: pendingPayment.payments || [{ method: pendingPayment.method, amount: pendingPayment.total }],
       total: pendingPayment.total,
       currency: getCurrency(),
       reverted: false,
@@ -1071,6 +1336,41 @@
     document.getElementById('pay-overlay').classList.add('hidden');
     document.getElementById('confirm-ok').disabled = false;
     pendingPayment = null;
+  }
+
+  function openPayment(method) {
+    if (cartItemCount() === 0) return;
+    const total = cartGrandTotal();
+    const cur = getCurrency();
+    pendingPayment = { method, total };
+    document.getElementById('confirm-icon').textContent = method === 'cash' ? 'Cash' : method === 'card' ? 'Card' : 'Split';
+    document.getElementById('confirm-title').textContent = method === 'cash' ? 'Cash Payment' : method === 'card' ? 'Card Payment' : 'Split Payment';
+    document.getElementById('confirm-subtitle').textContent = `Mark ${cartItemCount()} item${cartItemCount()!==1?'s':''} as sold?`;
+    document.getElementById('confirm-amount').textContent = cur + ' ' + total.toFixed(2);
+    document.getElementById('confirm-ok').className = method === 'cash' ? 'btn btn-green' : method === 'card' ? 'btn btn-blue' : 'btn btn-amber';
+
+    const cashSection = document.getElementById('cash-section');
+    const splitSection = document.getElementById('split-section');
+    cashSection.style.display = method === 'cash' ? '' : 'none';
+    splitSection.style.display = method === 'split' ? '' : 'none';
+
+    if (method === 'cash') {
+      document.getElementById('cash-received').value = '';
+      document.getElementById('change-val').textContent = '-';
+      document.getElementById('change-val').className = 'change-val';
+      document.getElementById('confirm-ok').disabled = true;
+      buildCashShortcuts(total, cur);
+    } else if (method === 'split') {
+      document.getElementById('split-cash').value = '';
+      document.getElementById('split-card').value = '';
+      document.getElementById('confirm-ok').disabled = true;
+      updateSplitPayment();
+      setTimeout(() => document.getElementById('split-cash').focus(), 0);
+    } else {
+      document.getElementById('confirm-ok').disabled = false;
+    }
+
+    document.getElementById('pay-overlay').classList.remove('hidden');
   }
 
   // ── Type colour ───────────────────────────────────────────────────────────
@@ -1139,6 +1439,7 @@
     document.getElementById('type-modal-body').style.borderTop = `3px solid ${color}`;
     renderTypeProducts(type);
     document.getElementById('type-overlay').classList.remove('hidden');
+    applyNumberShortcuts(document.getElementById('type-modal-body'));
   }
 
   function closeTypeView() {
@@ -1150,6 +1451,7 @@
     if (!appState) { body.innerHTML = ''; return; }
     const products = appState.products.filter(p => p.forSale !== false && p.type === type);
     body.innerHTML = products.map(p => productCardHtml(p)).join('');
+    applyNumberShortcuts(body);
   }
 
   document.getElementById('type-overlay-close').addEventListener('click', closeTypeView);
@@ -1216,6 +1518,7 @@
     } else {
       grid.innerHTML = forSale.map(p => productCardHtml(p)).join('');
     }
+    applyNumberShortcuts(grid);
     // Refresh the type overlay if it's open so stock counts stay accurate
     const typeOverlay = document.getElementById('type-overlay');
     if (!typeOverlay.classList.contains('hidden')) {
@@ -1312,6 +1615,7 @@
     document.getElementById('tot-price').textContent = count ? cur + ' ' + grandTotal.toFixed(2) : '—';
     document.getElementById('btn-cash').disabled = count === 0;
     document.getElementById('btn-card').disabled = count === 0;
+    document.getElementById('btn-split').disabled = count === 0;
 
     // Sync mobile FAB
     const fabCount = document.getElementById('fab-item-count');
@@ -1379,13 +1683,80 @@
   window.addEventListener('focus', () => { loadState(); updateHeader(); render(); });
 
   document.getElementById('cash-received').addEventListener('input', updateChange);
-  document.getElementById('btn-cash').addEventListener('click', () => initiatePayment('cash'));
-  document.getElementById('btn-card').addEventListener('click', () => initiatePayment('card'));
+  document.getElementById('split-cash').addEventListener('input', updateSplitPayment);
+  document.getElementById('split-card').addEventListener('input', updateSplitPayment);
+  document.getElementById('btn-cash').addEventListener('click', () => openPayment('cash'));
+  document.getElementById('btn-card').addEventListener('click', () => openPayment('card'));
+  document.getElementById('btn-split').addEventListener('click', () => openPayment('split'));
   document.getElementById('btn-clear').addEventListener('click', clearCart);
+  document.getElementById('barcode-input').addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    scanBarcode(e.target.value);
+    e.target.value = '';
+  });
   document.getElementById('confirm-cancel').addEventListener('click', closeOverlay);
   document.getElementById('confirm-ok').addEventListener('click', confirmPayment);
   document.getElementById('pay-overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('pay-overlay')) closeOverlay();
+  });
+
+  function openShortcutsHelp() {
+    document.getElementById('shortcuts-overlay').classList.remove('hidden');
+  }
+
+  function closeShortcutsHelp() {
+    document.getElementById('shortcuts-overlay').classList.add('hidden');
+  }
+
+  document.getElementById('btn-shortcuts-help').addEventListener('click', openShortcutsHelp);
+  document.getElementById('shortcuts-close').addEventListener('click', closeShortcutsHelp);
+  document.getElementById('shortcuts-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('shortcuts-overlay')) closeShortcutsHelp();
+  });
+
+  document.addEventListener('keydown', e => {
+    const tag = (e.target && e.target.tagName || '').toLowerCase();
+    const typing = ['input', 'textarea', 'select'].includes(tag);
+    const payOpen = !document.getElementById('pay-overlay').classList.contains('hidden');
+    const helpOpen = !document.getElementById('shortcuts-overlay').classList.contains('hidden');
+    const discountOpen = !document.getElementById('disc-overlay').classList.contains('hidden')
+      || !document.getElementById('disc-form-overlay').classList.contains('hidden');
+
+    if (e.key === 'Escape') {
+      if (payOpen) closeOverlay();
+      else if (helpOpen) closeShortcutsHelp();
+      else if (!document.getElementById('variant-overlay').classList.contains('hidden')) closeVariantPicker();
+      else if (!document.getElementById('type-overlay').classList.contains('hidden')) closeTypeView();
+      return;
+    }
+    if (payOpen && e.key === 'Enter' && !document.getElementById('confirm-ok').disabled) {
+      e.preventDefault();
+      confirmPayment();
+      return;
+    }
+    if (typing) return;
+    if (helpOpen || discountOpen) return;
+    if (/^[1-9]$/.test(e.key) && triggerNumberShortcut(e.key)) {
+      e.preventDefault();
+      return;
+    }
+    if (e.key === '/') {
+      e.preventDefault();
+      document.getElementById('barcode-input').focus();
+    } else if (e.altKey && e.key.toLowerCase() === 'c') {
+      e.preventDefault();
+      openPayment('cash');
+    } else if (e.altKey && e.key.toLowerCase() === 'v') {
+      e.preventDefault();
+      openPayment('card');
+    } else if (e.altKey && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      openPayment('split');
+    } else if (e.altKey && e.key.toLowerCase() === 'x') {
+      e.preventDefault();
+      clearCart();
+    }
   });
 
   function saveJSON() {
@@ -1460,6 +1831,7 @@
 
     document.getElementById('df-title').textContent = existing ? 'Edit Discount' : 'New Discount';
     document.getElementById('df-name').value = existing ? existing.name : '';
+    document.getElementById('df-product-search').value = '';
 
     const type = existing ? existing.type : 'bxgy';
     document.querySelectorAll('input[name="df-type"]').forEach(r => {
@@ -1487,6 +1859,7 @@
     document.getElementById('df-tier-continue').checked = !!(existing && existing.tierContinue);
 
     renderProductCheckboxes(existing ? (existing.productIds || []) : []);
+    filterDiscountProducts();
 
     document.getElementById('disc-form-overlay').classList.remove('hidden');
   }
@@ -1535,11 +1908,23 @@
       return;
     }
     container.innerHTML = products.map(p =>
-      `<label class="product-check">
+      `<label class="product-check" data-search="${escHtml([p.title, p.sku, p.type].filter(Boolean).join(' ').toLowerCase())}">
         <input type="checkbox" value="${p.id}" ${selectedIds.includes(p.id) ? 'checked' : ''} />
-        <span>${escHtml(p.title || '(untitled)')}</span>
+        <span>${escHtml(p.title || '(untitled)')}${p.sku ? ` <span style="color:var(--text-muted);font-size:11px">(${escHtml(p.sku)})</span>` : ''}</span>
       </label>`
     ).join('');
+  }
+
+  function filterDiscountProducts() {
+    const q = document.getElementById('df-product-search').value.trim().toLowerCase();
+    const rows = [...document.querySelectorAll('#df-products .product-check')];
+    let visible = 0;
+    rows.forEach(row => {
+      const match = !q || (row.dataset.search || '').includes(q);
+      row.classList.toggle('hidden', !match);
+      if (match) visible++;
+    });
+    document.getElementById('df-products-empty').style.display = rows.length && visible === 0 ? '' : 'none';
   }
 
   function saveDiscount() {
@@ -1585,6 +1970,7 @@
   document.getElementById('df-close').addEventListener('click', closeDiscForm);
   document.getElementById('df-cancel').addEventListener('click', closeDiscForm);
   document.getElementById('df-save').addEventListener('click', saveDiscount);
+  document.getElementById('df-product-search').addEventListener('input', filterDiscountProducts);
   document.getElementById('df-add-tier').addEventListener('click', () => {
     const tiers = getTierValues();
     tiers.push({ qty: tiers.length + 1, total: '' });
@@ -1639,6 +2025,7 @@
   // Also close cart sheet when payment dialog opens (so user sees it)
   document.getElementById('btn-cash').addEventListener('click', closeMobileCart);
   document.getElementById('btn-card').addEventListener('click', closeMobileCart);
+  document.getElementById('btn-split').addEventListener('click', closeMobileCart);
 </script>
 </body>
 </html>

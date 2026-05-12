@@ -1811,6 +1811,45 @@ function saveJSON() {
   showToast('JSON saved: ' + filename, 'success');
 }
 
+function csvCell(value) {
+  const s = String(value ?? '');
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function downloadTextFile(filename, text, type) {
+  const blob = new Blob([text], { type });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 100);
+}
+
+function exportProductsCSV() {
+  const rows = [['product','variant','sku','type','for_sale','unlisted','stock','sold_qty','remaining','unit_price','currency']];
+  for (const p of state.products) {
+    if (hasVariants(p)) {
+      for (const v of p.variants) {
+        const price = variantPrice(p, v);
+        const sold = v.soldQty || 0;
+        rows.push([p.title || '', v.name || '', v.sku || p.sku || '', p.type || '', p.forSale !== false ? 'yes' : 'no', p.unlisted ? 'yes' : 'no', v.amount || 0, sold, Math.max(0, (v.amount || 0) - sold), price != null ? price : '', getCurrency()]);
+      }
+    } else {
+      const price = calcProduct(p).effectiveUnitPrice;
+      const sold = p.soldQty || 0;
+      rows.push([p.title || '', '', p.sku || '', p.type || '', p.forSale !== false ? 'yes' : 'no', p.unlisted ? 'yes' : 'no', p.amount || 0, sold, Math.max(0, (p.amount || 0) - sold), price != null ? price : '', getCurrency()]);
+    }
+  }
+  const name = buildFilename().replace(/\.json$/i, '_products.csv');
+  downloadTextFile(name, rows.map(r => r.map(csvCell).join(',')).join('\n'), 'text/csv;charset=utf-8');
+  showToast('Product CSV exported: ' + name, 'success');
+}
+
 function buildFilename() {
   const event  = state.meta.event  || 'ZollTool';
   const artist = state.artist.companyName || state.artist.fullName || '';
@@ -4494,6 +4533,75 @@ function initDragDrop() {
   });
 }
 
+function openBulkInventory() {
+  renderBulkInventory();
+  document.getElementById('bulk-overlay').style.display = 'flex';
+}
+
+function closeBulkInventory() {
+  document.getElementById('bulk-overlay').style.display = 'none';
+}
+
+function renderBulkInventory() {
+  const tbody = document.getElementById('bulk-tbody');
+  if (!tbody) return;
+  const rows = [];
+  for (const p of state.products) {
+    if (hasVariants(p)) {
+      for (const v of p.variants) {
+        const sold = v.soldQty || 0;
+        rows.push(`
+          <tr data-product-id="${p.id}" data-variant-id="${v.id}">
+            <td class="bulk-variant-label">${escHtml(p.title || '')} - ${escHtml(v.name || '')}</td>
+            <td>${escHtml(v.sku || p.sku || '-')}</td>
+            <td>${escHtml(p.type || '-')}</td>
+            <td><input class="bulk-stock-input bulk-amount" type="number" min="0" step="1" value="${v.amount || 0}" /></td>
+            <td><input class="bulk-stock-input bulk-sold" type="number" min="0" step="1" value="${sold}" /></td>
+            <td>${Math.max(0, (v.amount || 0) - sold)}</td>
+          </tr>`);
+      }
+    } else {
+      const sold = p.soldQty || 0;
+      rows.push(`
+        <tr data-product-id="${p.id}">
+          <td>${escHtml(p.title || '')}</td>
+          <td>${escHtml(p.sku || '-')}</td>
+          <td>${escHtml(p.type || '-')}</td>
+          <td><input class="bulk-stock-input bulk-amount" type="number" min="0" step="1" value="${p.amount || 0}" /></td>
+          <td><input class="bulk-stock-input bulk-sold" type="number" min="0" step="1" value="${sold}" /></td>
+          <td>${Math.max(0, (p.amount || 0) - sold)}</td>
+        </tr>`);
+    }
+  }
+  tbody.innerHTML = rows.join('') || '<tr><td colspan="6">No products yet.</td></tr>';
+}
+
+function saveBulkInventory() {
+  document.querySelectorAll('#bulk-tbody tr[data-product-id]').forEach(row => {
+    const p = state.products.find(pr => pr.id === row.dataset.productId);
+    if (!p) return;
+    const amount = Math.max(0, parseInt(row.querySelector('.bulk-amount').value, 10) || 0);
+    const sold = Math.max(0, parseInt(row.querySelector('.bulk-sold').value, 10) || 0);
+    if (row.dataset.variantId) {
+      const v = (p.variants || []).find(vv => vv.id === row.dataset.variantId);
+      if (!v) return;
+      v.amount = amount;
+      v.soldQty = sold;
+      const price = variantPrice(p, v);
+      if (price != null) v.soldValue = sold * price;
+    } else {
+      p.amount = amount;
+      p.soldQty = sold;
+      const price = calcProduct(p).effectiveUnitPrice;
+      if (price != null) p.soldValue = sold * price;
+    }
+  });
+  saveToStorage();
+  renderTable();
+  closeBulkInventory();
+  showToast('Stock updated.', 'success');
+}
+
 /* =========================================================
    INIT
    ========================================================= */
@@ -4625,6 +4733,14 @@ function init() {
 
   // Add product button
   document.getElementById('btn-add-product').addEventListener('click', openAddModal);
+  document.getElementById('btn-bulk-inventory').addEventListener('click', openBulkInventory);
+  document.getElementById('btn-products-csv').addEventListener('click', exportProductsCSV);
+  document.getElementById('bulk-close').addEventListener('click', closeBulkInventory);
+  document.getElementById('bulk-cancel').addEventListener('click', closeBulkInventory);
+  document.getElementById('bulk-save').addEventListener('click', saveBulkInventory);
+  document.getElementById('bulk-overlay').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('bulk-overlay')) closeBulkInventory();
+  });
 
   // E-dec XML generation
   document.getElementById('btn-generate-edec').addEventListener('click', generateEdecXML);
