@@ -20,17 +20,24 @@
     </div>
     <div class="header-actions">
       <label class="theme-toggle" title="Toggle dark mode">
+        <span class="toggle-icon" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+        </span>
         <input type="checkbox" id="theme-toggle-cb" />
         <span class="toggle-track"><span class="toggle-thumb"></span></span>
       </label>
       <button class="btn btn-ghost" id="btn-load-json" title="Load JSON file">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-        Load JSON
+        <span class="btn-label">Load JSON</span>
       </button>
       <button class="btn btn-primary" id="btn-save-json" title="Save as JSON file">
         <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-        Save JSON
+        <span class="btn-label">Save JSON</span>
       </button>
+      <a class="btn btn-ghost" href="pos.html" title="Open Point of Sale">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+        <span class="btn-label">POS</span>
+      </a>
       <input type="file" id="file-input" accept=".json" style="display:none" />
     </div>
   </div>
@@ -230,23 +237,27 @@
       <div class="section-header-actions">
         <button class="btn btn-ghost btn-sm" id="btn-proforma" title="Proforma Invoice for Customs Clearance">
           <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-          Proforma
+          <span class="btn-label">Proforma</span>
         </button>
         <button class="btn btn-ghost btn-sm" id="btn-export-import" title="Export import declaration (001)">
           <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Import
+          <span class="btn-label">Import</span>
         </button>
         <button class="btn btn-ghost btn-sm" id="btn-export-sold" title="Export sold goods update (002)">
           <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          Sold
+          <span class="btn-label">Sold</span>
         </button>
         <button class="btn btn-ghost btn-sm" id="btn-export-return" title="Export return goods list (003)">
           <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
-          Return
+          <span class="btn-label">Return</span>
+        </button>
+        <button class="btn btn-ghost btn-sm" id="btn-bulk-inventory" title="Bulk Inventory Manager">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 12l2 2 4-4"/><path d="M21 12c.552 0 1-.448 1-1V5c0-.552-.448-1-1-1H3c-.552 0-1 .448-1 1v6c0 .552.448 1 1 1"/><path d="M3 21h18"/><path d="M5 21V12"/><path d="M19 21V12"/></svg>
+          <span class="btn-label">Bulk Inventory</span>
         </button>
         <button class="btn btn-primary" id="btn-add-product">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Add Product
+          <span class="btn-label">Add Product</span>
         </button>
       </div>
     </div>
@@ -258,6 +269,7 @@
             <th class="col-handle"></th>
             <th class="col-num">#</th>
             <th class="col-title">Title</th>
+            <th class="col-sku">SKU</th>
             <th class="col-sale">Sale</th>
             <th class="col-type">Type</th>
             <th class="col-amount">Amount</th>
@@ -292,6 +304,20 @@
             <td class="col-soldval" id="total-soldval">0</td>
             <td class="col-soldvat" id="total-soldvat">0.00</td>
             <td class="col-soldweight" id="total-soldweight">0 kg</td>
+            <td></td>
+          </tr>
+          <tr id="totals-row-customs" style="display:none">
+            <td colspan="5" class="totals-label totals-label-customs">excl. unlisted</td>
+            <td class="col-amount" id="total-amount-customs">0</td>
+            <td></td>
+            <td class="col-totalweight" id="total-weight-customs">0 kg</td>
+            <td></td>
+            <td class="col-totalval" id="total-value-customs">CHF 0</td>
+            <td colspan="4"></td>
+            <td class="col-soldqty" id="total-soldqty-customs">0</td>
+            <td class="col-soldval" id="total-soldval-customs">0</td>
+            <td class="col-soldvat" id="total-soldvat-customs">0.00</td>
+            <td class="col-soldweight" id="total-soldweight-customs">0 kg</td>
             <td></td>
           </tr>
         </tfoot>
@@ -479,6 +505,11 @@
         </div>
 
         <div class="form-group">
+          <label for="m-sku">SKU <span class="field-hint-inline">(optional)</span></label>
+          <input type="text" id="m-sku" placeholder="e.g. PRT-A4-001" />
+        </div>
+
+        <div class="form-group">
           <label for="m-type">Type</label>
           <input type="text" id="m-type" list="type-suggestions" placeholder="e.g. Print" />
           <datalist id="type-suggestions">
@@ -517,6 +548,14 @@
         </div>
 
         <div class="form-group">
+          <label>Customs Documents</label>
+          <label class="radio-label" style="cursor:pointer;display:flex;align-items:center;gap:6px;margin-top:4px">
+            <input type="checkbox" id="m-unlisted" />
+            <span>Unlisted <span class="field-hint-inline">(POS + stock tracking only - excluded from all customs docs)</span></span>
+          </label>
+        </div>
+
+        <div class="form-group" id="m-amount-group">
           <label for="m-amount">Amount (quantity) <span class="required">*</span></label>
           <input type="number" id="m-amount" min="0" step="1" placeholder="e.g. 100" />
         </div>
@@ -586,6 +625,24 @@
           <span class="field-hint" id="vat-hint">Standard rate</span>
         </div>
 
+        <div class="form-group form-group-wide">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+            <input type="checkbox" id="m-has-variants" />
+            Enable variants
+            <span class="field-hint-inline" style="font-weight:400">(e.g. Green/Blue, or A2/A3/A4 — each with its own stock)</span>
+          </label>
+          <div id="m-variants-body" style="display:none;margin-top:10px">
+            <p class="field-hint" style="margin-bottom:8px">Leave price / weight blank on a variant to inherit the product default.</p>
+            <div id="m-variants-wrap">
+              <div class="variant-edit-header">
+                <span>Name</span><span>SKU</span><span>Amount</span><span>Price</span><span>Weight&nbsp;g</span><span></span>
+              </div>
+              <div id="m-variant-rows"></div>
+            </div>
+            <button type="button" id="m-add-variant" class="btn btn-secondary" style="margin-top:8px;font-size:12px;padding:5px 12px">+ Add variant</button>
+          </div>
+        </div>
+
       </div>
 
       <!-- Live preview -->
@@ -604,6 +661,37 @@
     <div class="modal-footer">
       <button class="btn btn-ghost" id="modal-cancel">Cancel</button>
       <button class="btn btn-primary" id="modal-save">Save Product</button>
+    </div>
+  </div>
+</div>
+
+<!-- BULK STOCK ADJUSTER MODAL -->
+<div class="modal-overlay" id="bulk-overlay" style="display:none">
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="bulk-title">
+    <div class="modal-header">
+      <h3 class="modal-title" id="bulk-title">Bulk Stock Adjuster</h3>
+      <button class="modal-close" id="bulk-close" aria-label="Close modal">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div class="table-wrapper">
+        <table class="products-table">
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>SKU</th>
+              <th>Type</th>
+              <th>Stock</th>
+              <th>Sold</th>
+              <th>Remaining</th>
+            </tr>
+          </thead>
+          <tbody id="bulk-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="bulk-cancel">Cancel</button>
+      <button class="btn btn-primary" id="bulk-save">Apply Changes</button>
     </div>
   </div>
 </div>

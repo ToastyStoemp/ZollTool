@@ -286,6 +286,7 @@ const DEFAULT_STATE = {
     assignments: [],      // parallel array to state.products: 1=group1, 2=group2, 0=unassigned(→group2)
   },
   products: [],
+  transactions: [],       // POS sale log: [{ id, timestamp, method, total, currency, reverted, revertedAt, items }]
 };
 
 let state = deepClone(DEFAULT_STATE);
@@ -327,11 +328,13 @@ function loadFromStorage() {
       const parsed = JSON.parse(raw);
       // Merge carefully to handle schema changes
       state = {
-        meta:     Object.assign({}, DEFAULT_STATE.meta,     parsed.meta     || {}),
-        artist:   Object.assign({}, DEFAULT_STATE.artist,   parsed.artist   || {}),
-        edec:     Object.assign({}, DEFAULT_STATE.edec,     parsed.edec     || {}),
-        products: Array.isArray(parsed.products) ? parsed.products : [],
-        form1174: Object.assign({}, DEFAULT_STATE.form1174, parsed.form1174 || {}),
+        meta:         Object.assign({}, DEFAULT_STATE.meta,     parsed.meta     || {}),
+        artist:       Object.assign({}, DEFAULT_STATE.artist,   parsed.artist   || {}),
+        edec:         Object.assign({}, DEFAULT_STATE.edec,     parsed.edec     || {}),
+        products:     Array.isArray(parsed.products)     ? parsed.products     : [],
+        form1174:     Object.assign({}, DEFAULT_STATE.form1174, parsed.form1174 || {}),
+        discounts:    Array.isArray(parsed.discounts)    ? parsed.discounts    : [],
+        transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
       };
       if (!Array.isArray(state.form1174.assignments)) state.form1174.assignments = [];
       // Ensure fields added in later schema versions are never left empty
@@ -422,54 +425,103 @@ function fmtRate(r) {
 }
 
 /* =========================================================
+   VARIANT HELPERS
+   ========================================================= */
+function hasVariants(p) {
+  return Array.isArray(p.variants) && p.variants.length > 0;
+}
+function variantPrice(p, v) {
+  const raw = (v.price != null && v.price !== '') ? v.price : p.price;
+  return (raw != null && !isNaN(parseFloat(raw))) ? parseFloat(raw) : null;
+}
+function variantWeight(p, v) {
+  const raw = (v.weightG != null && v.weightG !== '') ? v.weightG : p.weightG;
+  return parseFloat(raw) || 0;
+}
+
+/* =========================================================
    CALCULATIONS
    ========================================================= */
 function calcProduct(p) {
-  const amount = p.amount || 0;
+  if (hasVariants(p)) {
+    let amount = 0, totalWeightKg = 0, totalValue = 0;
+    let soldQty = 0, soldValue = 0, soldWeightKg = 0;
+    for (const v of p.variants) {
+      const amt   = v.amount || 0;
+      const wg    = variantWeight(p, v);
+      const price = variantPrice(p, v);
+      amount        += amt;
+      totalWeightKg += Math.round(amt * wg) / 1000;
+      if (price != null) totalValue += price * amt;
+      soldQty       += v.soldQty   || 0;
+      soldValue     += v.soldValue || 0;
+      soldWeightKg  += (v.soldQty || 0) * wg / 1000;
+    }
+    totalWeightKg = Math.round(totalWeightKg * 1000) / 1000;
+    const prices  = p.variants.map(v => variantPrice(p, v)).filter(x => x != null);
+    const weights = p.variants.map(v => variantWeight(p, v));
+    const allSamePrice  = prices.length  > 0 && prices.every(x => x === prices[0]);
+    const allSameWeight = weights.length > 0 && weights.every(x => x === weights[0]);
+    const effectiveUnitPrice  = allSamePrice  ? prices[0]
+      : (amount > 0 && totalValue > 0 ? totalValue / amount : null);
+    const effectiveUnitWeightG = allSameWeight ? weights[0]
+      : (amount > 0 ? Math.round(totalWeightKg * 1000 / amount) : (p.weightG || 0));
+    return {
+      totalWeightKg,
+      totalValue:           totalValue > 0 ? Math.round(totalValue) : null,
+      effectiveUnitPrice,
+      effectiveUnitWeightG,
+      soldWeightKg,
+      amount, soldQty, soldValue,
+    };
+  }
 
+  const amount = p.amount || 0;
   // Weight: round to nearest gram first to eliminate floating-point noise, then convert to kg
   const totalWeightKg = Math.round(amount * (p.weightG || 0)) / 1000;
-
-  // Value: round to whole CHF -the total is the authoritative number
+  // Value: round to whole CHF — the total is the authoritative number
   let totalValue = p.totalValueCHF != null ? Math.round(parseFloat(p.totalValueCHF)) : null;
   if (totalValue == null && p.price != null && p.price !== '') {
     totalValue = Math.round(parseFloat(p.price) * amount);
   }
-
   // Effective per-unit values derived from the rounded totals (not from raw stored inputs)
   const effectiveUnitPrice   = (totalValue != null && amount > 0) ? totalValue / amount : null;
   const effectiveUnitWeightG = amount > 0 ? (totalWeightKg * 1000) / amount : (p.weightG || 0);
-
   const soldWeightKg = (p.soldQty || 0) * (p.weightG || 0) / 1000;
-
-  return { totalWeightKg, totalValue, effectiveUnitPrice, effectiveUnitWeightG, soldWeightKg };
+  return {
+    totalWeightKg, totalValue, effectiveUnitPrice, effectiveUnitWeightG, soldWeightKg,
+    amount, soldQty: p.soldQty || 0, soldValue: p.soldValue || 0,
+  };
 }
 
 function calcTotals() {
-  let totalAmount = 0, totalWeightKg = 0, totalValue = 0;
-  let totalSoldQty = 0, totalSoldVal = 0, totalSoldVat = 0, totalSoldWeight = 0;
-  let totalImportVat = 0;
-  const byTariffRate = {}; // { '8.1': { value, soldVal }, ... }
+  function aggregate(products) {
+    let totalAmount = 0, totalWeightKg = 0, totalValue = 0;
+    let totalSoldQty = 0, totalSoldVal = 0, totalSoldVat = 0, totalSoldWeight = 0;
+    let totalImportVat = 0;
+    const byTariffRate = {};
+    products.forEach(p => {
+      const c = calcProduct(p);
+      totalAmount     += c.amount;
+      totalWeightKg   += c.totalWeightKg;
+      if (c.totalValue != null) totalValue += c.totalValue;
+      totalSoldQty    += c.soldQty;
+      totalSoldVal    += c.soldValue;
+      totalSoldVat    += floorN(c.soldValue * ((p.vatRate || 0) / 100), 2);
+      totalSoldWeight += c.soldWeightKg;
+      if (c.totalValue != null) totalImportVat += floorN(c.totalValue * ((p.vatRate || 0) / 100), 2);
+      const rateKey = p.tariffRate != null ? String(parseFloat(p.tariffRate)) : '?';
+      if (!byTariffRate[rateKey]) byTariffRate[rateKey] = { value: 0, soldVal: 0 };
+      if (c.totalValue != null) byTariffRate[rateKey].value += c.totalValue;
+      byTariffRate[rateKey].soldVal += c.soldValue;
+    });
+    return { totalAmount, totalWeightKg, totalValue, totalImportVat, totalSoldQty, totalSoldVal, totalSoldVat, totalSoldWeight, byTariffRate };
+  }
 
-  state.products.forEach(p => {
-    const c = calcProduct(p);
-    totalAmount    += (p.amount || 0);
-    totalWeightKg  += c.totalWeightKg;
-    if (c.totalValue != null) totalValue += c.totalValue;
-    totalSoldQty   += (p.soldQty || 0);
-    totalSoldVal   += (p.soldValue || 0);
-    totalSoldVat   += floorN((p.soldValue || 0) * ((p.vatRate || 0) / 100), 2);
-    totalSoldWeight += c.soldWeightKg;
-    if (c.totalValue != null) totalImportVat += floorN(c.totalValue * ((p.vatRate || 0) / 100), 2);
-
-    // Accumulate per tariff rate
-    const rateKey = p.tariffRate != null ? String(parseFloat(p.tariffRate)) : '?';
-    if (!byTariffRate[rateKey]) byTariffRate[rateKey] = { value: 0, soldVal: 0 };
-    if (c.totalValue != null) byTariffRate[rateKey].value   += c.totalValue;
-    byTariffRate[rateKey].soldVal += (p.soldValue || 0);
-  });
-
-  return { totalAmount, totalWeightKg, totalValue, totalImportVat, totalSoldQty, totalSoldVal, totalSoldVat, totalSoldWeight, byTariffRate };
+  const all      = aggregate(state.products);
+  const customs  = aggregate(state.products.filter(p => !p.unlisted));
+  const hasUnlisted = state.products.some(p => p.unlisted);
+  return { ...all, customs, hasUnlisted };
 }
 
 /* =========================================================
@@ -514,7 +566,7 @@ function updateSectionSummaries() {
   // E-dec summary
   const edecSummary = document.getElementById('edec-summary');
   if (edecSummary) {
-    const hasSoldItems = state.products.some(p => (p.soldQty || 0) > 0);
+    const hasSoldItems = state.products.some(p => !p.unlisted && ((p.soldQty || 0) > 0 || (p.variants || []).some(v => (v.soldQty || 0) > 0)));
     const hasTransport = state.edec.transportationNumber;
     if (hasSoldItems && hasTransport) {
       edecSummary.textContent = 'Ready to generate XML';
@@ -580,6 +632,14 @@ function renderTable() {
     state.products.forEach((p, idx) => {
       const row = buildProductRow(p, idx);
       tbody.appendChild(row);
+      
+      // If product has variants, add variant rows
+      if (hasVariants(p)) {
+        p.variants.forEach(v => {
+          const variantRow = buildVariantRow(p, v);
+          tbody.appendChild(variantRow);
+        });
+      }
     });
   }
 
@@ -617,16 +677,51 @@ function buildProductRow(p, idx) {
   // Title
   const titleCell = document.createElement('td');
   titleCell.className = 'col-title';
-  titleCell.textContent = p.title || '—';
+  if (hasVariants(p)) {
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'product-title-with-expand';
+    const expandBtn = document.createElement('button');
+    expandBtn.className = 'variant-expand-btn';
+    expandBtn.title = 'Toggle variants';
+    expandBtn.innerHTML = '▼';
+    expandBtn.dataset.expanded = 'false';
+    expandBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const expanded = expandBtn.dataset.expanded === 'true';
+      expandBtn.dataset.expanded = !expanded;
+      expandBtn.classList.toggle('expanded');
+      const variantRows = document.querySelectorAll(`tr.variant-row[data-parent-id="${p.id}"]`);
+      variantRows.forEach(vr => {
+        vr.style.display = expanded ? 'none' : '';
+      });
+    });
+    titleDiv.appendChild(expandBtn);
+    const titleSpan = document.createElement('span');
+    titleSpan.textContent = p.title || '—';
+    titleDiv.appendChild(titleSpan);
+    titleCell.appendChild(titleDiv);
+  } else {
+    titleCell.textContent = p.title || '—';
+  }
   tr.appendChild(titleCell);
 
-  // For Sale badge
+  // SKU
+  tr.appendChild(td('col-sku', p.sku || '—'));
+
+  // For Sale badge (+ Unlisted indicator)
   const saleBadge = document.createElement('span');
   saleBadge.className = p.forSale ? 'badge badge-sale' : 'badge badge-nosale';
   saleBadge.textContent = p.forSale ? 'For Sale' : 'Not For Sale';
   const saleCell = document.createElement('td');
   saleCell.className = 'col-sale';
   saleCell.appendChild(saleBadge);
+  if (p.unlisted) {
+    const unlistedBadge = document.createElement('span');
+    unlistedBadge.className = 'badge badge-unlisted';
+    unlistedBadge.textContent = 'Unlisted';
+    unlistedBadge.title = 'Excluded from all customs documents';
+    saleCell.appendChild(unlistedBadge);
+  }
   tr.appendChild(saleCell);
 
   // Type
@@ -636,7 +731,7 @@ function buildProductRow(p, idx) {
   const amtCell = document.createElement('td');
   amtCell.className = 'col-amount';
   amtCell.style.textAlign = 'right';
-  amtCell.textContent = p.amount != null ? p.amount.toLocaleString() : '—';
+  amtCell.textContent = c.amount != null ? c.amount.toLocaleString() : '—';
   tr.appendChild(amtCell);
 
   // Unit weight
@@ -715,43 +810,52 @@ function buildProductRow(p, idx) {
   tr.appendChild(td('col-origin', effectiveOrigin));
 
   // --- Sold columns ---
-  // Sold Qty (editable)
   const soldQtyCell = document.createElement('td');
   soldQtyCell.className = 'col-soldqty sold-col-start';
   soldQtyCell.style.textAlign = 'right';
-  const soldQtyInput = document.createElement('input');
-  soldQtyInput.type = 'number';
-  soldQtyInput.className = 'sold-input';
-  soldQtyInput.min = '0';
-  soldQtyInput.step = '1';
-  soldQtyInput.value = p.soldQty != null ? p.soldQty : 0;
-  soldQtyInput.addEventListener('change', () => {
-    updateProductField(p.id, 'soldQty', parseFloat(soldQtyInput.value) || 0);
-  });
-  soldQtyCell.appendChild(soldQtyInput);
-  tr.appendChild(soldQtyCell);
 
-  // Sold Value (editable)
   const soldValCell = document.createElement('td');
   soldValCell.className = 'col-soldval';
   soldValCell.style.textAlign = 'right';
-  const soldValInput = document.createElement('input');
-  soldValInput.type = 'number';
-  soldValInput.className = 'sold-input';
-  soldValInput.min = '0';
-  soldValInput.step = '0.01';
-  soldValInput.value = p.soldValue != null ? formatNum(p.soldValue, 2) : '0.00';
-  soldValInput.addEventListener('change', () => {
-    updateProductField(p.id, 'soldValue', parseFloat(soldValInput.value) || 0);
-  });
-  soldValCell.appendChild(soldValInput);
+
+  if (hasVariants(p)) {
+    // Variant products: sold data is per-variant, show aggregate as read-only
+    soldQtyCell.textContent = c.soldQty;
+    soldValCell.textContent = formatNum(c.soldValue, 2);
+  } else {
+    // Sold Qty (editable)
+    const soldQtyInput = document.createElement('input');
+    soldQtyInput.type = 'number';
+    soldQtyInput.className = 'sold-input';
+    soldQtyInput.min = '0';
+    soldQtyInput.step = '1';
+    soldQtyInput.value = p.soldQty != null ? p.soldQty : 0;
+    soldQtyInput.addEventListener('change', () => {
+      updateProductField(p.id, 'soldQty', parseFloat(soldQtyInput.value) || 0);
+    });
+    soldQtyCell.appendChild(soldQtyInput);
+
+    // Sold Value (editable)
+    const soldValInput = document.createElement('input');
+    soldValInput.type = 'number';
+    soldValInput.className = 'sold-input';
+    soldValInput.min = '0';
+    soldValInput.step = '0.01';
+    soldValInput.value = p.soldValue != null ? formatNum(p.soldValue, 2) : '0.00';
+    soldValInput.addEventListener('change', () => {
+      updateProductField(p.id, 'soldValue', parseFloat(soldValInput.value) || 0);
+    });
+    soldValCell.appendChild(soldValInput);
+  }
+
+  tr.appendChild(soldQtyCell);
   tr.appendChild(soldValCell);
 
   // Sold VAT (derived, read-only)
   const soldVatCell = document.createElement('td');
   soldVatCell.className = 'col-soldvat';
   soldVatCell.style.textAlign = 'right';
-  soldVatCell.textContent = formatNum(floorN((p.soldValue || 0) * ((p.vatRate || 0) / 100), 2), 2);
+  soldVatCell.textContent = formatNum(floorN(c.soldValue * ((p.vatRate || 0) / 100), 2), 2);
   tr.appendChild(soldVatCell);
 
   // Sold Weight (derived, read-only display)
@@ -794,27 +898,213 @@ function buildProductRow(p, idx) {
   return tr;
 }
 
+function buildVariantRow(parentProduct, variant) {
+  const tr = document.createElement('tr');
+  tr.className = 'variant-row';
+  tr.dataset.parentId = parentProduct.id;
+  tr.dataset.variantId = variant.id;
+  tr.style.display = 'none'; // Hidden by default
+
+  const td = (cls, content) => {
+    const cell = document.createElement('td');
+    if (cls) cell.className = cls;
+    if (content instanceof Node) {
+      cell.appendChild(content);
+    } else if (content != null) {
+      cell.textContent = content;
+    }
+    return cell;
+  };
+
+  // Empty handle cell for variant
+  tr.appendChild(td('col-handle', ''));
+  
+  // Empty number cell for variant
+  tr.appendChild(td('col-num', ''));
+
+  // Variant name with indent
+  const nameCell = document.createElement('td');
+  nameCell.className = 'col-title variant-title';
+  nameCell.textContent = '→ ' + (variant.name || '—');
+  tr.appendChild(nameCell);
+
+  // Variant SKU
+  tr.appendChild(td('col-sku', variant.sku || '—'));
+
+  // For Sale (inherited from parent)
+  const saleBadge = document.createElement('span');
+  saleBadge.className = parentProduct.forSale ? 'badge badge-sale' : 'badge badge-nosale';
+  saleBadge.textContent = parentProduct.forSale ? 'For Sale' : 'Not For Sale';
+  const saleCell = document.createElement('td');
+  saleCell.className = 'col-sale';
+  saleCell.appendChild(saleBadge);
+  tr.appendChild(saleCell);
+
+  // Type (inherited from parent)
+  tr.appendChild(td('col-type', parentProduct.type || '—'));
+
+  // Amount (variant-specific)
+  const amtCell = document.createElement('td');
+  amtCell.className = 'col-amount';
+  amtCell.style.textAlign = 'right';
+  amtCell.textContent = (variant.amount || 0).toLocaleString();
+  tr.appendChild(amtCell);
+
+  // Unit weight (variant-specific)
+  const uwCell = document.createElement('td');
+  uwCell.className = 'col-weight';
+  uwCell.style.textAlign = 'right';
+  const varWg = variant.weightG != null ? variant.weightG : parentProduct.weightG;
+  uwCell.textContent = varWg != null ? varWg + ' g' : '—';
+  tr.appendChild(uwCell);
+
+  // Total weight
+  const twCell = document.createElement('td');
+  twCell.className = 'col-totalweight';
+  twCell.style.textAlign = 'right';
+  const totalWeightKg = Math.round((variant.amount || 0) * (varWg || 0)) / 1000;
+  twCell.textContent = fmtWeightKg(totalWeightKg);
+  tr.appendChild(twCell);
+
+  // Unit price (variant-specific)
+  const priceCell = document.createElement('td');
+  priceCell.className = 'col-price';
+  priceCell.style.textAlign = 'right';
+  const varPrice = variant.price != null ? variant.price : parentProduct.price;
+  if (parentProduct.priceNote) {
+    const note = document.createElement('span');
+    note.className = 'price-note';
+    note.textContent = parentProduct.priceNote;
+    priceCell.appendChild(note);
+  } else if (varPrice != null) {
+    priceCell.textContent = getCurrency() + ' ' + formatNum(floorN(varPrice, 2), 2);
+  } else {
+    priceCell.textContent = '—';
+  }
+  tr.appendChild(priceCell);
+
+  // Total value
+  const valCell = document.createElement('td');
+  valCell.className = 'col-totalval';
+  valCell.style.textAlign = 'right';
+  const totalVal = varPrice != null ? Math.round(varPrice * (variant.amount || 0)) : null;
+  valCell.textContent = totalVal != null ? getCurrency() + ' ' + totalVal : '—';
+  tr.appendChild(valCell);
+
+  // Tariff No. (inherited from parent)
+  const tariffCell = document.createElement('td');
+  tariffCell.className = 'col-tariff';
+  if (parentProduct.tariffNo) {
+    const span = document.createElement('span');
+    span.className = 'tariff-code';
+    span.textContent = parentProduct.tariffNo;
+    tariffCell.appendChild(span);
+  } else {
+    tariffCell.textContent = '—';
+  }
+  tr.appendChild(tariffCell);
+
+  // Tariff Rate (inherited from parent)
+  tr.appendChild(td('col-tariffrate', parentProduct.tariffRate != null ? parentProduct.tariffRate + '%' : '—'));
+
+  // VAT Rate (inherited from parent)
+  tr.appendChild(td('col-vat', parentProduct.vatRate != null ? parentProduct.vatRate + '%' : '—'));
+
+  // Origin (inherited from parent)
+  const effectiveOrigin = (parentProduct.originCountry && parentProduct.originCountry.trim())
+    ? parentProduct.originCountry.trim().toUpperCase()
+    : countryToCode(state.artist.countryOfOrigin) || '—';
+  tr.appendChild(td('col-origin', effectiveOrigin));
+
+  // --- Sold columns ---
+  const soldQtyCell = document.createElement('td');
+  soldQtyCell.className = 'col-soldqty sold-col-start';
+  soldQtyCell.style.textAlign = 'right';
+
+  const soldValCell = document.createElement('td');
+  soldValCell.className = 'col-soldval';
+  soldValCell.style.textAlign = 'right';
+
+  // Sold Qty (variant-specific, editable)
+  const soldQtyInput = document.createElement('input');
+  soldQtyInput.type = 'number';
+  soldQtyInput.className = 'sold-input';
+  soldQtyInput.min = '0';
+  soldQtyInput.step = '1';
+  soldQtyInput.value = variant.soldQty != null ? variant.soldQty : 0;
+  soldQtyInput.addEventListener('change', () => {
+    const varIdx = parentProduct.variants.findIndex(v => v.id === variant.id);
+    if (varIdx >= 0) {
+      parentProduct.variants[varIdx].soldQty = parseFloat(soldQtyInput.value) || 0;
+      saveToStorage();
+      renderTable();
+      calcTotals();
+    }
+  });
+  soldQtyCell.appendChild(soldQtyInput);
+
+  // Sold Value (variant-specific, editable)
+  const soldValInput = document.createElement('input');
+  soldValInput.type = 'number';
+  soldValInput.className = 'sold-input';
+  soldValInput.min = '0';
+  soldValInput.step = '0.01';
+  soldValInput.value = variant.soldValue != null ? formatNum(variant.soldValue, 2) : '0.00';
+  soldValInput.addEventListener('change', () => {
+    const varIdx = parentProduct.variants.findIndex(v => v.id === variant.id);
+    if (varIdx >= 0) {
+      parentProduct.variants[varIdx].soldValue = parseFloat(soldValInput.value) || 0;
+      saveToStorage();
+      renderTable();
+      calcTotals();
+    }
+  });
+  soldValCell.appendChild(soldValInput);
+
+  tr.appendChild(soldQtyCell);
+  tr.appendChild(soldValCell);
+
+  // Sold VAT (derived, read-only)
+  const soldVatCell = document.createElement('td');
+  soldVatCell.className = 'col-soldvat';
+  soldVatCell.style.textAlign = 'right';
+  soldVatCell.textContent = formatNum(floorN((variant.soldValue || 0) * ((parentProduct.vatRate || 0) / 100), 2), 2);
+  tr.appendChild(soldVatCell);
+
+  // Sold Weight (derived, read-only display)
+  const soldWtCell = document.createElement('td');
+  soldWtCell.className = 'col-soldweight';
+  soldWtCell.style.textAlign = 'right';
+  const soldWeightKg = (variant.soldQty || 0) * (varWg || 0) / 1000;
+  soldWtCell.textContent = fmtWeightKg(soldWeightKg);
+  tr.appendChild(soldWtCell);
+
+  // Empty actions cell for variant (no edit/delete for variants from here)
+  tr.appendChild(td('col-actions', ''));
+
+  return tr;
+}
+
 function renderTotals() {
   const t = calcTotals();
-  document.getElementById('total-amount').textContent    = t.totalAmount.toLocaleString();
-  document.getElementById('total-weight').textContent    = fmtWeightKg(t.totalWeightKg);
-  document.getElementById('total-soldqty').textContent   = t.totalSoldQty.toLocaleString();
   const cur = getCurrency();
+
+  // ── Currency labels ──
   const colHdr = document.getElementById('col-header-totalval');
   if (colHdr) colHdr.textContent = `Total Value ${cur}`;
   const lblPrice = document.getElementById('label-m-price');
   if (lblPrice) lblPrice.textContent = `Price / item (${cur})`;
   const lblTotal = document.getElementById('label-m-totalvalue');
   if (lblTotal) lblTotal.textContent = `Total value (${cur})`;
-  document.getElementById('total-soldval').textContent   = cur + ' ' + Math.floor(t.totalSoldVal);
-  document.getElementById('total-soldvat').textContent   = formatNum(t.totalSoldVat, 2);
-  document.getElementById('total-soldweight').textContent = fmtWeightKg(t.totalSoldWeight);
-  const vatEstEl = document.getElementById('vat-estimate-total');
-  if (vatEstEl) vatEstEl.textContent = cur + ' ' + formatNum(t.totalImportVat, 2);
-  const vatEstSoldEl = document.getElementById('vat-estimate-sold');
-  if (vatEstSoldEl) vatEstSoldEl.textContent = cur + ' ' + formatNum(t.totalSoldVat, 2);
 
-  // Total value: show overall total + per-rate breakdown + import VAT estimate
+  // ── All-products row ──
+  document.getElementById('total-amount').textContent     = t.totalAmount.toLocaleString();
+  document.getElementById('total-weight').textContent     = fmtWeightKg(t.totalWeightKg);
+  document.getElementById('total-soldqty').textContent    = t.totalSoldQty.toLocaleString();
+  document.getElementById('total-soldval').textContent    = cur + ' ' + Math.floor(t.totalSoldVal);
+  document.getElementById('total-soldvat').textContent    = formatNum(t.totalSoldVat, 2);
+  document.getElementById('total-soldweight').textContent = fmtWeightKg(t.totalSoldWeight);
+
   const totalValEl = document.getElementById('total-value');
   const rateKeys = Object.keys(t.byTariffRate).sort((a, b) => parseFloat(a) - parseFloat(b));
   if (rateKeys.length > 1) {
@@ -825,6 +1115,39 @@ function renderTotals() {
     totalValEl.innerHTML = `<div class="total-main">${cur} ${Math.floor(t.totalValue)}</div>${lines}`;
   } else {
     totalValEl.innerHTML = `<div class="total-main">${cur} ${Math.floor(t.totalValue)}</div>`;
+  }
+
+  // ── VAT estimates (customs-only) ──
+  const vatEstEl = document.getElementById('vat-estimate-total');
+  if (vatEstEl) vatEstEl.textContent = cur + ' ' + formatNum(t.customs.totalImportVat, 2);
+  const vatEstSoldEl = document.getElementById('vat-estimate-sold');
+  if (vatEstSoldEl) vatEstSoldEl.textContent = cur + ' ' + formatNum(t.customs.totalSoldVat, 2);
+
+  // ── Customs-only row (show only when there are unlisted products) ──
+  const customsRow = document.getElementById('totals-row-customs');
+  if (customsRow) {
+    customsRow.style.display = t.hasUnlisted ? '' : 'none';
+    if (t.hasUnlisted) {
+      const c = t.customs;
+      document.getElementById('total-amount-customs').textContent     = c.totalAmount.toLocaleString();
+      document.getElementById('total-weight-customs').textContent     = fmtWeightKg(c.totalWeightKg);
+      document.getElementById('total-soldqty-customs').textContent    = c.totalSoldQty.toLocaleString();
+      document.getElementById('total-soldval-customs').textContent    = cur + ' ' + Math.floor(c.totalSoldVal);
+      document.getElementById('total-soldvat-customs').textContent    = formatNum(c.totalSoldVat, 2);
+      document.getElementById('total-soldweight-customs').textContent = fmtWeightKg(c.totalSoldWeight);
+
+      const custValEl = document.getElementById('total-value-customs');
+      const custRateKeys = Object.keys(c.byTariffRate).sort((a, b) => parseFloat(a) - parseFloat(b));
+      if (custRateKeys.length > 1) {
+        const lines = custRateKeys.map(r => {
+          const rateLabel = r === '?' ? '?' : parseFloat(r).toFixed(1) + '%';
+          return `<div class="total-by-rate">${rateLabel} · ${cur} ${Math.floor(c.byTariffRate[r].value)}</div>`;
+        }).join('');
+        custValEl.innerHTML = `<div class="total-main">${cur} ${Math.floor(c.totalValue)}</div>${lines}`;
+      } else {
+        custValEl.innerHTML = `<div class="total-main">${cur} ${Math.floor(c.totalValue)}</div>`;
+      }
+    }
   }
 }
 
@@ -850,7 +1173,13 @@ function updateProductField(id, field, value) {
    PRODUCT CRUD
    ========================================================= */
 function deleteProduct(id) {
-  if (!confirm('Delete this product?')) return;
+  const affectedDiscounts = (state.discounts || []).filter(d => (d.productIds || []).includes(id));
+  let msg = 'Delete this product?';
+  if (affectedDiscounts.length) {
+    const names = affectedDiscounts.map(d => `"${d.name}"`).join(', ');
+    msg += `\n\nWarning: this product is used in the following POS discount${affectedDiscounts.length > 1 ? 's' : ''}: ${names}.\nThe discount will still exist but this product will no longer be included.`;
+  }
+  if (!confirm(msg)) return;
   state.products = state.products.filter(p => p.id !== id);
   saveToStorage();
   renderTable();
@@ -871,6 +1200,7 @@ function addProduct(productData) {
     {
       id:          uuid(),
       title:       '',
+      sku:         '',
       forSale:     true,
       type:        '',
       amount:      0,
@@ -938,6 +1268,7 @@ function hideModal() {
 
 function resetModalForm() {
   document.getElementById('m-title').value       = '';
+  document.getElementById('m-sku').value         = '';
   document.getElementById('m-type').value        = '';
   document.getElementById('m-amount').value      = '';
   document.getElementById('m-weight').value      = '';
@@ -955,11 +1286,19 @@ function resetModalForm() {
   if (vatHint) { vatHint.textContent = 'Standard rate'; vatHint.style.color = ''; }
   // Reset radio
   document.querySelector('input[name="m-forsale"][value="true"]').checked = true;
+  // Reset unlisted
+  document.getElementById('m-unlisted').checked = false;
+  // Reset variants
+  document.getElementById('m-has-variants').checked = false;
+  document.getElementById('m-variants-body').style.display = 'none';
+  document.getElementById('m-variant-rows').innerHTML = '';
+  document.getElementById('m-amount-group').style.display = '';
   updateModalPreview();
 }
 
 function populateModalForm(p) {
   document.getElementById('m-title').value        = p.title        || '';
+  document.getElementById('m-sku').value          = p.sku          || '';
   document.getElementById('m-type').value         = p.type         || '';
   document.getElementById('m-amount').value       = p.amount       != null ? p.amount  : '';
   document.getElementById('m-weight').value       = p.weightG      != null ? p.weightG : '';
@@ -983,6 +1322,9 @@ function populateModalForm(p) {
   const radioEl = document.querySelector(`input[name="m-forsale"][value="${forSaleVal}"]`);
   if (radioEl) radioEl.checked = true;
 
+  // Unlisted
+  document.getElementById('m-unlisted').checked = !!p.unlisted;
+
   // Populate derived total weight
   if (p.weightG != null && p.amount != null && p.amount > 0) {
     document.getElementById('m-totalweight').value = parseFloat((p.weightG * p.amount / 1000).toFixed(4));
@@ -998,13 +1340,23 @@ function populateModalForm(p) {
   // VAT hint
   updateVatHint();
 
+  // Variants
+  const variantsEnabled = hasVariants(p);
+  document.getElementById('m-has-variants').checked = variantsEnabled;
+  document.getElementById('m-variants-body').style.display = variantsEnabled ? '' : 'none';
+  document.getElementById('m-amount-group').style.display = variantsEnabled ? 'none' : '';
+  document.getElementById('m-variant-rows').innerHTML = '';
+  if (variantsEnabled) p.variants.forEach(v => addModalVariantRow(v));
+
   updateModalPreview();
 }
 
 function collectModalForm() {
   const title      = document.getElementById('m-title').value.trim();
+  const sku        = document.getElementById('m-sku').value.trim();
   const type       = document.getElementById('m-type').value.trim();
   const forSale    = document.querySelector('input[name="m-forsale"]:checked').value === 'true';
+  const unlisted   = document.getElementById('m-unlisted').checked;
   const amountStr  = document.getElementById('m-amount').value;
   const weightStr  = document.getElementById('m-weight').value;
   const priceStr   = document.getElementById('m-price').value;
@@ -1025,38 +1377,111 @@ function collectModalForm() {
   const totalValueStr = document.getElementById('m-totalvalue').value.trim();
   const totalValueCHF = totalValueStr !== '' ? parseFloat(totalValueStr) : null;
 
+  const variantsEnabled = document.getElementById('m-has-variants').checked;
+  let variants = [];
+  if (variantsEnabled) {
+    variants = [...document.querySelectorAll('#m-variant-rows .variant-edit-row')].map(row => ({
+      id:        row.dataset.vid || uuid(),
+      name:      row.querySelector('.vr-name').value.trim(),
+      sku:       row.querySelector('.vr-sku').value.trim(),
+      amount:    parseInt(row.querySelector('.vr-amount').value) || 0,
+      price:     row.querySelector('.vr-price').value  !== '' ? parseFloat(row.querySelector('.vr-price').value)  : null,
+      weightG:   row.querySelector('.vr-weight').value !== '' ? parseFloat(row.querySelector('.vr-weight').value) : null,
+      soldQty:   parseFloat(row.dataset.soldqty)  || 0,
+      soldValue: parseFloat(row.dataset.soldval)  || 0,
+    }));
+  }
+
   return {
     title,
+    sku,
     type,
     forSale,
-    amount:       amount  != null ? amount  : 0,
-    weightG:      weightG != null ? weightG : 0,
+    unlisted,
+    amount:        variantsEnabled ? 0 : (amount  != null ? amount  : 0),
+    weightG:       weightG != null ? weightG : 0,
     price,
     priceNote,
-    totalValueCHF,
+    totalValueCHF: variantsEnabled ? null : totalValueCHF,
     tariffNo,
     tariffRate:    tariffRate !== '' ? parseFloat(tariffRate) : null,
     vatRate:       vatRate    !== '' ? parseFloat(vatRate)    : null,
     packagingType,
     originCountry,
+    variants,
   };
 }
 
 function validateModalForm() {
   const title  = document.getElementById('m-title').value.trim();
-  const amount = document.getElementById('m-amount').value;
   if (!title) {
     showToast('Please enter a product title.', 'error');
     document.getElementById('m-title').focus();
     return false;
   }
-  if (amount === '' || isNaN(parseFloat(amount))) {
-    showToast('Please enter a valid amount.', 'error');
-    document.getElementById('m-amount').focus();
-    return false;
+  const variantsEnabled = document.getElementById('m-has-variants').checked;
+  if (!variantsEnabled) {
+    const amount = document.getElementById('m-amount').value;
+    if (amount === '' || isNaN(parseFloat(amount))) {
+      showToast('Please enter a valid amount.', 'error');
+      document.getElementById('m-amount').focus();
+      return false;
+    }
+  } else {
+    const rows = document.querySelectorAll('#m-variant-rows .variant-edit-row');
+    if (!rows.length) {
+      showToast('Add at least one variant, or disable variants.', 'error');
+      return false;
+    }
+    for (const row of rows) {
+      if (!row.querySelector('.vr-name').value.trim()) {
+        showToast('Each variant needs a name.', 'error');
+        row.querySelector('.vr-name').focus();
+        return false;
+      }
+    }
   }
   return true;
 }
+
+function addModalVariantRow(v = null) {
+  const container = document.getElementById('m-variant-rows');
+  const row = document.createElement('div');
+  row.className = 'variant-edit-row';
+  row.dataset.vid      = v ? (v.id || uuid()) : uuid();
+  row.dataset.soldqty  = v ? (v.soldQty  || 0) : 0;
+  row.dataset.soldval  = v ? (v.soldValue || 0) : 0;
+  row.innerHTML = `
+    <input type="text"   class="vr-name"   placeholder="Name *" />
+    <input type="text"   class="vr-sku"    placeholder="SKU (optional)" />
+    <input type="number" class="vr-amount" placeholder="Amount *" min="0" step="1" />
+    <input type="number" class="vr-price"  placeholder="Inherit" min="0" step="0.01" />
+    <input type="number" class="vr-weight" placeholder="Inherit" min="0" step="1" />
+    <button type="button" class="vr-remove">✕</button>
+  `;
+  if (v) {
+    row.querySelector('.vr-name').value   = v.name   || '';
+    row.querySelector('.vr-sku').value    = v.sku    || '';
+    row.querySelector('.vr-amount').value = v.amount != null ? v.amount : '';
+    if (v.price   != null) row.querySelector('.vr-price').value  = v.price;
+    if (v.weightG != null) row.querySelector('.vr-weight').value = v.weightG;
+  }
+  row.querySelector('.vr-remove').addEventListener('click', () => row.remove());
+  container.appendChild(row);
+}
+
+// Wire up variant toggle and add-variant button (runs once after DOM ready)
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('m-has-variants').addEventListener('change', e => {
+    const on = e.target.checked;
+    document.getElementById('m-variants-body').style.display = on ? '' : 'none';
+    document.getElementById('m-amount-group').style.display  = on ? 'none' : '';
+    if (on && !document.querySelector('#m-variant-rows .variant-edit-row')) {
+      addModalVariantRow(); // start with one empty row
+    }
+  });
+  document.getElementById('m-add-variant').addEventListener('click', () => addModalVariantRow());
+});
 
 function saveModal() {
   if (!validateModalForm()) return;
@@ -1406,11 +1831,13 @@ function handleFileLoad(e) {
     try {
       const parsed = JSON.parse(evt.target.result);
       state = {
-        meta:     Object.assign({}, DEFAULT_STATE.meta,     parsed.meta     || {}),
-        artist:   Object.assign({}, DEFAULT_STATE.artist,   parsed.artist   || {}),
-        edec:     Object.assign({}, DEFAULT_STATE.edec,     parsed.edec     || {}),
-        products: Array.isArray(parsed.products) ? parsed.products : [],
-        form1174: Object.assign({}, DEFAULT_STATE.form1174, parsed.form1174 || {}),
+        meta:         Object.assign({}, DEFAULT_STATE.meta,     parsed.meta     || {}),
+        artist:       Object.assign({}, DEFAULT_STATE.artist,   parsed.artist   || {}),
+        edec:         Object.assign({}, DEFAULT_STATE.edec,     parsed.edec     || {}),
+        products:     Array.isArray(parsed.products)     ? parsed.products     : [],
+        form1174:     Object.assign({}, DEFAULT_STATE.form1174, parsed.form1174 || {}),
+        discounts:    Array.isArray(parsed.discounts)    ? parsed.discounts    : [],
+        transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
       };
       if (!Array.isArray(state.form1174.assignments)) state.form1174.assignments = [];
       if (!state.meta.venueTIN) state.meta.venueTIN = DEFAULT_STATE.meta.venueTIN;
@@ -1502,7 +1929,408 @@ function autoGenerateLRP() {
 /* =========================================================
    PRINT / PDF EXPORT -AUXILIARY DOCUMENT
    ========================================================= */
-function printGoodsList(docNum) {
+
+function showDocumentFormatDialog(docNum) {
+  const docNames = { 1: 'Import', 2: 'Sold Goods', 3: 'Return Goods' };
+  const docName = docNames[docNum] || 'Document';
+
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const bgColor   = isDark ? '#1f2937' : '#ffffff';
+  const textColor = isDark ? '#f9fafb' : '#111827';
+  const subColor  = isDark ? '#9ca3af' : '#6b7280';
+
+  const dialogHtml = `
+    <div style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;">
+      <div style="background: ${bgColor}; color: ${textColor}; border-radius: 10px; padding: 24px; max-width: 500px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+          <h3 style="margin: 0; font-size: 17px; font-weight: bold;">${esc(docName)} Document Format</h3>
+          <button id="format-close" style="background: none; border: none; cursor: pointer; color: ${subColor}; font-size: 20px; line-height: 1; padding: 0 2px;" title="Close">&times;</button>
+        </div>
+        <p style="margin: 0 0 16px 0; font-size: 13px; color: ${subColor};">Choose how to format the document:</p>
+        <div style="display: flex; gap: 10px; margin-bottom: 12px;">
+          <button id="format-detailed" style="flex: 1; padding: 11px 8px; background: #3b5bdb; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; line-height: 1.4;">
+            Detailed<br><span style="font-size: 11px; opacity: 0.85;">One row per variant</span>
+          </button>
+          <button id="format-compressed" style="flex: 1; padding: 11px 8px; background: #555; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; line-height: 1.4;">
+            Compressed<br><span style="font-size: 11px; opacity: 0.85;">One row per product</span>
+          </button>
+          <button id="format-bytype" style="flex: 1; padding: 11px 8px; background: #0a7c4e; color: white; border: none; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; line-height: 1.4;">
+            By Type<br><span style="font-size: 11px; opacity: 0.85;">Totals per category</span>
+          </button>
+        </div>
+        <div style="border-top: 1px solid ${isDark ? '#374151' : '#e5e7eb'}; padding-top: 12px;">
+          <button id="format-printall" style="width: 100%; padding: 10px; background: none; border: 1px solid ${isDark ? '#4b5563' : '#d1d5db'}; border-radius: 6px; font-size: 13px; font-weight: 500; cursor: pointer; color: ${textColor}; display: flex; align-items: center; justify-content: center; gap: 8px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Print All Formats (Detailed + Compressed + By Type)
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const overlay = document.createElement('div');
+  overlay.innerHTML = dialogHtml;
+  document.body.appendChild(overlay);
+
+  overlay.querySelector('#format-close').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#format-detailed').addEventListener('click', () => { overlay.remove(); printGoodsList(docNum, 'detailed'); });
+  overlay.querySelector('#format-compressed').addEventListener('click', () => { overlay.remove(); printGoodsList(docNum, 'compressed'); });
+  overlay.querySelector('#format-bytype').addEventListener('click', () => { overlay.remove(); printGoodsList(docNum, 'bytype'); });
+  overlay.querySelector('#format-printall').addEventListener('click', () => { overlay.remove(); printAllVersions(docNum); });
+
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+}
+
+/* =========================================================
+   FORMAT DIALOG — TEMPORARY ADMISSION FORMS (11.74 / 11.87)
+   The form itself is fixed-format, so the dialog controls the
+   goods-list attachment that is printed alongside the form.
+   ========================================================= */
+function showFormFormatDialog(formLabel, formPrintFn, attachDocNum) {
+  // attachDocNum: 1 = Import (for 11.74), 3 = Return/Re-export (for 11.87)
+  const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  const bgColor   = isDark ? '#1f2937' : '#ffffff';
+  const textColor = isDark ? '#f9fafb' : '#111827';
+  const subColor  = isDark ? '#9ca3af' : '#6b7280';
+
+  const dialogHtml = `
+    <div style="position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;">
+      <div style="background:${bgColor};color:${textColor};border-radius:10px;padding:24px;max-width:520px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <h3 style="margin:0;font-size:17px;font-weight:bold;">${esc(formLabel)}</h3>
+          <button id="ffd-close" style="background:none;border:none;cursor:pointer;color:${subColor};font-size:20px;line-height:1;padding:0 2px;" title="Close">&times;</button>
+        </div>
+        <p style="margin:0 0 4px 0;font-size:13px;color:${subColor};">The form prints in its standard fixed format.</p>
+        <p style="margin:0 0 16px 0;font-size:13px;color:${subColor};">Choose the format for the <strong style="color:${textColor}">goods list attachment</strong> that prints alongside it:</p>
+        <div style="display:flex;gap:10px;margin-bottom:12px;">
+          <button id="ffd-detailed" style="flex:1;padding:11px 8px;background:#3b5bdb;color:white;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;line-height:1.4;">
+            Detailed<br><span style="font-size:11px;opacity:0.85;">One row per variant</span>
+          </button>
+          <button id="ffd-compressed" style="flex:1;padding:11px 8px;background:#555;color:white;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;line-height:1.4;">
+            Compressed<br><span style="font-size:11px;opacity:0.85;">One row per product</span>
+          </button>
+          <button id="ffd-bytype" style="flex:1;padding:11px 8px;background:#0a7c4e;color:white;border:none;border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;line-height:1.4;">
+            By Type<br><span style="font-size:11px;opacity:0.85;">Totals per category</span>
+          </button>
+        </div>
+        <div style="border-top:1px solid ${isDark ? '#374151' : '#e5e7eb'};padding-top:12px;">
+          <button id="ffd-printall" style="width:100%;padding:10px;background:none;border:1px solid ${isDark ? '#4b5563' : '#d1d5db'};border-radius:6px;font-size:13px;font-weight:500;cursor:pointer;color:${textColor};display:flex;align-items:center;justify-content:center;gap:8px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+            Print All Attachment Formats (Detailed + Compressed + By Type)
+          </button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const overlay = document.createElement('div');
+  overlay.innerHTML = dialogHtml;
+  document.body.appendChild(overlay);
+
+  const remove = () => overlay.remove();
+
+  overlay.querySelector('#ffd-close').addEventListener('click', remove);
+  overlay.addEventListener('click', e => { if (e.target === overlay.firstElementChild) remove(); });
+
+  overlay.querySelector('#ffd-detailed').addEventListener('click', () => {
+    remove(); formPrintFn(); printGoodsList(attachDocNum, 'detailed');
+  });
+  overlay.querySelector('#ffd-compressed').addEventListener('click', () => {
+    remove(); formPrintFn(); printGoodsList(attachDocNum, 'compressed');
+  });
+  overlay.querySelector('#ffd-bytype').addEventListener('click', () => {
+    remove(); formPrintFn(); printGoodsList(attachDocNum, 'bytype');
+  });
+  overlay.querySelector('#ffd-printall').addEventListener('click', () => {
+    remove(); formPrintFn(); printAllVersions(attachDocNum);
+  });
+}
+
+/* =========================================================
+   PRINT ALL VERSIONS
+   ========================================================= */
+function printAllVersions(onlyDocNum = null) {
+  const m   = state.meta;
+  const a   = state.artist;
+  const cur = getCurrency();
+  const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
+  const hasCustomsInfo = p => !p.unlisted && (!!(p.tariffNo && p.tariffNo.trim()) || (p.vatRate != null && p.vatRate !== ''));
+
+  // Helper: generate the full goods-list HTML body for a given docNum + format (no window open)
+  function buildGoodsListBody(docNum, format) {
+    const lrp = computeLRP(docNum);
+    const docTitles = {
+      1: 'Auxiliary Document for the Customs Declaration - Import',
+      2: 'Auxiliary Document for the Customs Declaration - Sold Goods',
+      3: 'Return Goods List - Re-export Declaration',
+    };
+
+    const header = `<div class="doc-top">
+  <div class="doc-top-left">
+    <div class="doc-title">${esc(docTitles[docNum] || docTitles[1])}</div>
+    <div class="doc-subtitle">${esc(fmtEventDates(m.eventDateStart, m.eventDateEnd))}${m.eventLocation ? ', ' + esc(m.eventLocation) : ''}</div>
+  </div>
+  <div class="doc-top-right">
+    <div class="event-name">${esc(m.event || '')}</div>
+    <div class="lrp">LRP: ${esc(lrp || '—')}</div>
+  </div>
+</div>
+<table class="info-table">
+  <tr><td class="lbl">Artist / Company Name</td><td>${esc(a.companyName || '')}</td>
+      <td class="lbl">Name &amp; Surname</td><td>${esc(a.fullName || '')}</td></tr>
+  <tr><td class="lbl">Street &amp; House Number</td><td>${esc(a.street || '')}</td>
+      <td class="lbl">Postcode &amp; City</td><td>${esc(a.postCodeCity || '')}</td></tr>
+  <tr><td class="lbl">Country of Origin</td><td>${esc(a.countryOfOrigin || '')}</td>
+      <td class="lbl">Phone / Mobile</td><td>${esc(a.phone || '')}</td></tr>
+  <tr><td class="lbl">Email</td><td colspan="3">${esc(a.email || '')}</td></tr>
+</table>`;
+
+    // Open a temp hidden window, generate the table, extract inner HTML
+    // Instead, we'll call a lightweight version of printGoodsList that returns HTML
+    return `<div class="doc-section">${header}${buildGoodsTable(docNum, format)}<div class="signature-section"><strong>Date and Signature</strong><div class="signature-box"></div></div></div>`;
+  }
+
+  function buildGoodsTable(docNum, format) {
+    let tableHtml = '';
+    const lrp = computeLRP(docNum);
+
+    // ── IMPORT ──
+    if (docNum === 1) {
+      let totAmt=0, totWkg=0, totVal=0, rowNum=0;
+      let rows = [];
+      if (format === 'bytype') {
+        const groups = {};
+        state.products.filter(hasCustomsInfo).forEach(p => {
+          const c = calcProduct(p);
+          const key = `${p.type||'Other'}\x00${p.tariffNo||''}`;
+          if (!groups[key]) groups[key] = { type:p.type||'Other', tariffNo:p.tariffNo||'', tariffRate:p.tariffRate, vatRate:p.vatRate, amount:0, wkg:0, val:0, hasVal:false };
+          const g = groups[key];
+          g.amount+=(c.amount||0); g.wkg+=c.totalWeightKg;
+          if(c.totalValue!=null){g.val+=c.totalValue; g.hasVal=true;}
+          totAmt+=(c.amount||0); totWkg+=c.totalWeightKg;
+          if(c.totalValue!=null) totVal+=c.totalValue;
+        });
+        Object.values(groups).forEach((g,i)=>{
+          rows.push(`<tr><td class="c">${i+1}</td><td><strong>${esc(g.type)}</strong></td><td class="r">${esc(g.tariffNo)}</td><td class="r">${g.tariffRate!=null?g.tariffRate+'%':''}</td><td class="r">${g.vatRate!=null?g.vatRate+'%':''}</td><td class="r">${g.amount}</td><td class="r">${fmtWeightKg(g.wkg)}</td><td class="r">${g.hasVal?g.val:'—'}</td></tr>`);
+        });
+        tableHtml = `<div class="section-title">List of goods (By Type)</div>
+<table class="goods"><thead><tr><th>#</th><th>Type</th><th class="r">HS Code</th><th class="r">Tariff Rate</th><th class="r">VAT Rate</th><th class="r">Total Amount</th><th class="r">Total Weight</th><th class="r">Total Value (${cur})</th></tr></thead>
+<tbody>${rows.join('')}</tbody><tfoot><tr><td colspan="5" style="text-align:right">TOTALS</td><td class="r">${totAmt}</td><td class="r">${fmtWeightKg(totWkg)}</td><td class="r" style="color:#c00">${Math.floor(totVal)}</td></tr></tfoot></table>`;
+      } else {
+        state.products.filter(hasCustomsInfo).forEach(p => {
+          const c = calcProduct(p);
+          const pOrig = (p.originCountry&&p.originCountry.trim())?p.originCountry.trim().toUpperCase():(countryToCode(a.countryOfOrigin)||'');
+          if (format==='detailed' && hasVariants(p)) {
+            p.variants.forEach(v => {
+              const i=rowNum++; const varWg=v.weightG!=null?v.weightG:p.weightG; const varPrice=v.price!=null?v.price:p.price;
+              const varAmt=v.amount||0; const varTWkg=Math.round(varAmt*(varWg||0))/1000; const varTV=varPrice!=null?Math.round(varPrice*varAmt):null;
+              totAmt+=varAmt; totWkg+=varTWkg; if(varTV!=null)totVal+=varTV;
+              rows.push(`<tr><td class="c">${i+1}</td><td>${esc(p.title||'')} - ${esc(v.name||'')}</td><td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td><td class="r">${varAmt}</td><td class="r">${varWg!=null?varWg+' g':''}</td><td class="r">${fmtWeightKg(varTWkg)}</td><td class="r">${p.priceNote||(varPrice!=null?formatNum(floorN(varPrice,2),2):'—')}</td><td class="r">${varTV!=null?varTV:'—'}</td><td class="r">${esc(p.tariffNo||'')}</td><td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td><td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td><td class="c">${esc(pOrig)}</td></tr>`);
+            });
+          } else {
+            const i=rowNum++; totAmt+=(c.amount||0); totWkg+=c.totalWeightKg; if(c.totalValue!=null)totVal+=c.totalValue;
+            const td=hasVariants(p)?`${esc(p.title||'')} (${p.variants.length} variants)`:esc(p.title||'');
+            rows.push(`<tr><td class="c">${i+1}</td><td>${td}</td><td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td><td class="r">${c.amount??''}</td><td class="r">${c.effectiveUnitWeightG!=null?Math.round(c.effectiveUnitWeightG)+' g':''}</td><td class="r">${fmtWeightKg(c.totalWeightKg)}</td><td class="r">${p.priceNote||(c.effectiveUnitPrice!=null?formatNum(floorN(c.effectiveUnitPrice,2),2):'—')}</td><td class="r">${c.totalValue!=null?c.totalValue:'—'}</td><td class="r">${esc(p.tariffNo||'')}</td><td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td><td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td><td class="c">${esc(pOrig)}</td></tr>`);
+          }
+        });
+        const fl = format==='detailed'?' (Detailed)':' (Compressed)';
+        tableHtml = `<div class="section-title">List of goods${fl}</div>
+<table class="goods"><thead><tr><th>#</th><th>Title</th><th>For Sale / Not For Sale</th><th>Type</th><th class="r">Amount</th><th class="r">Unit Weight</th><th class="r">Total Weight</th><th class="r">Unit Price (${cur})</th><th class="r">Total Value (${cur})</th><th class="r">Tariff no.</th><th class="r">Tariff Rate</th><th class="r">VAT Rate</th><th class="c">Origin</th></tr></thead>
+<tbody>${rows.join('')}</tbody><tfoot><tr><td colspan="4" style="text-align:right">TOTALS</td><td class="r">${totAmt}</td><td></td><td class="r">${fmtWeightKg(totWkg)}</td><td></td><td class="r" style="color:#c00">${Math.floor(totVal)}</td><td colspan="4"></td></tr></tfoot></table>`;
+      }
+
+    // ── SOLD ──
+    } else if (docNum === 2) {
+      let totSQ=0,totSV=0,totSWkg=0,rowNum=0;
+      let rows=[];
+      if (format==='bytype') {
+        const groups={};
+        state.products.forEach(p=>{
+          if(!hasCustomsInfo(p))return; const c=calcProduct(p); if(!(c.soldQty>0))return;
+          const key=`${p.type||'Other'}\x00${p.tariffNo||''}`;
+          if(!groups[key])groups[key]={type:p.type||'Other',tariffNo:p.tariffNo||'',tariffRate:p.tariffRate,vatRate:p.vatRate,soldQty:0,soldVal:0,soldWkg:0};
+          const g=groups[key];
+          g.soldQty+=(c.soldQty||0); g.soldVal+=floorN(c.soldValue||0,2); g.soldWkg+=c.soldWeightKg;
+          totSQ+=(c.soldQty||0); totSV+=floorN(c.soldValue||0,2); totSWkg+=c.soldWeightKg;
+        });
+        Object.values(groups).forEach((g,i)=>{
+          rows.push(`<tr><td class="c">${i+1}</td><td><strong>${esc(g.type)}</strong></td><td class="r">${esc(g.tariffNo)}</td><td class="r">${g.tariffRate!=null?g.tariffRate+'%':''}</td><td class="r">${g.vatRate!=null?g.vatRate+'%':''}</td><td class="r">${g.soldQty}</td><td class="r">${formatNum(floorN(g.soldVal,2),2)}</td><td class="r">${fmtWeightKg(g.soldWkg)}</td></tr>`);
+        });
+        tableHtml=`<div class="section-title">List of goods sold (By Type)</div>
+<table class="goods"><thead><tr><th>#</th><th>Type</th><th class="r">HS Code</th><th class="r">Tariff Rate</th><th class="r">VAT Rate</th><th class="r">Qty Sold</th><th class="r">Value Sold (${cur})</th><th class="r">Sold Weight</th></tr></thead>
+<tbody>${rows.join('')||'<tr><td colspan="8" style="text-align:center;color:#888;padding:8px">No sold quantities entered</td></tr>'}</tbody>
+<tfoot><tr><td colspan="5" style="text-align:right">TOTALS</td><td class="r">${totSQ}</td><td class="r">${formatNum(floorN(totSV,2),2)}</td><td class="r">${fmtWeightKg(totSWkg)}</td></tr></tfoot></table>`;
+      } else {
+        state.products.forEach(p=>{
+          if(!hasCustomsInfo(p))return; const c=calcProduct(p);
+          if(format==='detailed'&&hasVariants(p)){
+            p.variants.forEach(v=>{
+              if(!(v.soldQty>0))return; rowNum++;
+              const varWg=v.weightG!=null?v.weightG:p.weightG; const rowSV=floorN(v.soldValue||0,2);
+              const varSWkg=(v.soldQty||0)*(varWg||0)/1000;
+              totSQ+=(v.soldQty||0); totSV+=rowSV; totSWkg+=varSWkg;
+              rows.push(`<tr><td class="c">${rowNum}</td><td>${esc(p.title||'')} - ${esc(v.name||'')}</td><td>${esc(p.type||'')}</td><td class="r">${esc(p.tariffNo||'')}</td><td class="r">${v.soldQty||0}</td><td class="r">${formatNum(rowSV,2)}</td><td class="r">${fmtWeightKg(varSWkg)}</td></tr>`);
+            });
+          } else if(c.soldQty>0){
+            rowNum++; const rowSV=floorN(c.soldValue||0,2);
+            totSQ+=(c.soldQty||0); totSV+=rowSV; totSWkg+=c.soldWeightKg;
+            const td=hasVariants(p)?`${esc(p.title||'')} (${p.variants.length} variants)`:esc(p.title||'');
+            rows.push(`<tr><td class="c">${rowNum}</td><td>${td}</td><td>${esc(p.type||'')}</td><td class="r">${esc(p.tariffNo||'')}</td><td class="r">${c.soldQty||0}</td><td class="r">${formatNum(rowSV,2)}</td><td class="r">${fmtWeightKg(c.soldWeightKg)}</td></tr>`);
+          }
+        });
+        const fl=format==='detailed'?' (Detailed)':' (Compressed)';
+        tableHtml=`<div class="section-title">List of goods sold${fl}</div>
+<table class="goods"><thead><tr><th>#</th><th>Title</th><th>Type</th><th class="r">Tariff no.</th><th class="r">Qty Sold</th><th class="r">Value Sold (${cur})</th><th class="r">Sold Weight</th></tr></thead>
+<tbody>${rows.join('')||'<tr><td colspan="7" style="text-align:center;color:#888;padding:8px">No sold quantities entered</td></tr>'}</tbody>
+<tfoot><tr><td colspan="4" style="text-align:right">TOTALS</td><td class="r">${totSQ}</td><td class="r">${formatNum(floorN(totSV,2),2)}</td><td class="r">${fmtWeightKg(totSWkg)}</td></tr></tfoot></table>`;
+      }
+
+    // ── RETURN ──
+    } else {
+      let totRQ=0,totRWkg=0,totRVal=0,rowNum=0;
+      let rows=[];
+      if(format==='bytype'){
+        const groups={};
+        state.products.forEach(p=>{
+          if(!hasCustomsInfo(p))return; const c=calcProduct(p);
+          const retQty=(c.amount||0)-(c.soldQty||0); if(retQty<=0)return;
+          const key=`${p.type||'Other'}\x00${p.tariffNo||''}`;
+          if(!groups[key])groups[key]={type:p.type||'Other',tariffNo:p.tariffNo||'',tariffRate:p.tariffRate,vatRate:p.vatRate,retQty:0,retWkg:0,retVal:0,hasVal:false};
+          const g=groups[key];
+          const retWkg=Math.round(retQty*(c.effectiveUnitWeightG||0))/1000;
+          const retVal=c.effectiveUnitPrice!=null?Math.round(c.effectiveUnitPrice*retQty):null;
+          g.retQty+=retQty; g.retWkg+=retWkg;
+          if(retVal!=null){g.retVal+=retVal; g.hasVal=true;}
+          totRQ+=retQty; totRWkg+=retWkg; if(retVal!=null)totRVal+=retVal;
+        });
+        Object.values(groups).forEach((g,i)=>{
+          rows.push(`<tr><td class="c">${i+1}</td><td><strong>${esc(g.type)}</strong></td><td class="r">${esc(g.tariffNo)}</td><td class="r">${g.tariffRate!=null?g.tariffRate+'%':''}</td><td class="r">${g.vatRate!=null?g.vatRate+'%':''}</td><td class="r"><strong>${g.retQty}</strong></td><td class="r">${fmtWeightKg(g.retWkg)}</td><td class="r">${g.hasVal?g.retVal:'—'}</td></tr>`);
+        });
+        tableHtml=`<div class="section-title">Return goods list (re-export) (By Type)</div>
+<table class="goods"><thead><tr><th>#</th><th>Type</th><th class="r">HS Code</th><th class="r">Tariff Rate</th><th class="r">VAT Rate</th><th class="r">Return Qty</th><th class="r">Return Weight</th><th class="r">Return Value (${cur})</th></tr></thead>
+<tbody>${rows.join('')||'<tr><td colspan="8" style="text-align:center;color:#888;padding:8px">All items sold - no return goods</td></tr>'}</tbody>
+<tfoot><tr><td colspan="5" style="text-align:right">TOTALS</td><td class="r"><strong>${totRQ}</strong></td><td class="r">${fmtWeightKg(totRWkg)}</td><td class="r" style="color:#c00">${Math.floor(totRVal)}</td></tr></tfoot></table>`;
+      } else {
+        state.products.forEach(p=>{
+          if(!hasCustomsInfo(p))return; const c=calcProduct(p);
+          const pOrig=(p.originCountry&&p.originCountry.trim())?p.originCountry.trim().toUpperCase():(countryToCode(a.countryOfOrigin)||'');
+          if(format==='detailed'&&hasVariants(p)){
+            p.variants.forEach(v=>{
+              const varRetQty=(v.amount||0)-(v.soldQty||0); if(varRetQty<=0)return; rowNum++;
+              const varWg=v.weightG!=null?v.weightG:p.weightG; const varPrice=v.price!=null?v.price:p.price;
+              const varRWkg=Math.round(varRetQty*(varWg||0))/1000; const varRVal=varPrice!=null?Math.round(varPrice*varRetQty):null;
+              totRQ+=varRetQty; totRWkg+=varRWkg; if(varRVal!=null)totRVal+=varRVal;
+              rows.push(`<tr><td class="c">${rowNum}</td><td>${esc(p.title||'')} - ${esc(v.name||'')}</td><td>${esc(p.type||'')}</td><td class="r">${v.amount||0}</td><td class="r">${v.soldQty||0}</td><td class="r"><strong>${varRetQty}</strong></td><td class="r">${varWg!=null?varWg+' g':''}</td><td class="r">${fmtWeightKg(varRWkg)}</td><td class="r">${p.priceNote||(varPrice!=null?formatNum(floorN(varPrice,2),2):'—')}</td><td class="r">${varRVal!=null?varRVal:'—'}</td><td class="r">${esc(p.tariffNo||'')}</td><td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td><td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td><td class="c">${esc(pOrig)}</td></tr>`);
+            });
+          } else {
+            const retQty=(c.amount||0)-(c.soldQty||0); if(retQty<=0)return; rowNum++;
+            const retWkg=Math.round(retQty*(c.effectiveUnitWeightG||0))/1000;
+            const retVal=c.effectiveUnitPrice!=null?Math.round(c.effectiveUnitPrice*retQty):null;
+            totRQ+=retQty; totRWkg+=retWkg; if(retVal!=null)totRVal+=retVal;
+            const td=hasVariants(p)?`${esc(p.title||'')} (${p.variants.length} variants)`:esc(p.title||'');
+            rows.push(`<tr><td class="c">${rowNum}</td><td>${td}</td><td>${esc(p.type||'')}</td><td class="r">${c.amount??''}</td><td class="r">${c.soldQty||0}</td><td class="r"><strong>${retQty}</strong></td><td class="r">${c.effectiveUnitWeightG!=null?Math.round(c.effectiveUnitWeightG)+' g':''}</td><td class="r">${fmtWeightKg(retWkg)}</td><td class="r">${p.priceNote||(c.effectiveUnitPrice!=null?formatNum(floorN(c.effectiveUnitPrice,2),2):'—')}</td><td class="r">${retVal!=null?retVal:'—'}</td><td class="r">${esc(p.tariffNo||'')}</td><td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td><td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td><td class="c">${esc(pOrig)}</td></tr>`);
+          }
+        });
+        const fl=format==='detailed'?' (Detailed)':' (Compressed)';
+        tableHtml=`<div class="section-title">Return goods list (re-export)${fl}</div>
+<table class="goods"><thead><tr><th>#</th><th>Title</th><th>Type</th><th class="r">Original Qty</th><th class="r">Sold Qty</th><th class="r">Return Qty</th><th class="r">Unit Weight</th><th class="r">Return Weight</th><th class="r">Unit Price (${cur})</th><th class="r">Return Value (${cur})</th><th class="r">Tariff no.</th><th class="r">Tariff Rate</th><th class="r">VAT Rate</th><th class="c">Origin</th></tr></thead>
+<tbody>${rows.join('')||'<tr><td colspan="14" style="text-align:center;color:#888;padding:8px">All items sold - no return goods</td></tr>'}</tbody>
+<tfoot><tr><td colspan="5" style="text-align:right">TOTALS</td><td class="r"><strong>${totRQ}</strong></td><td></td><td class="r">${fmtWeightKg(totRWkg)}</td><td></td><td class="r" style="color:#c00">${Math.floor(totRVal)}</td><td colspan="4"></td></tr></tfoot></table>`;
+      }
+    }
+    return tableHtml;
+  }
+
+  // ── Build the combined CSS ──
+  const CSS = `
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: 8pt; color: #000; padding: 12mm; }
+  .doc-section { page-break-after: always; padding-bottom: 8mm; }
+  .doc-section:last-child { page-break-after: auto; }
+  .page-label { font-size: 9pt; font-weight: bold; color: #555; text-transform: uppercase;
+                letter-spacing: 0.05em; border-bottom: 2px solid #888; padding-bottom: 3px;
+                margin-bottom: 5mm; }
+  .doc-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 6mm; }
+  .doc-top-left .doc-title { font-size: 10pt; font-weight: bold; text-transform: uppercase; }
+  .doc-top-left .doc-subtitle { font-size: 8pt; color: #444; margin-top: 2px; }
+  .doc-top-right { text-align: right; }
+  .doc-top-right .event-name { font-size: 11pt; font-weight: bold; }
+  .doc-top-right .lrp { font-size: 8pt; margin-top: 3px; }
+  .info-table { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+  .info-table td { padding: 2px 6px; font-size: 8pt; border: 1px solid #ccc; }
+  .info-table td.lbl { font-weight: bold; background: #f4f4f4; width: 130px; font-size: 7.5pt; }
+  .section-title { font-weight: bold; font-size: 9pt; margin: 4mm 0 2mm 0; border-bottom: 1.5px solid #000; padding-bottom: 1mm; }
+  table.goods { width: 100%; border-collapse: collapse; font-size: 7pt; }
+  table.goods th { background: #e8e8e8; border: 1px solid #aaa; padding: 3px 4px; text-align: left; font-size: 6.5pt; font-weight: bold; white-space: nowrap; }
+  table.goods td { border: 1px solid #ccc; padding: 2px 4px; vertical-align: middle; }
+  table.goods tr:nth-child(even) td { background: #fafafa; }
+  table.goods tfoot td { background: #e8e8e8; font-weight: bold; border: 1px solid #aaa; padding: 3px 4px; }
+  .r { text-align: right; } .c { text-align: center; }
+  .signature-section { margin-top: 8mm; }
+  .signature-box { border: 1px solid #000; width: 80mm; height: 22mm; margin-top: 2mm; }
+  @media print { body { padding: 0; } @page { size: A4 landscape; margin: 12mm; } }`;
+
+  // ── Build each section ──
+  const importerInfo = `<table class="info-table">
+  <tr><td class="lbl">Artist / Company Name</td><td>${esc(a.companyName || '')}</td>
+      <td class="lbl">Name &amp; Surname</td><td>${esc(a.fullName || '')}</td></tr>
+  <tr><td class="lbl">Street &amp; House Number</td><td>${esc(a.street || '')}</td>
+      <td class="lbl">Postcode &amp; City</td><td>${esc(a.postCodeCity || '')}</td></tr>
+  <tr><td class="lbl">Country of Origin</td><td>${esc(a.countryOfOrigin || '')}</td>
+      <td class="lbl">Phone / Mobile</td><td>${esc(a.phone || '')}</td></tr>
+  <tr><td class="lbl">Email</td><td colspan="3">${esc(a.email || '')}</td></tr>
+</table>`;
+
+  function docHeader(docNum) {
+    const lrp = computeLRP(docNum);
+    const docTitles = {
+      1: 'Auxiliary Document for the Customs Declaration - Import',
+      2: 'Auxiliary Document for the Customs Declaration - Sold Goods',
+      3: 'Return Goods List - Re-export Declaration',
+    };
+    return `<div class="doc-top">
+  <div class="doc-top-left">
+    <div class="doc-title">${esc(docTitles[docNum])}</div>
+    <div class="doc-subtitle">${esc(fmtEventDates(m.eventDateStart, m.eventDateEnd))}${m.eventLocation ? ', ' + esc(m.eventLocation) : ''}</div>
+  </div>
+  <div class="doc-top-right">
+    <div class="event-name">${esc(m.event || '')}</div>
+    <div class="lrp">LRP: ${esc(lrp || '—')}</div>
+  </div>
+</div>${importerInfo}`;
+  }
+
+  const formats = ['detailed', 'compressed', 'bytype'];
+  const formatLabels = { detailed: 'Detailed', compressed: 'Compressed', bytype: 'By Type' };
+  const docNums = onlyDocNum ? [onlyDocNum] : [1, 2, 3];
+  const docShortNames = { 1: 'Import', 2: 'Sold', 3: 'Return' };
+
+  let sections = [];
+  docNums.forEach(docNum => {
+    formats.forEach(fmt => {
+      const label = `${docShortNames[docNum]} - ${formatLabels[fmt]}`;
+      sections.push(`<div class="doc-section">
+  <div class="page-label">${esc(label)}</div>
+  ${docHeader(docNum)}
+  ${buildGoodsTable(docNum, fmt)}
+  <div class="signature-section"><strong>Date and Signature</strong><div class="signature-box"></div></div>
+</div>`);
+    });
+  });
+
+  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
+<title>All Documents - ${esc(m.event || 'ZollTool')}</title>
+<style>${CSS}</style></head><body>
+${sections.join('\n')}
+</body></html>`;
+
+  const win = window.open('', '_blank', 'width=1200,height=900');
+  if (!win) { showToast('Pop-up blocked - allow pop-ups and try again.', 'error'); return; }
+  win.document.write(html);
+  win.document.close();
+}
+
+function printGoodsList(docNum, format = 'detailed') {
   const m   = state.meta;
   const a   = state.artist;
   const lrp = computeLRP(docNum);
@@ -1561,33 +2389,106 @@ function printGoodsList(docNum) {
 
   let tableHtml = '';
 
-  const hasCustomsInfo = p => !!(p.tariffNo && p.tariffNo.trim()) || (p.vatRate != null && p.vatRate !== '');
+  const hasCustomsInfo = p => !p.unlisted && (!!(p.tariffNo && p.tariffNo.trim()) || (p.vatRate != null && p.vatRate !== ''));
 
   if (docNum === 1) {
     // ── IMPORT: no sold columns ──
     let totAmt = 0, totWkg = 0, totVal = 0;
     let rowNum = 0;
-    const rows = state.products.filter(hasCustomsInfo).map(p => {
-      const i = rowNum++;
-      const c = calcProduct(p);
-      const pd = p.priceNote || (c.effectiveUnitPrice != null ? formatNum(floorN(c.effectiveUnitPrice, 2), 2) : '—');
-      const tv = c.totalValue != null ? c.totalValue : '—';
-      const pOrig = (p.originCountry && p.originCountry.trim()) ? p.originCountry.trim().toUpperCase() : (countryToCode(a.countryOfOrigin) || '');
-      totAmt += (p.amount || 0); totWkg += c.totalWeightKg;
-      if (c.totalValue != null) totVal += c.totalValue;
-      return `<tr><td class="c">${i+1}</td><td>${esc(p.title||'')}</td>
-        <td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td>
-        <td class="r">${p.amount??''}</td><td class="r">${p.weightG!=null?p.weightG+' g':''}</td>
-        <td class="r">${fmtWeightKg(c.totalWeightKg)}</td><td class="r">${esc(pd)}</td>
-        <td class="r">${tv}</td><td class="r">${esc(p.tariffNo||'')}</td>
-        <td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td>
-        <td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td>
-        <td class="c">${esc(pOrig)}</td></tr>`;
-    }).join('');
-    tableHtml = `<div class="section-title">List of goods</div>
+
+    let detailedRows = [];
+
+    if (format === 'bytype') {
+      // By-type: group by type + tariff code (different HS codes are never combined)
+      const groups = {};
+      state.products.filter(hasCustomsInfo).forEach(p => {
+        const c = calcProduct(p);
+        const key = `${p.type || 'Other'}\x00${p.tariffNo || ''}`;
+        if (!groups[key]) groups[key] = {
+          type: p.type || 'Other', tariffNo: p.tariffNo || '',
+          tariffRate: p.tariffRate, vatRate: p.vatRate,
+          amount: 0, wkg: 0, val: 0, hasVal: false,
+        };
+        const g = groups[key];
+        g.amount += (c.amount || 0); g.wkg += c.totalWeightKg;
+        if (c.totalValue != null) { g.val += c.totalValue; g.hasVal = true; }
+        totAmt += (c.amount || 0); totWkg += c.totalWeightKg;
+        if (c.totalValue != null) totVal += c.totalValue;
+      });
+      Object.values(groups).forEach((g, i) => {
+        detailedRows.push(`<tr>
+          <td class="c">${i+1}</td><td><strong>${esc(g.type)}</strong></td>
+          <td class="r">${esc(g.tariffNo)}</td>
+          <td class="r">${g.tariffRate != null ? g.tariffRate + '%' : ''}</td>
+          <td class="r">${g.vatRate != null ? g.vatRate + '%' : ''}</td>
+          <td class="r">${g.amount}</td>
+          <td class="r">${fmtWeightKg(g.wkg)}</td>
+          <td class="r">${g.hasVal ? g.val : '—'}</td></tr>`);
+      });
+      const rows = detailedRows.join('');
+      tableHtml = `<div class="section-title">List of goods (By Type)</div>
+<table class="goods"><thead><tr>
+  <th>#</th><th>Type</th><th class="r">HS Code</th>
+  <th class="r">Tariff Rate</th><th class="r">VAT Rate</th>
+  <th class="r">Total Amount</th><th class="r">Total Weight</th>
+  <th class="r">Total Value (${getCurrency()})</th>
+</tr></thead><tbody>${rows}</tbody><tfoot><tr>
+  <td colspan="5" style="text-align:right">TOTALS</td>
+  <td class="r">${totAmt}</td><td class="r">${fmtWeightKg(totWkg)}</td>
+  <td class="r" style="color:#c00">${Math.floor(totVal)}</td>
+</tr></tfoot></table>`;
+    } else {
+      state.products.filter(hasCustomsInfo).forEach(p => {
+        const c = calcProduct(p);
+        const pOrig = (p.originCountry && p.originCountry.trim()) ? p.originCountry.trim().toUpperCase() : (countryToCode(a.countryOfOrigin) || '');
+
+        if (format === 'detailed' && hasVariants(p)) {
+          // Detailed: each variant gets its own row
+          p.variants.forEach(v => {
+            const i = rowNum++;
+            const varWg = v.weightG != null ? v.weightG : p.weightG;
+            const varPrice = v.price != null ? v.price : p.price;
+            const varAmt = v.amount || 0;
+            const varTotalWkg = Math.round(varAmt * (varWg || 0)) / 1000;
+            const varTotalVal = varPrice != null ? Math.round(varPrice * varAmt) : null;
+            const pd = p.priceNote || (varPrice != null ? formatNum(floorN(varPrice, 2), 2) : '—');
+            const tv = varTotalVal != null ? varTotalVal : '—';
+            totAmt += varAmt; totWkg += varTotalWkg;
+            if (varTotalVal != null) totVal += varTotalVal;
+            detailedRows.push(`<tr><td class="c">${i+1}</td><td>${esc(p.title||'')} - ${esc(v.name||'')}</td>
+              <td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td>
+              <td class="r">${varAmt}</td><td class="r">${varWg!=null?varWg+' g':''}</td>
+              <td class="r">${fmtWeightKg(varTotalWkg)}</td><td class="r">${esc(pd)}</td>
+              <td class="r">${tv}</td><td class="r">${esc(p.tariffNo||'')}</td>
+              <td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td>
+              <td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td>
+              <td class="c">${esc(pOrig)}</td></tr>`);
+          });
+        } else {
+          // Compressed or non-variant: one row per product
+          const i = rowNum++;
+          const pd = p.priceNote || (c.effectiveUnitPrice != null ? formatNum(floorN(c.effectiveUnitPrice, 2), 2) : '—');
+          const tv = c.totalValue != null ? c.totalValue : '—';
+          totAmt += (c.amount || 0); totWkg += c.totalWeightKg;
+          if (c.totalValue != null) totVal += c.totalValue;
+          const titleDisplay = hasVariants(p) ? `${esc(p.title||'')} (${p.variants.length} variants)` : esc(p.title||'');
+          detailedRows.push(`<tr><td class="c">${i+1}</td><td>${titleDisplay}</td>
+            <td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td>
+            <td class="r">${c.amount??''}</td><td class="r">${c.effectiveUnitWeightG!=null?Math.round(c.effectiveUnitWeightG)+' g':''}</td>
+            <td class="r">${fmtWeightKg(c.totalWeightKg)}</td><td class="r">${esc(pd)}</td>
+            <td class="r">${tv}</td><td class="r">${esc(p.tariffNo||'')}</td>
+            <td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td>
+            <td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td>
+            <td class="c">${esc(pOrig)}</td></tr>`);
+        }
+      });
+
+      const rows = detailedRows.join('');
+      const formatLabel = format === 'detailed' ? ' (Detailed)' : ' (Compressed)';
+      tableHtml = `<div class="section-title">List of goods${formatLabel}</div>
 <table class="goods"><thead><tr>
   <th>#</th><th>Title</th><th>For Sale / Not For Sale</th><th>Type</th>
-  <th class="r">Amount</th><th class="r">Variant Weight</th><th class="r">Total Weight</th>
+  <th class="r">Amount</th><th class="r">Unit Weight</th><th class="r">Total Weight</th>
   <th class="r">Unit Price (${getCurrency()})</th><th class="r">Total Value (${getCurrency()})</th>
   <th class="r">Tariff no.</th><th class="r">Tariff Rate</th><th class="r">VAT Rate</th><th class="c">Origin</th>
 </tr></thead><tbody>${rows}</tbody><tfoot><tr>
@@ -1595,27 +2496,98 @@ function printGoodsList(docNum) {
   <td class="r">${totAmt}</td><td></td><td class="r">${fmtWeightKg(totWkg)}</td><td></td>
   <td class="r" style="color:#c00">${Math.floor(totVal)}</td><td colspan="4"></td>
 </tr></tfoot></table>`;
+    }
 
   } else if (docNum === 2) {
     // ── SOLD: only sold goods ──
     let totSQ=0,totSV=0,totSWkg=0;
     let rowNum = 0;
-    const rows = state.products.map(p => {
-      if (!(p.soldQty > 0)) return '';
-      if (!hasCustomsInfo(p)) return '';
-      rowNum++;
-      const c = calcProduct(p);
-      const rowSV  = floorN(p.soldValue || 0, 2);
-      totSQ+=(p.soldQty||0); totSV+=rowSV;
-      totSWkg+=c.soldWeightKg;
-      return `<tr><td class="c">${rowNum}</td><td>${esc(p.title||'')}</td><td>${esc(p.type||'')}</td>
-        <td class="r">${esc(p.tariffNo||'')}</td>
-        <td class="r">${p.soldQty||0}</td>
-        <td class="r">${formatNum(rowSV,2)}</td>
-        <td class="r">${fmtWeightKg(c.soldWeightKg)}</td></tr>`;
-    }).filter(r => r).join('');
-    const emptyRow = rows ? '' : `<tr><td colspan="7" style="text-align:center;color:#888;padding:8px">No sold quantities entered</td></tr>`;
-    tableHtml = `<div class="section-title">List of goods sold</div>
+
+    let detailedRows = [];
+
+    if (format === 'bytype') {
+      // By-type: group by type + tariff code (different HS codes are never combined)
+      const groups = {};
+      state.products.forEach(p => {
+        if (!hasCustomsInfo(p)) return;
+        const c = calcProduct(p);
+        if (!(c.soldQty > 0)) return;
+        const key = `${p.type || 'Other'}\x00${p.tariffNo || ''}`;
+        if (!groups[key]) groups[key] = {
+          type: p.type || 'Other', tariffNo: p.tariffNo || '',
+          tariffRate: p.tariffRate, vatRate: p.vatRate,
+          soldQty: 0, soldVal: 0, soldWkg: 0,
+        };
+        const g = groups[key];
+        g.soldQty += (c.soldQty || 0);
+        g.soldVal += floorN(c.soldValue || 0, 2);
+        g.soldWkg += c.soldWeightKg;
+        totSQ += (c.soldQty || 0); totSV += floorN(c.soldValue || 0, 2); totSWkg += c.soldWeightKg;
+      });
+      Object.values(groups).forEach((g, i) => {
+        detailedRows.push(`<tr>
+          <td class="c">${i+1}</td><td><strong>${esc(g.type)}</strong></td>
+          <td class="r">${esc(g.tariffNo)}</td>
+          <td class="r">${g.tariffRate != null ? g.tariffRate + '%' : ''}</td>
+          <td class="r">${g.vatRate != null ? g.vatRate + '%' : ''}</td>
+          <td class="r">${g.soldQty}</td>
+          <td class="r">${formatNum(floorN(g.soldVal,2),2)}</td>
+          <td class="r">${fmtWeightKg(g.soldWkg)}</td></tr>`);
+      });
+      const rows = detailedRows.join('');
+      const emptyRow = rows ? '' : `<tr><td colspan="8" style="text-align:center;color:#888;padding:8px">No sold quantities entered</td></tr>`;
+      tableHtml = `<div class="section-title">List of goods sold (By Type)</div>
+<table class="goods"><thead><tr>
+  <th>#</th><th>Type</th><th class="r">HS Code</th>
+  <th class="r">Tariff Rate</th><th class="r">VAT Rate</th>
+  <th class="r">Qty Sold</th><th class="r">Value Sold (${getCurrency()})</th>
+  <th class="r">Sold Weight</th>
+</tr></thead><tbody>${rows}${emptyRow}</tbody><tfoot><tr>
+  <td colspan="5" style="text-align:right">TOTALS</td>
+  <td class="r">${totSQ}</td>
+  <td class="r">${formatNum(floorN(totSV,2),2)}</td>
+  <td class="r">${fmtWeightKg(totSWkg)}</td>
+</tr></tfoot></table>`;
+    } else {
+      state.products.forEach(p => {
+        if (!hasCustomsInfo(p)) return;
+        const c = calcProduct(p);
+
+        if (format === 'detailed' && hasVariants(p)) {
+          // Detailed: each variant gets its own row if it has sold qty
+          p.variants.forEach(v => {
+            if (!(v.soldQty > 0)) return;
+            rowNum++;
+            const varWg = v.weightG != null ? v.weightG : p.weightG;
+            const rowSV = floorN(v.soldValue || 0, 2);
+            const varSoldWkg = (v.soldQty || 0) * (varWg || 0) / 1000;
+            totSQ += (v.soldQty || 0); totSV += rowSV; totSWkg += varSoldWkg;
+            detailedRows.push(`<tr><td class="c">${rowNum}</td><td>${esc(p.title||'')} - ${esc(v.name||'')}</td><td>${esc(p.type||'')}</td>
+              <td class="r">${esc(p.tariffNo||'')}</td>
+              <td class="r">${v.soldQty||0}</td>
+              <td class="r">${formatNum(rowSV,2)}</td>
+              <td class="r">${fmtWeightKg(varSoldWkg)}</td></tr>`);
+          });
+        } else if (!(c.soldQty > 0)) {
+          return;
+        } else {
+          // Compressed or non-variant
+          rowNum++;
+          const rowSV = floorN(c.soldValue || 0, 2);
+          totSQ += (c.soldQty || 0); totSV += rowSV; totSWkg += c.soldWeightKg;
+          const titleDisplay = hasVariants(p) ? `${esc(p.title||'')} (${p.variants.length} variants)` : esc(p.title||'');
+          detailedRows.push(`<tr><td class="c">${rowNum}</td><td>${titleDisplay}</td><td>${esc(p.type||'')}</td>
+            <td class="r">${esc(p.tariffNo||'')}</td>
+            <td class="r">${c.soldQty||0}</td>
+            <td class="r">${formatNum(rowSV,2)}</td>
+            <td class="r">${fmtWeightKg(c.soldWeightKg)}</td></tr>`);
+        }
+      });
+
+      const rows = detailedRows.join('');
+      const emptyRow = rows ? '' : `<tr><td colspan="7" style="text-align:center;color:#888;padding:8px">No sold quantities entered</td></tr>`;
+      const formatLabel = format === 'detailed' ? ' (Detailed)' : ' (Compressed)';
+      tableHtml = `<div class="section-title">List of goods sold${formatLabel}</div>
 <table class="goods"><thead><tr>
   <th>#</th><th>Title</th><th>Type</th>
   <th class="r">Tariff no.</th>
@@ -1627,38 +2599,123 @@ function printGoodsList(docNum) {
   <td class="r">${formatNum(floorN(totSV,2),2)}</td>
   <td class="r">${fmtWeightKg(totSWkg)}</td>
 </tr></tfoot></table>`;
+    }
 
   } else {
     // ── EXPORT/RETURN: unsold items going back (original qty − sold qty) ──
     let totRetQty=0, totRetWkg=0, totRetVal=0;
     let rowNum = 0;
-    const rows = state.products.map(p => {
-      const retQty = (p.amount||0) - (p.soldQty||0);
-      if (retQty <= 0) return '';
-      if (!hasCustomsInfo(p)) return '';
-      rowNum++;
-      const c = calcProduct(p);
-      const retWkg = Math.round(retQty * (p.weightG||0)) / 1000;
-      const retVal = c.effectiveUnitPrice != null ? Math.round(c.effectiveUnitPrice * retQty) : null;
-      totRetQty += retQty; totRetWkg += retWkg;
-      if (retVal != null) totRetVal += retVal;
-      const pd = p.priceNote || (c.effectiveUnitPrice != null ? formatNum(floorN(c.effectiveUnitPrice, 2), 2) : '—');
-      const retValStr = retVal != null ? retVal : '—';
-      const pOrig = (p.originCountry && p.originCountry.trim()) ? p.originCountry.trim().toUpperCase() : (countryToCode(a.countryOfOrigin) || '');
-      return `<tr><td class="c">${rowNum}</td><td>${esc(p.title||'')}</td><td>${esc(p.type||'')}</td>
-        <td class="r">${p.amount??''}</td><td class="r">${p.soldQty||0}</td>
-        <td class="r"><strong>${retQty}</strong></td>
-        <td class="r">${p.weightG!=null?p.weightG+' g':''}</td>
-        <td class="r">${fmtWeightKg(retWkg)}</td>
-        <td class="r">${esc(pd)}</td>
-        <td class="r">${retValStr}</td>
-        <td class="r">${esc(p.tariffNo||'')}</td>
-        <td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td>
-        <td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td>
-        <td class="c">${esc(pOrig)}</td></tr>`;
-    }).filter(r => r).join('');
-    const emptyRow = rows ? '' : `<tr><td colspan="14" style="text-align:center;color:#888;padding:8px">All items sold - no return goods</td></tr>`;
-    tableHtml = `<div class="section-title">Return goods list (re-export)</div>
+
+    let detailedRows = [];
+
+    if (format === 'bytype') {
+      // By-type: group by type + tariff code (different HS codes are never combined)
+      const groups = {};
+      state.products.forEach(p => {
+        if (!hasCustomsInfo(p)) return;
+        const c = calcProduct(p);
+        const retQty = (c.amount||0) - (c.soldQty||0);
+        if (retQty <= 0) return;
+        const key = `${p.type || 'Other'}\x00${p.tariffNo || ''}`;
+        if (!groups[key]) groups[key] = {
+          type: p.type || 'Other', tariffNo: p.tariffNo || '',
+          tariffRate: p.tariffRate, vatRate: p.vatRate,
+          retQty: 0, retWkg: 0, retVal: 0, hasVal: false,
+        };
+        const g = groups[key];
+        const retWkg = Math.round(retQty * (c.effectiveUnitWeightG||0)) / 1000;
+        const retVal = c.effectiveUnitPrice != null ? Math.round(c.effectiveUnitPrice * retQty) : null;
+        g.retQty += retQty; g.retWkg += retWkg;
+        if (retVal != null) { g.retVal += retVal; g.hasVal = true; }
+        totRetQty += retQty; totRetWkg += retWkg;
+        if (retVal != null) totRetVal += retVal;
+      });
+      Object.values(groups).forEach((g, i) => {
+        detailedRows.push(`<tr>
+          <td class="c">${i+1}</td><td><strong>${esc(g.type)}</strong></td>
+          <td class="r">${esc(g.tariffNo)}</td>
+          <td class="r">${g.tariffRate != null ? g.tariffRate + '%' : ''}</td>
+          <td class="r">${g.vatRate != null ? g.vatRate + '%' : ''}</td>
+          <td class="r"><strong>${g.retQty}</strong></td>
+          <td class="r">${fmtWeightKg(g.retWkg)}</td>
+          <td class="r">${g.hasVal ? g.retVal : '—'}</td></tr>`);
+      });
+      const rows = detailedRows.join('');
+      const emptyRow = rows ? '' : `<tr><td colspan="8" style="text-align:center;color:#888;padding:8px">All items sold - no return goods</td></tr>`;
+      tableHtml = `<div class="section-title">Return goods list (re-export) (By Type)</div>
+<table class="goods"><thead><tr>
+  <th>#</th><th>Type</th><th class="r">HS Code</th>
+  <th class="r">Tariff Rate</th><th class="r">VAT Rate</th>
+  <th class="r">Return Qty</th><th class="r">Return Weight</th>
+  <th class="r">Return Value (${getCurrency()})</th>
+</tr></thead><tbody>${rows}${emptyRow}</tbody><tfoot><tr>
+  <td colspan="5" style="text-align:right">TOTALS</td>
+  <td class="r"><strong>${totRetQty}</strong></td>
+  <td class="r">${fmtWeightKg(totRetWkg)}</td>
+  <td class="r" style="color:#c00">${Math.floor(totRetVal)}</td>
+</tr></tfoot></table>`;
+    } else {
+      state.products.forEach(p => {
+        if (!hasCustomsInfo(p)) return;
+        const c = calcProduct(p);
+        const pOrig = (p.originCountry && p.originCountry.trim()) ? p.originCountry.trim().toUpperCase() : (countryToCode(a.countryOfOrigin) || '');
+
+        if (format === 'detailed' && hasVariants(p)) {
+          // Detailed: each variant gets its own row if there's a return qty
+          p.variants.forEach(v => {
+            const varRetQty = (v.amount || 0) - (v.soldQty || 0);
+            if (varRetQty <= 0) return;
+            rowNum++;
+            const varWg = v.weightG != null ? v.weightG : p.weightG;
+            const varPrice = v.price != null ? v.price : p.price;
+            const varRetWkg = Math.round(varRetQty * (varWg||0)) / 1000;
+            const varRetVal = varPrice != null ? Math.round(varPrice * varRetQty) : null;
+            totRetQty += varRetQty; totRetWkg += varRetWkg;
+            if (varRetVal != null) totRetVal += varRetVal;
+            const pd = p.priceNote || (varPrice != null ? formatNum(floorN(varPrice, 2), 2) : '—');
+            const retValStr = varRetVal != null ? varRetVal : '—';
+            detailedRows.push(`<tr><td class="c">${rowNum}</td><td>${esc(p.title||'')} - ${esc(v.name||'')}</td><td>${esc(p.type||'')}</td>
+              <td class="r">${v.amount||0}</td><td class="r">${v.soldQty||0}</td>
+              <td class="r"><strong>${varRetQty}</strong></td>
+              <td class="r">${varWg!=null?varWg+' g':''}</td>
+              <td class="r">${fmtWeightKg(varRetWkg)}</td>
+              <td class="r">${esc(pd)}</td>
+              <td class="r">${retValStr}</td>
+              <td class="r">${esc(p.tariffNo||'')}</td>
+              <td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td>
+              <td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td>
+              <td class="c">${esc(pOrig)}</td></tr>`);
+          });
+        } else {
+          // Compressed or non-variant
+          const retQty = (c.amount||0) - (c.soldQty||0);
+          if (retQty <= 0) return;
+          rowNum++;
+          const retWkg = Math.round(retQty * (c.effectiveUnitWeightG||0)) / 1000;
+          const retVal = c.effectiveUnitPrice != null ? Math.round(c.effectiveUnitPrice * retQty) : null;
+          totRetQty += retQty; totRetWkg += retWkg;
+          if (retVal != null) totRetVal += retVal;
+          const pd = p.priceNote || (c.effectiveUnitPrice != null ? formatNum(floorN(c.effectiveUnitPrice, 2), 2) : '—');
+          const retValStr = retVal != null ? retVal : '—';
+          const titleDisplay = hasVariants(p) ? `${esc(p.title||'')} (${p.variants.length} variants)` : esc(p.title||'');
+          detailedRows.push(`<tr><td class="c">${rowNum}</td><td>${titleDisplay}</td><td>${esc(p.type||'')}</td>
+            <td class="r">${c.amount??''}</td><td class="r">${c.soldQty||0}</td>
+            <td class="r"><strong>${retQty}</strong></td>
+            <td class="r">${c.effectiveUnitWeightG!=null?Math.round(c.effectiveUnitWeightG)+' g':''}</td>
+            <td class="r">${fmtWeightKg(retWkg)}</td>
+            <td class="r">${esc(pd)}</td>
+            <td class="r">${retValStr}</td>
+            <td class="r">${esc(p.tariffNo||'')}</td>
+            <td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td>
+            <td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td>
+            <td class="c">${esc(pOrig)}</td></tr>`);
+        }
+      });
+
+      const rows = detailedRows.join('');
+      const emptyRow = rows ? '' : `<tr><td colspan="14" style="text-align:center;color:#888;padding:8px">All items sold - no return goods</td></tr>`;
+      const formatLabel = format === 'detailed' ? ' (Detailed)' : ' (Compressed)';
+      tableHtml = `<div class="section-title">Return goods list (re-export)${formatLabel}</div>
 <table class="goods"><thead><tr>
   <th>#</th><th>Title</th><th>Type</th>
   <th class="r">Original Qty</th><th class="r">Sold Qty</th><th class="r">Return Qty</th>
@@ -1671,6 +2728,7 @@ function printGoodsList(docNum) {
   <td class="r">${fmtWeightKg(totRetWkg)}</td><td></td>
   <td class="r" style="color:#c00">${Math.floor(totRetVal)}</td><td colspan="4"></td>
 </tr></tfoot></table>`;
+    }
   }
 
   const html = `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
@@ -1696,7 +2754,7 @@ function printProformaInvoice() {
   const cur = getCurrency();
   const today = new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' });
 
-  const hasCustomsInfo = p => !!(p.tariffNo && p.tariffNo.trim()) || (p.vatRate != null && p.vatRate !== '');
+  const hasCustomsInfo = p => !p.unlisted && (!!(p.tariffNo && p.tariffNo.trim()) || (p.vatRate != null && p.vatRate !== ''));
   const products = state.products.filter(hasCustomsInfo);
 
   const CSS = `
@@ -1734,7 +2792,7 @@ function printProformaInvoice() {
   let totQty = 0, totVal = 0, totWkg = 0;
   const rows = products.map((p, i) => {
     const c = calcProduct(p);
-    const qty = p.amount || 0;
+    const qty = c.amount || 0;
     const unitPrice = c.effectiveUnitPrice != null ? formatNum(floorN(c.effectiveUnitPrice, 2), 2) : (p.priceNote || '—');
     const totalVal  = c.totalValue != null ? c.totalValue : 0;
     const originCc  = (p.originCountry && p.originCountry.trim()) ? p.originCountry.trim().toUpperCase() : (countryToCode(a.countryOfOrigin) || '');
@@ -1746,7 +2804,7 @@ function printProformaInvoice() {
       <td>${esc(p.title || '')}</td>
       <td>${esc(p.tariffNo || '—')}</td>
       <td class="r">${qty}</td>
-      <td class="r">${p.weightG != null ? p.weightG + ' g' : '—'}</td>
+      <td class="r">${c.effectiveUnitWeightG != null ? Math.round(c.effectiveUnitWeightG) + ' g' : '—'}</td>
       <td class="r">${fmtWeightKg(c.totalWeightKg)}</td>
       <td class="r">${esc(String(unitPrice))}</td>
       <td class="r">${c.totalValue != null ? c.totalValue : '—'}</td>
@@ -1858,10 +2916,10 @@ function compute1174Groups() {
     const g = { tariffNo: '—', qty: 0, weightKg: 0, value: 0, retQty: 0, retWeightKg: 0, retValue: 0 };
     products.forEach(p => {
       const c = calcProduct(p);
-      g.qty      += (p.amount || 0);
+      g.qty      += (c.amount || 0);
       g.weightKg += c.totalWeightKg;
       if (c.totalValue != null) g.value += c.totalValue;
-      const retQty = Math.max(0, (p.amount || 0) - (p.soldQty || 0));
+      const retQty = Math.max(0, (c.amount || 0) - (c.soldQty || 0));
       g.retQty      += retQty;
       g.retWeightKg += Math.round(retQty * (p.weightG || 0)) / 1000;
       if (c.effectiveUnitPrice != null) g.retValue += Math.round(c.effectiveUnitPrice * retQty);
@@ -3268,45 +4326,241 @@ document.addEventListener('keydown', (e) => {
 });
 
 /* =========================================================
-   DRAG AND DROP REORDERING
+   DRAG AND DROP REORDERING + MERGE
    ========================================================= */
+function commonWordPrefix(a, b) {
+  const wa = a.trim().split(/\s+/);
+  const wb = b.trim().split(/\s+/);
+  const shared = [];
+  for (let i = 0; i < Math.min(wa.length, wb.length); i++) {
+    if (wa[i].toLowerCase() === wb[i].toLowerCase()) shared.push(wa[i]);
+    else break;
+  }
+  return shared.join(' ');
+}
+
+function variantSuffix(title, prefix) {
+  const s = prefix ? title.slice(prefix.length).trim() : title.trim();
+  return s || title.trim();
+}
+
+function mergeProductsAsVariants(srcId, tgtId) {
+  const srcIdx = state.products.findIndex(p => p.id === srcId);
+  const tgtIdx = state.products.findIndex(p => p.id === tgtId);
+  if (srcIdx === -1 || tgtIdx === -1) return;
+  const src = state.products[srcIdx];
+  const tgt = state.products[tgtIdx];
+
+  const srcHas = hasVariants(src);
+  const tgtHas = hasVariants(tgt);
+
+  function makeVariantFrom(p, name) {
+    return {
+      id: 'v' + Date.now() + Math.random().toString(36).slice(2, 6),
+      name,
+      sku: p.sku || '',
+      amount: p.amount || 0,
+      soldQty: p.soldQty || 0,
+      soldValue: p.soldValue || 0,
+      price: p.price,
+      weightG: p.weightG
+    };
+  }
+
+  if (tgtHas && !srcHas) {
+    // Drop plain onto variant product — add src as new variant
+    const prefix = commonWordPrefix(tgt.title, src.title);
+    const varName = variantSuffix(src.title, prefix) || src.title;
+    const newVar = makeVariantFrom(src, varName);
+    tgt.variants.push(newVar);
+    state.products.splice(srcIdx, 1);
+  } else if (srcHas && !tgtHas) {
+    // Drop variant product onto plain — absorb tgt into src as a variant
+    const prefix = commonWordPrefix(src.title, tgt.title);
+    const varName = variantSuffix(tgt.title, prefix) || tgt.title;
+    const newVar = makeVariantFrom(tgt, varName);
+    src.variants.push(newVar);
+    state.products.splice(tgtIdx, 1);
+  } else if (!srcHas && !tgtHas) {
+    // Both plain — create new merged product with two variants
+    const prefix = commonWordPrefix(tgt.title, src.title);
+    const parentTitle = prefix || tgt.title;
+    const tgtName = variantSuffix(tgt.title, prefix) || tgt.title;
+    const srcName = variantSuffix(src.title, prefix) || src.title;
+
+    // Use tgt price/weight as parent base; override per variant if they differ
+    const pricesDiffer = src.price !== tgt.price;
+    const weightsDiffer = src.weightG !== tgt.weightG;
+
+    const merged = {
+      ...tgt,
+      title: parentTitle,
+      sku: '',
+      amount: 0,
+      soldQty: 0,
+      soldValue: 0,
+      soldVAT: 0,
+      variants: [
+        {
+          id: 'v' + Date.now() + Math.random().toString(36).slice(2, 6),
+          name: tgtName,
+          sku: tgt.sku || '',
+          amount: tgt.amount || 0,
+          soldQty: tgt.soldQty || 0,
+          soldValue: tgt.soldValue || 0,
+          price: pricesDiffer ? tgt.price : null,
+          weightG: weightsDiffer ? tgt.weightG : null
+        },
+        {
+          id: 'v' + (Date.now() + 1) + Math.random().toString(36).slice(2, 6),
+          name: srcName,
+          sku: src.sku || '',
+          amount: src.amount || 0,
+          soldQty: src.soldQty || 0,
+          soldValue: src.soldValue || 0,
+          price: pricesDiffer ? src.price : null,
+          weightG: weightsDiffer ? src.weightG : null
+        }
+      ]
+    };
+    // Replace tgt in place, remove src
+    state.products[tgtIdx] = merged;
+    state.products.splice(srcIdx, 1);
+  } else {
+    // Both have variants — merge src variants into tgt
+    for (const v of src.variants) {
+      tgt.variants.push({ ...v, id: 'v' + Date.now() + Math.random().toString(36).slice(2, 6) });
+    }
+    state.products.splice(srcIdx, 1);
+  }
+
+  saveToStorage();
+  renderTable();
+}
+
 function initDragDrop() {
   const tbody = document.getElementById('products-tbody');
   let dragSrcId = null;
+  let dragMode = 'reorder'; // 'reorder' | 'merge'
+
+  function clearDragStyles() {
+    tbody.querySelectorAll('tr[data-drag]').forEach(r => delete r.dataset.drag);
+    tbody.querySelectorAll('tr.drag-over').forEach(r => r.classList.remove('drag-over'));
+  }
 
   tbody.addEventListener('dragstart', e => {
     const row = e.target.closest('tr[data-id]');
     if (!row) return;
+    // Drag from the ⋮ handle = reorder; drag from anywhere else = merge
+    dragMode = e.target.closest('.drag-handle') ? 'reorder' : 'merge';
     dragSrcId = row.dataset.id;
     setTimeout(() => row.classList.add('dragging'), 0);
-    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.effectAllowed = 'copyMove';
   });
 
   tbody.addEventListener('dragover', e => {
     e.preventDefault();
     const row = e.target.closest('tr[data-id]');
-    if (!row || row.dataset.id === dragSrcId) return;
-    tbody.querySelectorAll('tr.drag-over').forEach(r => r.classList.remove('drag-over'));
-    row.classList.add('drag-over');
+    if (!row || row.dataset.id === dragSrcId) { clearDragStyles(); return; }
+    clearDragStyles();
+    row.dataset.drag = dragMode;
+    e.dataTransfer.dropEffect = dragMode === 'merge' ? 'copy' : 'move';
   });
 
   tbody.addEventListener('drop', e => {
     e.preventDefault();
     const row = e.target.closest('tr[data-id]');
     const targetId = row ? row.dataset.id : null;
+    clearDragStyles();
     if (!dragSrcId || !targetId || dragSrcId === targetId) return;
-    const srcIdx = state.products.findIndex(p => p.id === dragSrcId);
-    const tgtIdx = state.products.findIndex(p => p.id === targetId);
-    const [moved] = state.products.splice(srcIdx, 1);
-    state.products.splice(tgtIdx, 0, moved);
-    saveToStorage();
-    renderTable();
+
+    if (dragMode === 'merge') {
+      mergeProductsAsVariants(dragSrcId, targetId);
+    } else {
+      const srcIdx = state.products.findIndex(p => p.id === dragSrcId);
+      const tgtIdx = state.products.findIndex(p => p.id === targetId);
+      const [moved] = state.products.splice(srcIdx, 1);
+      state.products.splice(tgtIdx, 0, moved);
+      saveToStorage();
+      renderTable();
+    }
   });
 
   tbody.addEventListener('dragend', () => {
-    tbody.querySelectorAll('tr').forEach(r => r.classList.remove('dragging', 'drag-over'));
+    clearDragStyles();
+    tbody.querySelectorAll('tr').forEach(r => r.classList.remove('dragging'));
     dragSrcId = null;
+    dragMode = 'reorder';
   });
+}
+
+function openBulkInventory() {
+  renderBulkInventory();
+  document.getElementById('bulk-overlay').style.display = 'flex';
+}
+
+function closeBulkInventory() {
+  document.getElementById('bulk-overlay').style.display = 'none';
+}
+
+function renderBulkInventory() {
+  const tbody = document.getElementById('bulk-tbody');
+  if (!tbody) return;
+  const rows = [];
+  for (const p of state.products) {
+    if (hasVariants(p)) {
+      for (const v of p.variants) {
+        const sold = v.soldQty || 0;
+        rows.push(`
+          <tr data-product-id="${p.id}" data-variant-id="${v.id}">
+            <td class="bulk-variant-label">${escHtml(p.title || '')} - ${escHtml(v.name || '')}</td>
+            <td>${escHtml(v.sku || p.sku || '-')}</td>
+            <td>${escHtml(p.type || '-')}</td>
+            <td><input class="bulk-stock-input bulk-amount" type="number" min="0" step="1" value="${v.amount || 0}" /></td>
+            <td><input class="bulk-stock-input bulk-sold" type="number" min="0" step="1" value="${sold}" /></td>
+            <td>${Math.max(0, (v.amount || 0) - sold)}</td>
+          </tr>`);
+      }
+    } else {
+      const sold = p.soldQty || 0;
+      rows.push(`
+        <tr data-product-id="${p.id}">
+          <td>${escHtml(p.title || '')}</td>
+          <td>${escHtml(p.sku || '-')}</td>
+          <td>${escHtml(p.type || '-')}</td>
+          <td><input class="bulk-stock-input bulk-amount" type="number" min="0" step="1" value="${p.amount || 0}" /></td>
+          <td><input class="bulk-stock-input bulk-sold" type="number" min="0" step="1" value="${sold}" /></td>
+          <td>${Math.max(0, (p.amount || 0) - sold)}</td>
+        </tr>`);
+    }
+  }
+  tbody.innerHTML = rows.join('') || '<tr><td colspan="6">No products yet.</td></tr>';
+}
+
+function saveBulkInventory() {
+  document.querySelectorAll('#bulk-tbody tr[data-product-id]').forEach(row => {
+    const p = state.products.find(pr => pr.id === row.dataset.productId);
+    if (!p) return;
+    const amount = Math.max(0, parseInt(row.querySelector('.bulk-amount').value, 10) || 0);
+    const sold = Math.max(0, parseInt(row.querySelector('.bulk-sold').value, 10) || 0);
+    if (row.dataset.variantId) {
+      const v = (p.variants || []).find(vv => vv.id === row.dataset.variantId);
+      if (!v) return;
+      v.amount = amount;
+      v.soldQty = sold;
+      const price = variantPrice(p, v);
+      if (price != null) v.soldValue = sold * price;
+    } else {
+      p.amount = amount;
+      p.soldQty = sold;
+      const price = calcProduct(p).effectiveUnitPrice;
+      if (price != null) p.soldValue = sold * price;
+    }
+  });
+  saveToStorage();
+  renderTable();
+  closeBulkInventory();
+  showToast('Stock updated.', 'success');
 }
 
 /* =========================================================
@@ -3432,14 +4686,21 @@ function init() {
 
   // Export buttons -each passes its own doc number
   document.getElementById('btn-proforma').addEventListener('click', printProformaInvoice);
-  document.getElementById('btn-export-import').addEventListener('click', () => printGoodsList(1));
-  document.getElementById('btn-export-sold').addEventListener('click',   () => printGoodsList(2));
-  document.getElementById('btn-export-return').addEventListener('click', () => printGoodsList(3));
-  document.getElementById('btn-print-1174').addEventListener('click', print1174);
-  document.getElementById('btn-print-1187').addEventListener('click', print1187);
+  document.getElementById('btn-export-import').addEventListener('click', () => showDocumentFormatDialog(1));
+  document.getElementById('btn-export-sold').addEventListener('click',   () => showDocumentFormatDialog(2));
+  document.getElementById('btn-export-return').addEventListener('click', () => showDocumentFormatDialog(3));
+  document.getElementById('btn-print-1174').addEventListener('click', () => showFormFormatDialog('Form 11.74 — Import (Temporary Admission)', print1174, 1));
+  document.getElementById('btn-print-1187').addEventListener('click', () => showFormFormatDialog('Form 11.87 — Re-export (Closure)', print1187, 3));
 
   // Add product button
   document.getElementById('btn-add-product').addEventListener('click', openAddModal);
+  document.getElementById('btn-bulk-inventory').addEventListener('click', openBulkInventory);
+  document.getElementById('bulk-close').addEventListener('click', closeBulkInventory);
+  document.getElementById('bulk-cancel').addEventListener('click', closeBulkInventory);
+  document.getElementById('bulk-save').addEventListener('click', saveBulkInventory);
+  document.getElementById('bulk-overlay').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('bulk-overlay')) closeBulkInventory();
+  });
 
   // E-dec XML generation
   document.getElementById('btn-generate-edec').addEventListener('click', generateEdecXML);
@@ -3596,3 +4857,11 @@ function initHeightBridge() {
 }
 
 document.addEventListener('DOMContentLoaded', () => { init(); initDisclaimer(); initHeightBridge(); loadEventPresets(); });
+
+// Sync sold quantities if POS updates localStorage from another tab
+window.addEventListener('storage', e => {
+  if (e.key !== STORAGE_KEY) return;
+  loadFromStorage();
+  renderTable();
+  renderTotals();
+});

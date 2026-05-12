@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZollTool — Transaction History</title>
+  <script>
+    if (localStorage.getItem('zolltool_theme') !== 'light') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Palette: mirrors main style.css exactly ── */
+    :root {
+      --bg:          #f5f5f7;
+      --surface:     #ffffff;
+      --surface-2:   #f5f5f7;
+      --border:      #e8e8ec;
+      --border-mid:  #d1d1d8;
+      --text:        #1e1e2e;
+      --text-muted:  #5a5a72;
+      --red:         #D40000;
+      --red-light:   #fdeaea;
+      --green:       #1a7a3e;
+      --green-light: #eaf4ee;
+      --blue:        #3b5bdb;
+      --blue-light:  #eef2ff;
+      --amber:       #d97706;
+      --amber-light: #fffbeb;
+      --radius:      8px;
+      --shadow-sm:   0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+      --shadow-md:   0 4px 12px rgba(0,0,0,0.10), 0 2px 4px rgba(0,0,0,0.06);
+    }
+    [data-theme="dark"] {
+      --bg:          #1e1e2e;
+      --surface:     #252535;
+      --surface-2:   #32324a;
+      --border:      #32324a;
+      --border-mid:  #44445e;
+      --text:        #e2e2f0;
+      --text-muted:  #a8a8c4;
+      --red-light:   #3d1818;
+      --green-light: #0f2d1a;
+      --blue-light:  #1a2050;
+      --amber-light: #2d1f00;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: var(--bg); color: var(--text);
+      min-height: 100dvh; display: flex; flex-direction: column;
+    }
+
+    /* ── Header ── */
+    .pos-header {
+      background: var(--surface); border-bottom: 1px solid var(--border);
+      padding: 10px 18px; display: flex; align-items: center;
+      justify-content: space-between; flex-shrink: 0; gap: 12px;
+      box-shadow: var(--shadow-sm); position: sticky; top: 0; z-index: 10;
+    }
+    .pos-header-left { display: flex; align-items: center; gap: 12px; }
+    .pos-logo { font-weight: 700; font-size: 15px; letter-spacing: -0.2px; }
+    .pos-logo span { color: var(--red); }
+    .pos-header-right { display: flex; align-items: center; gap: 6px; }
+
+    /* ── Buttons ── */
+    .btn {
+      border: none; border-radius: var(--radius); padding: 7px 14px; font-size: 13px;
+      font-weight: 500; cursor: pointer; display: inline-flex; align-items: center;
+      gap: 6px; transition: filter .15s, opacity .15s; white-space: nowrap;
+      text-decoration: none;
+    }
+    .btn:hover:not(:disabled) { filter: brightness(0.93); }
+    .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border-mid); }
+    .btn-ghost:hover:not(:disabled) { background: var(--surface-2); filter: none; }
+    .btn-red   { background: var(--red);   color: #fff; }
+    .btn-amber { background: var(--amber); color: #fff; }
+    .btn:disabled { opacity: .38; cursor: not-allowed; }
+
+    /* ── Main content ── */
+    .main { max-width: 900px; margin: 0 auto; padding: 24px 16px; flex: 1; width: 100%; }
+
+    .page-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+    .page-subtitle { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 18px;
+      flex-wrap: wrap;
+    }
+    .toolbar-left { display: flex; align-items: center; gap: 8px; flex: 1; flex-wrap: wrap; }
+    .toolbar-right { display: flex; align-items: center; gap: 8px; }
+
+    .filter-toggle { display: flex; border: 1px solid var(--border-mid); border-radius: var(--radius); overflow: hidden; background: var(--surface); }
+    .filter-btn { background: transparent; border: none; padding: 5px 13px; font-size: 12px; font-weight: 500; cursor: pointer; color: var(--text-muted); transition: background .12s, color .12s; }
+    .filter-btn.active { background: var(--blue); color: #fff; }
+    .filter-btn:not(.active):hover { background: var(--surface-2); color: var(--text); }
+
+    .stats-bar {
+      display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap;
+    }
+    .stat-chip {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 10px 16px;
+      display: flex; flex-direction: column; gap: 2px;
+      box-shadow: var(--shadow-sm); min-width: 120px;
+    }
+    .stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
+    .stat-value { font-size: 18px; font-weight: 700; }
+    .stat-value.green  { color: var(--green); }
+    .stat-value.blue   { color: var(--blue); }
+    .stat-value.amber  { color: var(--amber); }
+
+    .chart-panel {
+      background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+      box-shadow: var(--shadow-sm); padding: 14px 16px; margin-bottom: 20px;
+    }
+    .chart-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin-bottom: 10px; }
+    .best-row { display: grid; grid-template-columns: minmax(110px, 1fr) 3fr auto; gap: 10px; align-items: center; margin-bottom: 8px; font-size: 13px; }
+    .best-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    .best-track { height: 10px; background: var(--surface-2); border-radius: 99px; overflow: hidden; border: 1px solid var(--border); }
+    .best-bar { height: 100%; background: var(--blue); border-radius: 99px; }
+    .best-value { color: var(--text-muted); font-weight: 700; }
+
+    /* ── Transaction list ── */
+    .tx-list { display: flex; flex-direction: column; gap: 10px; }
+
+    .tx-card {
+      background: var(--surface); border: 1.5px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+      box-shadow: var(--shadow-sm); transition: border-color .15s;
+    }
+    .tx-card.reverted { opacity: 0.6; border-style: dashed; }
+    .tx-card:not(.reverted):hover { border-color: var(--border-mid); }
+
+    .tx-card-hdr {
+      display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+      cursor: pointer; user-select: none;
+    }
+    .tx-method-badge {
+      width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center;
+      justify-content: center; font-size: 16px; flex-shrink: 0;
+    }
+    .tx-method-badge.cash   { background: var(--green-light); }
+    .tx-method-badge.card   { background: var(--blue-light); }
+    .tx-method-badge.split  { background: var(--amber-light); }
+
+    .tx-meta { flex: 1; min-width: 0; }
+    .tx-meta-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .tx-datetime { font-size: 13px; font-weight: 600; }
+    .tx-method-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; padding: 2px 7px; border-radius: 4px; }
+    .tx-method-label.cash { background: var(--green-light); color: var(--green); }
+    .tx-method-label.card { background: var(--blue-light); color: var(--blue); }
+    .tx-method-label.split { background: var(--amber-light); color: var(--amber); }
+    .tx-reverted-badge { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; padding: 2px 7px; border-radius: 4px; background: var(--red-light); color: var(--red); }
+    .tx-item-count { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+
+    .tx-total { font-size: 16px; font-weight: 700; white-space: nowrap; margin-right: 4px; }
+    .tx-total.reverted { text-decoration: line-through; color: var(--text-muted); }
+
+    .tx-chevron { font-size: 12px; color: var(--text-muted); flex-shrink: 0; transition: transform .2s; }
+    .tx-card.open .tx-chevron { transform: rotate(180deg); }
+
+    /* ── Transaction items (expanded) ── */
+    .tx-body { display: none; border-top: 1px solid var(--border); }
+    .tx-card.open .tx-body { display: block; }
+
+    .tx-items-table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+    }
+    .tx-items-table th {
+      padding: 8px 16px; text-align: left; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted);
+      background: var(--surface-2); border-bottom: 1px solid var(--border);
+    }
+    .tx-items-table th:last-child,
+    .tx-items-table td:last-child { text-align: right; padding-right: 16px; }
+    .tx-items-table td {
+      padding: 9px 16px; border-bottom: 1px solid var(--border); vertical-align: middle;
+    }
+    .tx-items-table tr:last-child td { border-bottom: none; }
+    .tx-item-name { font-weight: 600; }
+    .tx-item-variant { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+    .tx-item-qty { color: var(--text-muted); font-weight: 500; }
+    .tx-item-price { color: var(--text-muted); font-size: 12px; }
+    .tx-item-total { font-weight: 600; }
+
+    .tx-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 16px; background: var(--surface-2);
+      border-top: 1px solid var(--border); gap: 12px; flex-wrap: wrap;
+    }
+    .tx-footer-total { font-size: 13px; font-weight: 600; }
+    .tx-footer-total span { font-size: 15px; }
+    .tx-revert-info { font-size: 11px; color: var(--text-muted); }
+
+    /* ── Empty state ── */
+    .empty-state {
+      text-align: center; padding: 64px 24px; color: var(--text-muted);
+    }
+    .empty-icon { font-size: 48px; margin-bottom: 12px; }
+    .empty-title { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+    .empty-sub { font-size: 13px; line-height: 1.6; }
+
+    /* ── Confirm revert overlay ── */
+    .overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 200; padding: 16px;
+    }
+    .overlay.hidden { display: none; }
+    .confirm-modal {
+      background: var(--surface); border-radius: 12px; padding: 28px 24px;
+      max-width: 400px; width: 100%; box-shadow: 0 16px 48px rgba(0,0,0,.28);
+      text-align: center;
+    }
+    .confirm-icon { font-size: 36px; margin-bottom: 10px; }
+    .confirm-title { font-size: 17px; font-weight: 700; margin-bottom: 6px; }
+    .confirm-subtitle { font-size: 13px; color: var(--text-muted); margin-bottom: 20px; line-height: 1.5; }
+    .confirm-btns { display: flex; gap: 10px; justify-content: center; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #1e1e2e; color: #e2e2f0; border-radius: var(--radius);
+      padding: 10px 20px; font-size: 13px; font-weight: 500;
+      box-shadow: var(--shadow-md); z-index: 999; opacity: 0;
+      transition: opacity .2s; pointer-events: none; white-space: nowrap;
+    }
+    .toast.show { opacity: 1; }
+    .toast.success { background: var(--green); color: #fff; }
+    .toast.error   { background: var(--red);   color: #fff; }
+
+    @media (max-width: 640px) {
+      .main { padding: 16px 12px; }
+      .stats-bar { gap: 8px; }
+      .stat-chip { min-width: 0; flex: 1 1 calc(50% - 4px); padding: 8px 12px; }
+      .stat-value { font-size: 15px; }
+      .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+      .toolbar-left { flex-wrap: wrap; }
+      .toolbar-right { justify-content: flex-end; }
+      /* Hide unit price column — still shown in total */
+      .tx-items-table th:nth-child(3),
+      .tx-items-table td:nth-child(3) { display: none; }
+    }
+
+    @media (max-width: 480px) {
+      .pos-header { padding: 8px 12px; }
+      .page-title { font-size: 17px; }
+      .stat-chip { flex: 1 1 100%; }
+      .tx-card-hdr { padding: 10px 12px; gap: 8px; }
+      .tx-total { font-size: 14px; }
+      .tx-datetime { font-size: 12px; }
+      .tx-items-table td, .tx-items-table th { padding: 7px 10px; }
+      .tx-footer { padding: 8px 12px; }
+      .confirm-modal { padding: 22px 16px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="pos-header">
+  <div class="pos-header-left">
+    <div class="pos-logo"><span>✚</span> ZollTool — History</div>
+  </div>
+  <div class="pos-header-right">
+    <a href="pos.html" class="btn btn-ghost">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      Back to POS
+    </a>
+    <a href="index.html" class="btn btn-ghost">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+      ZollTool
+    </a>
+    <button class="btn btn-ghost" id="btn-toggle-theme" title="Toggle dark mode">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="page-title">Transaction History</div>
+  <div class="page-subtitle" id="page-subtitle">All POS sales for this event</div>
+
+  <!-- Stats -->
+  <div class="stats-bar" id="stats-bar"></div>
+  <div class="chart-panel" id="best-sellers-panel" style="display:none">
+    <div class="chart-title">Best Sellers</div>
+    <div id="best-sellers-chart"></div>
+  </div>
+
+  <!-- Toolbar -->
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <div class="filter-toggle">
+        <button class="filter-btn active" id="filter-all">All</button>
+        <button class="filter-btn" id="filter-cash">Cash</button>
+        <button class="filter-btn" id="filter-card">Card</button>
+      </div>
+      <div class="filter-toggle">
+        <button class="filter-btn active" id="filter-show-reverted">Show Reverted</button>
+        <button class="filter-btn" id="filter-hide-reverted">Hide Reverted</button>
+      </div>
+    </div>
+    <div class="toolbar-right">
+      <button class="btn btn-ghost" id="btn-export-csv" style="font-size:12px;padding:5px 12px">Export CSV</button>
+      <button class="btn btn-ghost" id="btn-collapse-all" style="font-size:12px;padding:5px 12px">Collapse All</button>
+    </div>
+  </div>
+
+  <!-- Transaction list -->
+  <div class="tx-list" id="tx-list"></div>
+</div>
+
+<!-- Revert confirm overlay -->
+<div class="overlay hidden" id="revert-overlay">
+  <div class="confirm-modal">
+    <div class="confirm-icon">↩️</div>
+    <div class="confirm-title">Revert Transaction?</div>
+    <div class="confirm-subtitle" id="revert-subtitle">This will subtract the sold quantities from each product and mark the transaction as reverted. This cannot be undone.</div>
+    <div class="confirm-btns">
+      <button class="btn btn-ghost" id="revert-cancel">Cancel</button>
+      <button class="btn btn-red" id="revert-confirm">Revert Sale</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const STORAGE_KEY = 'zolltool_state_v1';
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let appState = null;
+  let filterMethod = 'all';     // 'all' | 'cash' | 'card'
+  let filterReverted = 'show';  // 'show' | 'hide'
+  let pendingRevertId = null;
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      appState = raw ? JSON.parse(raw) : null;
+      if (appState && !Array.isArray(appState.transactions)) appState.transactions = [];
+    } catch(e) { appState = null; }
+  }
+
+  function saveState() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(appState)); } catch(e) {}
+  }
+
+  function getCurrency() {
+    return (appState && appState.meta && appState.meta.currency) ? appState.meta.currency : 'CHF';
+  }
+
+  function fmtPrice(val, cur) {
+    if (val == null || isNaN(val)) return '—';
+    return (cur || getCurrency()) + ' ' + parseFloat(val).toFixed(2);
+  }
+
+  function fmtDateTime(ts) {
+    const d = new Date(ts);
+    return d.toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
+      + ' · ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function escHtml(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function methodLabel(method) {
+    if (method === 'cash') return 'Cash';
+    if (method === 'card') return 'Card';
+    if (method === 'split') return 'Split';
+    return method || 'Sale';
+  }
+
+  function methodIcon(method) {
+    if (method === 'cash') return 'Cash';
+    if (method === 'card') return 'Card';
+    if (method === 'split') return 'Split';
+    return 'Sale';
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  function render() {
+    if (!appState) {
+      document.getElementById('tx-list').innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">📂</div>
+          <div class="empty-title">No data loaded</div>
+          <div class="empty-sub">Open the <a href="pos.html">POS</a> and load your ZollTool data file first.</div>
+        </div>`;
+      document.getElementById('stats-bar').innerHTML = '';
+      document.getElementById('best-sellers-panel').style.display = 'none';
+      document.getElementById('page-subtitle').textContent = 'No data loaded';
+      return;
+    }
+
+    const transactions = appState.transactions || [];
+    const cur = getCurrency();
+    const event = appState.meta && appState.meta.event ? appState.meta.event : null;
+    document.getElementById('page-subtitle').textContent =
+      event ? `All POS sales — ${event}` : 'All POS sales';
+
+    // Stats (over all non-reverted transactions)
+    const active = transactions.filter(t => !t.reverted);
+    const totalRev = active.reduce((s, t) => s + (t.total || 0), 0);
+    const cashCount = active.filter(t => t.method === 'cash').length;
+    const cardCount = active.filter(t => t.method === 'card').length;
+    const splitCount = active.filter(t => t.method === 'split').length;
+    const cashRev = active.filter(t => t.method === 'cash').reduce((s,t) => s + (t.total||0), 0);
+    const cardRev = active.filter(t => t.method === 'card').reduce((s,t) => s + (t.total||0), 0);
+    const splitRev = active.filter(t => t.method === 'split').reduce((s,t) => s + (t.total||0), 0);
+
+    document.getElementById('stats-bar').innerHTML = `
+      <div class="stat-chip">
+        <span class="stat-label">Total Revenue</span>
+        <span class="stat-value green">${fmtPrice(totalRev, cur)}</span>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">Transactions</span>
+        <span class="stat-value blue">${active.length}</span>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">💵 Cash</span>
+        <span class="stat-value">${cashCount} · ${fmtPrice(cashRev, cur)}</span>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">💳 Card</span>
+        <span class="stat-value">${cardCount} · ${fmtPrice(cardRev, cur)}</span>
+      </div>
+      ${splitCount ? `
+      <div class="stat-chip">
+        <span class="stat-label">Split</span>
+        <span class="stat-value">${splitCount} - ${fmtPrice(splitRev, cur)}</span>
+      </div>` : ''}
+      ${transactions.some(t => t.reverted) ? `
+      <div class="stat-chip">
+        <span class="stat-label">Reverted</span>
+        <span class="stat-value amber">${transactions.filter(t => t.reverted).length}</span>
+      </div>` : ''}
+    `;
+    renderBestSellers(active);
+
+    // Filter
+    let visible = [...transactions].reverse(); // newest first
+    if (filterMethod !== 'all') visible = visible.filter(t => t.method === filterMethod);
+    if (filterReverted === 'hide') visible = visible.filter(t => !t.reverted);
+
+    if (visible.length === 0) {
+      document.getElementById('tx-list').innerHTML = `
+        <div class="empty-state">
+          <div class="empty-icon">🧾</div>
+          <div class="empty-title">${transactions.length === 0 ? 'No transactions yet' : 'No matching transactions'}</div>
+          <div class="empty-sub">${transactions.length === 0
+            ? 'Transactions will appear here after the first sale on the <a href="pos.html">POS</a>.'
+            : 'Try adjusting the filters above.'}</div>
+        </div>`;
+      return;
+    }
+
+    document.getElementById('tx-list').innerHTML = visible.map(tx => buildTxCard(tx, cur)).join('');
+  }
+
+  function renderBestSellers(activeTransactions) {
+    const totals = new Map();
+    for (const tx of activeTransactions) {
+      for (const item of tx.items || []) {
+        const key = item.variantLabel ? `${item.title} - ${item.variantLabel}` : item.title;
+        const current = totals.get(key) || { name: key, qty: 0, revenue: 0 };
+        current.qty += item.qty || 0;
+        current.revenue += item.lineTotal || 0;
+        totals.set(key, current);
+      }
+    }
+    const top = [...totals.values()].sort((a, b) => b.qty - a.qty || b.revenue - a.revenue).slice(0, 5);
+    const panel = document.getElementById('best-sellers-panel');
+    const chart = document.getElementById('best-sellers-chart');
+    if (!top.length) {
+      panel.style.display = 'none';
+      chart.innerHTML = '';
+      return;
+    }
+    const max = Math.max(...top.map(i => i.qty), 1);
+    chart.innerHTML = top.map(item => `
+      <div class="best-row">
+        <div class="best-name" title="${escHtml(item.name)}">${escHtml(item.name)}</div>
+        <div class="best-track"><div class="best-bar" style="width:${Math.max(4, (item.qty / max) * 100)}%"></div></div>
+        <div class="best-value">${item.qty}</div>
+      </div>`).join('');
+    panel.style.display = '';
+  }
+
+  function buildTxCard(tx, cur) {
+    const isReverted = tx.reverted;
+    const itemCount = (tx.items || []).reduce((s, i) => s + i.qty, 0);
+    const itemLabel = `${itemCount} item${itemCount !== 1 ? 's' : ''}`;
+    const revertedAt = tx.revertedAt ? `Reverted ${fmtDateTime(tx.revertedAt)}` : '';
+
+    const itemRows = (tx.items || []).map(item => `
+      <tr>
+        <td>
+          <div class="tx-item-name">${escHtml(item.title)}</div>
+          ${item.variantLabel ? `<div class="tx-item-variant">${escHtml(item.variantLabel)}</div>` : ''}
+        </td>
+        <td class="tx-item-qty">×${item.qty}</td>
+        <td class="tx-item-price">${item.unitPrice != null ? fmtPrice(item.unitPrice, cur) : '—'}</td>
+        <td class="tx-item-total">${item.lineTotal ? fmtPrice(item.lineTotal, cur) : '—'}</td>
+      </tr>`).join('');
+
+    return `
+      <div class="tx-card${isReverted ? ' reverted' : ''}" id="tx-${escHtml(tx.id)}">
+        <div class="tx-card-hdr" onclick="toggleCard('${escHtml(tx.id)}')">
+          <div class="tx-method-badge ${escHtml(tx.method)}">${methodIcon(tx.method)}</div>
+          <div class="tx-meta">
+            <div class="tx-meta-top">
+              <span class="tx-datetime">${fmtDateTime(tx.timestamp)}</span>
+              <span class="tx-method-label ${escHtml(tx.method)}">${methodLabel(tx.method)}</span>
+              ${isReverted ? '<span class="tx-reverted-badge">Reverted</span>' : ''}
+            </div>
+            <div class="tx-item-count">${itemLabel}</div>
+          </div>
+          <span class="tx-total${isReverted ? ' reverted' : ''}">${fmtPrice(tx.total, tx.currency || cur)}</span>
+          <span class="tx-chevron">▼</span>
+        </div>
+        <div class="tx-body">
+          <table class="tx-items-table">
+            <thead>
+              <tr>
+                <th>Product</th>
+                <th>Qty</th>
+                <th>Unit Price</th>
+                <th>Total</th>
+              </tr>
+            </thead>
+            <tbody>${itemRows}</tbody>
+          </table>
+          <div class="tx-footer">
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+              ${isReverted
+                ? `<span class="tx-revert-info">↩ ${revertedAt}</span>
+                   <button class="btn btn-ghost" style="font-size:12px;padding:4px 10px;color:var(--text-muted)"
+                     onclick="removeEntry('${escHtml(tx.id)}');event.stopPropagation()">
+                     🗑 Remove Entry
+                   </button>`
+                : `<button class="btn btn-ghost" style="font-size:12px;padding:5px 12px;color:var(--red);border-color:var(--red)"
+                     onclick="askRevert('${escHtml(tx.id)}');event.stopPropagation()">
+                     ↩ Revert Sale
+                   </button>`}
+            </div>
+            <div class="tx-footer-total">Total: <span>${fmtPrice(tx.total, tx.currency || cur)}</span></div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function toggleCard(id) {
+    const card = document.getElementById('tx-' + id);
+    if (card) card.classList.toggle('open');
+  }
+
+  document.getElementById('btn-collapse-all').addEventListener('click', () => {
+    document.querySelectorAll('.tx-card.open').forEach(c => c.classList.remove('open'));
+  });
+
+  function csvCell(value) {
+    const s = String(value ?? '');
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+
+  function exportCSV() {
+    if (!appState) { showToast('No data to export.', 'error'); return; }
+    const rows = [['timestamp','method','payment_cash','payment_card','total','currency','product','variant','qty','unit_price','line_total','reverted']];
+    for (const tx of appState.transactions || []) {
+      const payments = Array.isArray(tx.payments) ? tx.payments : [{ method: tx.method, amount: tx.total || 0 }];
+      const cash = payments.filter(p => p.method === 'cash').reduce((s, p) => s + (p.amount || 0), 0);
+      const card = payments.filter(p => p.method === 'card').reduce((s, p) => s + (p.amount || 0), 0);
+      for (const item of tx.items || []) {
+        rows.push([
+          new Date(tx.timestamp).toISOString(),
+          tx.method || '',
+          cash.toFixed(2),
+          card.toFixed(2),
+          (tx.total || 0).toFixed(2),
+          tx.currency || getCurrency(),
+          item.title || '',
+          item.variantLabel || '',
+          item.qty || 0,
+          item.unitPrice != null ? item.unitPrice : '',
+          item.lineTotal != null ? item.lineTotal : '',
+          tx.reverted ? 'yes' : 'no',
+        ]);
+      }
+    }
+    const blob = new Blob([rows.map(r => r.map(csvCell).join(',')).join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const event = appState.meta && appState.meta.event ? appState.meta.event.replace(/\s+/g, '_') : 'ZollTool';
+    a.href = url;
+    a.download = `${event}_sales.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('CSV exported.', 'success');
+  }
+
+  document.getElementById('btn-export-csv').addEventListener('click', exportCSV);
+
+  // ── Filters ────────────────────────────────────────────────────────────────
+  function setMethodFilter(method) {
+    filterMethod = method;
+    document.getElementById('filter-all').classList.toggle('active', method === 'all');
+    document.getElementById('filter-cash').classList.toggle('active', method === 'cash');
+    document.getElementById('filter-card').classList.toggle('active', method === 'card');
+    render();
+  }
+  function setRevertedFilter(mode) {
+    filterReverted = mode;
+    document.getElementById('filter-show-reverted').classList.toggle('active', mode === 'show');
+    document.getElementById('filter-hide-reverted').classList.toggle('active', mode === 'hide');
+    render();
+  }
+
+  document.getElementById('filter-all').addEventListener('click', () => setMethodFilter('all'));
+  document.getElementById('filter-cash').addEventListener('click', () => setMethodFilter('cash'));
+  document.getElementById('filter-card').addEventListener('click', () => setMethodFilter('card'));
+  document.getElementById('filter-show-reverted').addEventListener('click', () => setRevertedFilter('show'));
+  document.getElementById('filter-hide-reverted').addEventListener('click', () => setRevertedFilter('hide'));
+
+  // ── Revert ─────────────────────────────────────────────────────────────────
+  function askRevert(txId) {
+    pendingRevertId = txId;
+    const tx = (appState.transactions || []).find(t => t.id === txId);
+    if (!tx) return;
+    const itemCount = (tx.items || []).reduce((s, i) => s + i.qty, 0);
+    document.getElementById('revert-subtitle').textContent =
+      `This will subtract ${itemCount} item${itemCount !== 1 ? 's' : ''} from sold quantities `
+      + `and mark the ${fmtPrice(tx.total, tx.currency)} transaction as reverted. This cannot be undone.`;
+    document.getElementById('revert-overlay').classList.remove('hidden');
+  }
+
+  function closeRevertOverlay() {
+    pendingRevertId = null;
+    document.getElementById('revert-overlay').classList.add('hidden');
+  }
+
+  function confirmRevert() {
+    if (!pendingRevertId || !appState) return;
+    loadState(); // re-read fresh state
+
+    const tx = (appState.transactions || []).find(t => t.id === pendingRevertId);
+    if (!tx || tx.reverted) { closeRevertOverlay(); return; }
+
+    // Subtract sold quantities
+    (tx.items || []).forEach(item => {
+      const p = (appState.products || []).find(pr => pr.id === item.pid);
+      if (!p) return;
+      if (item.vid) {
+        const v = (p.variants || []).find(vv => vv.id === item.vid);
+        if (!v) return;
+        v.soldQty   = Math.max(0, (v.soldQty   || 0) - item.qty);
+        v.soldValue = Math.max(0, (v.soldValue  || 0) - (item.lineTotal || 0));
+      } else {
+        p.soldQty   = Math.max(0, (p.soldQty   || 0) - item.qty);
+        p.soldValue = Math.max(0, (p.soldValue  || 0) - (item.lineTotal || 0));
+      }
+    });
+
+    tx.reverted = true;
+    tx.revertedAt = Date.now();
+    saveState();
+    closeRevertOverlay();
+    showToast('Transaction reverted — sold quantities updated', 'success');
+    render();
+  }
+
+  document.getElementById('revert-cancel').addEventListener('click', closeRevertOverlay);
+  document.getElementById('revert-confirm').addEventListener('click', confirmRevert);
+  document.getElementById('revert-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('revert-overlay')) closeRevertOverlay();
+  });
+
+  // ── Remove reverted entry ──────────────────────────────────────────────────
+  function removeEntry(txId) {
+    if (!appState) return;
+    loadState(); // ensure fresh state
+    const idx = (appState.transactions || []).findIndex(t => t.id === txId);
+    if (idx === -1) return;
+    if (!appState.transactions[idx].reverted) return; // safety: only remove reverted entries
+    appState.transactions.splice(idx, 1);
+    saveState();
+    showToast('Entry removed from history', '');
+    render();
+  }
+
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  let toastTimer = null;
+  function showToast(msg, type = '') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'toast show' + (type ? ' ' + type : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.className = 'toast'; }, 3000);
+  }
+
+  // ── Theme toggle ───────────────────────────────────────────────────────────
+  document.getElementById('btn-toggle-theme').addEventListener('click', () => {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
+    localStorage.setItem('zolltool_theme', isDark ? 'light' : 'dark');
+  });
+
+  // ── Live-sync with POS ─────────────────────────────────────────────────────
+  window.addEventListener('storage', e => {
+    if (e.key === STORAGE_KEY) { loadState(); render(); }
+  });
+  window.addEventListener('focus', () => { loadState(); render(); });
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  loadState();
+  render();
+</script>
+</body>
+</html>
