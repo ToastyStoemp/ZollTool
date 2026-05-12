@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZollTool — Point of Sale</title>
+  <script>
+    if (localStorage.getItem('zolltool_theme') !== 'light') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #f5f5f7;
+      --surface:   #ffffff;
+      --border:    #e0e0e0;
+      --text:      #1a1a1a;
+      --text-muted:#6b7280;
+      --red:       #e53e3e;
+      --green:     #27ae60;
+      --blue:      #2563eb;
+      --amber:     #d97706;
+      --radius:    10px;
+      --shadow:    0 2px 8px rgba(0,0,0,0.08);
+    }
+    [data-theme="dark"] {
+      --bg:        #111827;
+      --surface:   #1f2937;
+      --border:    #374151;
+      --text:      #f9fafb;
+      --text-muted:#9ca3af;
+    }
+
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           background: var(--bg); color: var(--text); height: 100dvh;
+           display: flex; flex-direction: column; overflow: hidden; }
+
+    /* ── Header ── */
+    .pos-header { background: var(--surface); border-bottom: 1px solid var(--border);
+                  padding: 10px 16px; display: flex; align-items: center;
+                  justify-content: space-between; flex-shrink: 0; gap: 12px; }
+    .pos-header-left { display: flex; align-items: center; gap: 10px; }
+    .pos-logo { font-weight: 700; font-size: 16px; }
+    .pos-logo span { color: var(--red); }
+    .pos-event { font-size: 13px; color: var(--text-muted); }
+    .pos-header-right { display: flex; align-items: center; gap: 8px; }
+    .btn { border: none; border-radius: 6px; padding: 7px 14px; font-size: 13px;
+           font-weight: 500; cursor: pointer; display: inline-flex; align-items: center;
+           gap: 6px; transition: opacity .15s; }
+    .btn:hover { opacity: .85; }
+    .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border); }
+    .btn-red   { background: var(--red);   color: #fff; }
+    .btn-green { background: var(--green); color: #fff; }
+    .btn-blue  { background: var(--blue);  color: #fff; }
+    .btn-amber { background: var(--amber); color: #fff; }
+    .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* ── Layout ── */
+    .pos-body { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Products panel ── */
+    .products-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden;
+                      padding: 12px; gap: 10px; }
+    .panel-title { font-size: 11px; font-weight: 600; text-transform: uppercase;
+                   letter-spacing: .06em; color: var(--text-muted); }
+    .products-grid { flex: 1; overflow-y: auto; display: grid;
+                     grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+                     gap: 10px; align-content: start; }
+    .product-btn { background: var(--surface); border: 1.5px solid var(--border);
+                   border-radius: var(--radius); padding: 12px 10px; cursor: pointer;
+                   text-align: center; transition: border-color .15s, box-shadow .15s;
+                   display: flex; flex-direction: column; gap: 4px; }
+    .product-btn:hover { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,.12); }
+    .product-btn.out-of-stock { opacity: .55; }
+    .product-btn.out-of-stock:hover { border-color: var(--red); box-shadow: 0 0 0 3px rgba(229,62,62,.12); }
+    .pb-title { font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--text); }
+    .pb-type  { font-size: 11px; color: var(--text-muted); }
+    .pb-price { font-size: 14px; font-weight: 700; color: var(--blue); margin-top: 2px; }
+    .pb-stock { font-size: 11px; color: var(--text-muted); }
+    .pb-stock.low { color: var(--amber); font-weight: 600; }
+    .pb-stock.none { color: var(--red); font-weight: 600; }
+    .empty-msg { color: var(--text-muted); font-size: 14px; text-align: center;
+                 padding: 40px 20px; grid-column: 1/-1; }
+
+    /* ── Cart panel ── */
+    .cart-panel { width: 320px; flex-shrink: 0; background: var(--surface);
+                  border-left: 1px solid var(--border); display: flex;
+                  flex-direction: column; overflow: hidden; }
+    .cart-header { padding: 12px 14px; border-bottom: 1px solid var(--border);
+                   display: flex; align-items: center; justify-content: space-between; }
+    .cart-title { font-size: 13px; font-weight: 600; }
+    .cart-count { background: var(--blue); color: #fff; border-radius: 99px;
+                  font-size: 11px; font-weight: 700; padding: 1px 7px; }
+    .cart-items { flex: 1; overflow-y: auto; padding: 8px 0; }
+    .cart-empty { color: var(--text-muted); font-size: 13px; text-align: center;
+                  padding: 32px 16px; }
+    .cart-item { display: flex; align-items: center; gap: 8px;
+                 padding: 8px 14px; border-bottom: 1px solid var(--border); }
+    .ci-info { flex: 1; min-width: 0; }
+    .ci-title { font-size: 13px; font-weight: 500; white-space: nowrap;
+                overflow: hidden; text-overflow: ellipsis; }
+    .ci-price { font-size: 12px; color: var(--text-muted); }
+    .ci-qty { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+    .qty-btn { width: 24px; height: 24px; border-radius: 4px; border: 1px solid var(--border);
+               background: var(--bg); cursor: pointer; font-size: 14px; font-weight: 600;
+               display: flex; align-items: center; justify-content: center;
+               color: var(--text); transition: background .1s; }
+    .qty-btn:hover { background: var(--border); }
+    .qty-val { min-width: 22px; text-align: center; font-size: 13px; font-weight: 600; }
+    .ci-line { font-size: 13px; font-weight: 600; min-width: 56px; text-align: right;
+               flex-shrink: 0; }
+
+    /* ── Cart footer ── */
+    .cart-footer { border-top: 2px solid var(--border); padding: 14px; flex-shrink: 0; }
+    .cart-totals { margin-bottom: 12px; }
+    .total-row { display: flex; justify-content: space-between; font-size: 13px;
+                 padding: 2px 0; color: var(--text-muted); }
+    .total-row.grand { font-size: 17px; font-weight: 700; color: var(--text);
+                       padding-top: 8px; border-top: 1px solid var(--border); margin-top: 6px; }
+    .payment-btns { display: flex; flex-direction: column; gap: 8px; }
+    .payment-btns .btn { justify-content: center; padding: 12px; font-size: 14px; }
+    .btn-clear { margin-top: 6px; width: 100%; justify-content: center;
+                 padding: 7px; font-size: 12px; }
+
+    /* ── Toast ── */
+    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(80px);
+             background: #1a1a1a; color: #fff; padding: 10px 20px; border-radius: 8px;
+             font-size: 13px; font-weight: 500; transition: transform .25s ease;
+             pointer-events: none; z-index: 999; white-space: nowrap; }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast.success { background: var(--green); }
+    .toast.error   { background: var(--red); }
+
+    /* ── Payment confirm overlay ── */
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.5);
+               display: flex; align-items: center; justify-content: center; z-index: 100; }
+    .overlay.hidden { display: none; }
+    .confirm-modal { background: var(--surface); border-radius: 14px; padding: 28px 24px;
+                     width: 380px; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,.2); }
+    .confirm-icon { font-size: 36px; margin-bottom: 10px; }
+    .confirm-title { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+    .confirm-subtitle { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+    .confirm-amount { font-size: 28px; font-weight: 800; margin-bottom: 16px; }
+    .confirm-btns { display: flex; gap: 10px; margin-top: 16px; }
+    .confirm-btns .btn { flex: 1; justify-content: center; padding: 12px; font-size: 14px; }
+
+    /* ── Cash section ── */
+    .cash-section { text-align: left; border-top: 1px solid var(--border); padding-top: 14px; }
+    .cash-shortcuts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .shortcut-btn { background: var(--bg); border: 1.5px solid var(--border); border-radius: 7px;
+                    padding: 6px 12px; font-size: 13px; font-weight: 600; cursor: pointer;
+                    color: var(--text); transition: border-color .12s, background .12s; }
+    .shortcut-btn:hover { border-color: var(--blue); }
+    .shortcut-btn.exact { border-color: var(--blue); color: var(--blue); }
+    .cash-input-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .cash-input-row label { font-size: 13px; color: var(--text-muted); white-space: nowrap; }
+    .cash-input-row input { flex: 1; padding: 9px 12px; border: 1.5px solid var(--border);
+                            border-radius: 7px; background: var(--bg); color: var(--text);
+                            font-size: 15px; font-weight: 600; text-align: right; outline: none;
+                            min-width: 0; appearance: textfield; -moz-appearance: textfield; }
+    .cash-input-row input::-webkit-outer-spin-button,
+    .cash-input-row input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .cash-input-row input:focus { border-color: var(--blue); }
+    .change-row { display: flex; justify-content: space-between; align-items: center;
+                  padding: 10px 14px; border-radius: 9px; background: var(--bg); }
+    .change-label { font-size: 13px; color: var(--text-muted); font-weight: 500; }
+    .change-val { font-size: 20px; font-weight: 800; }
+    .change-val.ok   { color: var(--green); }
+    .change-val.low  { color: var(--red); }
+
+    @media (max-width: 600px) {
+      .cart-panel { width: 260px; }
+      .products-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+
+<div class="pos-header">
+  <div class="pos-header-left">
+    <div class="pos-logo"><span>✚</span> ZollTool POS</div>
+    <div class="pos-event" id="hdr-event">—</div>
+  </div>
+  <div class="pos-header-right">
+    <input type="file" id="pos-file-input" accept=".json" style="display:none" />
+    <button class="btn btn-ghost" id="btn-load-json" title="Load ZollTool JSON file">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+      Load JSON
+    </button>
+    <button class="btn btn-ghost" id="btn-save-json" title="Save updated data for ZollTool" style="display:none">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      Save JSON
+    </button>
+    <a href="index.html" class="btn btn-ghost">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+      Back to ZollTool
+    </a>
+    <button class="btn btn-ghost" id="btn-toggle-theme" title="Toggle dark mode">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+    </button>
+  </div>
+</div>
+
+<div class="pos-body">
+
+  <!-- Products -->
+  <div class="products-panel">
+    <div class="panel-title">Products</div>
+    <div class="products-grid" id="products-grid"></div>
+  </div>
+
+  <!-- Cart -->
+  <div class="cart-panel">
+    <div class="cart-header">
+      <span class="cart-title">Current Sale</span>
+      <span class="cart-count" id="cart-count">0</span>
+    </div>
+    <div class="cart-items" id="cart-items">
+      <div class="cart-empty">Cart is empty</div>
+    </div>
+    <div class="cart-footer">
+      <div class="cart-totals">
+        <div class="total-row"><span>Items</span><span id="tot-items">0</span></div>
+        <div class="total-row grand"><span>Total</span><span id="tot-price">—</span></div>
+      </div>
+      <div class="payment-btns">
+        <button class="btn btn-green" id="btn-cash" disabled>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+          Pay with Cash
+        </button>
+        <button class="btn btn-blue" id="btn-card" disabled>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          Pay with Card
+        </button>
+      </div>
+      <button class="btn btn-ghost btn-clear" id="btn-clear">Clear cart</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Payment confirm overlay -->
+<div class="overlay hidden" id="pay-overlay">
+  <div class="confirm-modal">
+    <div class="confirm-icon" id="confirm-icon">💵</div>
+    <div class="confirm-title" id="confirm-title">Confirm Payment</div>
+    <div class="confirm-subtitle" id="confirm-subtitle"></div>
+    <div class="confirm-amount" id="confirm-amount"></div>
+    <div class="cash-section" id="cash-section" style="display:none">
+      <div class="cash-shortcuts" id="cash-shortcuts"></div>
+      <div class="cash-input-row">
+        <label for="cash-received">Received</label>
+        <input type="number" id="cash-received" min="0" step="0.01" placeholder="0.00" />
+      </div>
+      <div class="change-row">
+        <span class="change-label">Change</span>
+        <span class="change-val" id="change-val">—</span>
+      </div>
+    </div>
+    <div class="confirm-btns">
+      <button class="btn btn-ghost" id="confirm-cancel">Cancel</button>
+      <button class="btn btn-green" id="confirm-ok">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const STORAGE_KEY = 'zolltool_state_v1';
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let appState = null;   // full ZollTool state from localStorage
+  let cart = {};         // { productId: qty }
+  let pendingPayment = null; // { method: 'cash'|'card' }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      appState = raw ? JSON.parse(raw) : null;
+    } catch (e) { appState = null; }
+  }
+
+  function saveState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+    } catch(e) {}
+  }
+
+  function getCurrency() {
+    return (appState && appState.meta && appState.meta.currency) ? appState.meta.currency : 'CHF';
+  }
+
+  function fmtPrice(val) {
+    if (val == null || isNaN(val)) return '—';
+    return getCurrency() + ' ' + parseFloat(val).toFixed(2);
+  }
+
+  function calcProduct(p) {
+    const amount = p.amount || 0;
+    const totalWeightKg = Math.round(amount * (p.weightG || 0)) / 1000;
+    let totalValue = p.totalValueCHF != null ? Math.round(parseFloat(p.totalValueCHF)) : null;
+    if (totalValue == null && p.price != null && p.price !== '') {
+      totalValue = Math.round(parseFloat(p.price) * amount);
+    }
+    const effectiveUnitPrice = (totalValue != null && amount > 0) ? totalValue / amount : null;
+    return { totalValue, effectiveUnitPrice, totalWeightKg };
+  }
+
+  // ── Cart helpers ───────────────────────────────────────────────────────────
+  function cartTotal() {
+    if (!appState) return 0;
+    return appState.products.reduce((sum, p) => {
+      const qty = cart[p.id] || 0;
+      if (!qty) return sum;
+      const c = calcProduct(p);
+      const unitPrice = c.effectiveUnitPrice;
+      return sum + (unitPrice != null ? unitPrice * qty : 0);
+    }, 0);
+  }
+
+  function cartItemCount() {
+    return Object.values(cart).reduce((s, q) => s + q, 0);
+  }
+
+  function remainingStock(p) {
+    // already sold + cart qty vs total amount
+    const alreadySold = p.soldQty || 0;
+    const inCart = cart[p.id] || 0;
+    return (p.amount || 0) - alreadySold - inCart;
+  }
+
+  function addToCart(productId) {
+    const p = appState.products.find(p => p.id === productId);
+    if (!p) return;
+    cart[productId] = (cart[productId] || 0) + 1;
+    render();
+  }
+
+  function setCartQty(productId, qty) {
+    const p = appState.products.find(p => p.id === productId);
+    if (!p) return;
+    qty = Math.max(0, qty);
+    if (qty === 0) delete cart[productId];
+    else cart[productId] = qty;
+    render();
+  }
+
+  function clearCart() { cart = {}; render(); }
+
+  // ── Cash shortcuts ─────────────────────────────────────────────────────────
+  // Real note denominations per currency (smallest → largest)
+  const CURRENCY_BILLS = {
+    CHF: [10, 20, 50, 100, 200],
+    EUR: [5, 10, 20, 50, 100, 200],
+    USD: [1, 5, 10, 20, 50, 100],
+    GBP: [5, 10, 20, 50],
+    SGD: [5, 10, 20, 50, 100],   // $20 commemorative still widely circulated
+    JPY: [1000, 2000, 5000, 10000],
+    AUD: [5, 10, 20, 50, 100],
+    CAD: [5, 10, 20, 50, 100],
+    DKK: [50, 100, 200, 500, 1000],
+    NOK: [50, 100, 200, 500, 1000],
+    SEK: [20, 50, 100, 200, 500, 1000],
+    HKD: [10, 20, 50, 100, 500],
+  };
+
+  function buildCashShortcuts(total, currency) {
+    const bills = CURRENCY_BILLS[currency] || [5, 10, 20, 50, 100, 200];
+    const candidates = new Set();
+
+    // 1-bill amounts above total
+    for (const b of bills) {
+      if (b > total) candidates.add(b);
+    }
+
+    // 2-bill combinations above total (b1 ≤ b2 to avoid same-sum duplicates, but Set handles that)
+    for (const b1 of bills) {
+      for (const b2 of bills) {
+        const s = b1 + b2;
+        if (s > total) candidates.add(s);
+      }
+    }
+
+    // 3-bill combinations as fallback when we still have fewer than 4 options
+    if (candidates.size < 4) {
+      for (const b1 of bills) {
+        for (const b2 of bills) {
+          for (const b3 of bills) {
+            const s = b1 + b2 + b3;
+            if (s > total) candidates.add(s);
+          }
+        }
+      }
+    }
+
+    const amounts = [...candidates].sort((a, b) => a - b).slice(0, 4);
+    const container = document.getElementById('cash-shortcuts');
+    container.innerHTML = '';
+
+    // Exact button always first
+    const exactBtn = document.createElement('button');
+    exactBtn.className = 'shortcut-btn exact';
+    exactBtn.textContent = 'Exact';
+    exactBtn.type = 'button';
+    exactBtn.onclick = () => setCashReceived(total);
+    container.appendChild(exactBtn);
+
+    amounts.forEach(amount => {
+      const btn = document.createElement('button');
+      btn.className = 'shortcut-btn';
+      btn.textContent = Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+      btn.type = 'button';
+      btn.onclick = () => setCashReceived(amount);
+      container.appendChild(btn);
+    });
+  }
+
+  function setCashReceived(amount) {
+    const input = document.getElementById('cash-received');
+    input.value = Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+    updateChange();
+    input.focus();
+  }
+
+  function updateChange() {
+    const total = pendingPayment ? pendingPayment.total : 0;
+    const received = parseFloat(document.getElementById('cash-received').value) || 0;
+    const change = received - total;
+    const el = document.getElementById('change-val');
+    const cur = getCurrency();
+
+    if (received === 0) {
+      el.textContent = '—';
+      el.className = 'change-val';
+    } else if (change < -0.001) {
+      el.textContent = `− ${cur} ${Math.abs(change).toFixed(2)}`;
+      el.className = 'change-val low';
+    } else if (change < 0.001) {
+      el.textContent = 'No change';
+      el.className = 'change-val ok';
+    } else {
+      el.textContent = `${cur} ${change.toFixed(2)}`;
+      el.className = 'change-val ok';
+    }
+
+    document.getElementById('confirm-ok').disabled = received < total - 0.001;
+  }
+
+  // ── Payment ────────────────────────────────────────────────────────────────
+  function initiatePayment(method) {
+    if (cartItemCount() === 0) return;
+    const total = cartTotal();
+    const cur = getCurrency();
+    pendingPayment = { method, total };
+    document.getElementById('confirm-icon').textContent = method === 'cash' ? '💵' : '💳';
+    document.getElementById('confirm-title').textContent = method === 'cash' ? 'Cash Payment' : 'Card Payment';
+    document.getElementById('confirm-subtitle').textContent = `Mark ${cartItemCount()} item${cartItemCount()!==1?'s':''} as sold?`;
+    document.getElementById('confirm-amount').textContent = cur + ' ' + total.toFixed(2);
+    document.getElementById('confirm-ok').className = method === 'cash' ? 'btn btn-green' : 'btn btn-blue';
+
+    const cashSection = document.getElementById('cash-section');
+    if (method === 'cash') {
+      cashSection.style.display = '';
+      document.getElementById('cash-received').value = '';
+      document.getElementById('change-val').textContent = '—';
+      document.getElementById('change-val').className = 'change-val';
+      document.getElementById('confirm-ok').disabled = true;
+      buildCashShortcuts(total, cur);
+    } else {
+      cashSection.style.display = 'none';
+      document.getElementById('confirm-ok').disabled = false;
+    }
+
+    document.getElementById('pay-overlay').classList.remove('hidden');
+  }
+
+  function confirmPayment() {
+    if (!pendingPayment || !appState) return;
+    // Reload fresh state before writing to avoid overwriting concurrent changes
+    loadState();
+
+    appState.products.forEach(p => {
+      const qty = cart[p.id] || 0;
+      if (!qty) return;
+      const c = calcProduct(p);
+      const addedValue = c.effectiveUnitPrice != null ? c.effectiveUnitPrice * qty : 0;
+      p.soldQty   = (p.soldQty   || 0) + qty;
+      p.soldValue = (p.soldValue || 0) + addedValue;
+    });
+
+    saveState();
+    showToast(`Payment confirmed — ${cartItemCount()} item${cartItemCount()!==1?'s':''} marked as sold`, 'success');
+    clearCart();
+    closeOverlay();
+    renderProducts(); // refresh stock counts
+  }
+
+  function closeOverlay() {
+    document.getElementById('pay-overlay').classList.add('hidden');
+    document.getElementById('confirm-ok').disabled = false;
+    pendingPayment = null;
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  function renderProducts() {
+    const grid = document.getElementById('products-grid');
+    const raw = localStorage.getItem(STORAGE_KEY);
+    console.log('[POS] localStorage raw:', raw ? raw.substring(0, 200) : '(empty)');
+    console.log('[POS] appState:', appState);
+    if (!appState) {
+      const hint = raw ? 'Data found in storage but failed to parse.' : `No data found in localStorage key "${STORAGE_KEY}".`;
+      grid.innerHTML = `<div class="empty-msg">No ZollTool data found.<br><small style="font-size:11px;opacity:.7">${hint}<br>Load a JSON file in ZollTool first, then come back here.</small></div>`;
+      return;
+    }
+    if (!appState.products || !appState.products.length) {
+      grid.innerHTML = '<div class="empty-msg">No products found.<br>Add products in ZollTool first.</div>';
+      return;
+    }
+    const forSale = appState.products.filter(p => p.forSale !== false);
+    console.log('[POS] total products:', appState.products.length, '| for sale:', forSale.length);
+    if (!forSale.length) {
+      grid.innerHTML = '<div class="empty-msg">No products found.<br>Make sure products are not marked as "Not For Sale" in ZollTool.</div>';
+      return;
+    }
+    grid.innerHTML = forSale.map(p => {
+      const c = calcProduct(p);
+      const stock = remainingStock(p);
+      const price = p.priceNote || (c.effectiveUnitPrice != null ? fmtPrice(c.effectiveUnitPrice) : '—');
+      const stockClass = stock <= 0 ? 'none' : stock <= 3 ? 'low' : '';
+      const stockLabel = stock <= 0 ? 'Out of stock' : stock <= 3 ? `${stock} left` : `${stock} in stock`;
+      return `<button class="product-btn${stock <= 0 ? ' out-of-stock' : ''}"
+                onclick="addToCart('${p.id}')">
+        <span class="pb-title">${escHtml(p.title || '(untitled)')}</span>
+        ${p.type ? `<span class="pb-type">${escHtml(p.type)}</span>` : ''}
+        <span class="pb-price">${escHtml(price)}</span>
+        <span class="pb-stock ${stockClass}">${stockLabel}</span>
+      </button>`;
+    }).join('');
+  }
+
+  function renderCart() {
+    const container = document.getElementById('cart-items');
+    const entries = Object.entries(cart).filter(([,q]) => q > 0);
+
+    if (!entries.length) {
+      container.innerHTML = '<div class="cart-empty">Cart is empty</div>';
+    } else {
+      container.innerHTML = entries.map(([id, qty]) => {
+        const p = appState.products.find(p => p.id === id);
+        if (!p) return '';
+        const c = calcProduct(p);
+        const lineTotal = c.effectiveUnitPrice != null ? c.effectiveUnitPrice * qty : null;
+        const unitLabel = p.priceNote || (c.effectiveUnitPrice != null ? fmtPrice(c.effectiveUnitPrice) : '—');
+        return `<div class="cart-item">
+          <div class="ci-info">
+            <div class="ci-title">${escHtml(p.title || '(untitled)')}</div>
+            <div class="ci-price">${escHtml(unitLabel)} each</div>
+          </div>
+          <div class="ci-qty">
+            <button class="qty-btn" onclick="setCartQty('${id}', ${qty - 1})">−</button>
+            <span class="qty-val">${qty}</span>
+            <button class="qty-btn" onclick="setCartQty('${id}', ${qty + 1})">+</button>
+          </div>
+          <div class="ci-line">${lineTotal != null ? fmtPrice(lineTotal) : '—'}</div>
+        </div>`;
+      }).join('');
+    }
+
+    const total = cartTotal();
+    const count = cartItemCount();
+    const cur = getCurrency();
+    document.getElementById('cart-count').textContent = count;
+    document.getElementById('tot-items').textContent = count;
+    document.getElementById('tot-price').textContent = count ? cur + ' ' + total.toFixed(2) : '—';
+    document.getElementById('btn-cash').disabled = count === 0;
+    document.getElementById('btn-card').disabled = count === 0;
+  }
+
+  function render() { renderProducts(); renderCart(); }
+
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  let toastTimer;
+  function showToast(msg, type = '') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'toast show' + (type ? ' ' + type : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.classList.remove('show'); }, 2800);
+  }
+
+  function escHtml(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Theme — mirrors main app: dark by default unless 'light' is saved ──────
+  function applyTheme() {
+    const saved = localStorage.getItem('zolltool_theme');
+    if (saved !== 'light') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+    }
+  }
+  document.getElementById('btn-toggle-theme').addEventListener('click', () => {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    localStorage.setItem('zolltool_theme', isDark ? 'light' : 'dark');
+    applyTheme();
+  });
+
+  // ── Storage change listener (sync with main tab) ───────────────────────────
+  window.addEventListener('storage', e => {
+    if (e.key === STORAGE_KEY) { loadState(); render(); }
+  });
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  applyTheme();
+  loadState();
+  if (appState) document.getElementById('btn-save-json').style.display = '';
+
+  function updateHeader() {
+    document.getElementById('hdr-event').textContent =
+      (appState && appState.meta && appState.meta.event) ? appState.meta.event : '';
+  }
+  updateHeader();
+
+  // Reload when tab regains focus so changes from the main ZollTool tab are picked up
+  window.addEventListener('focus', () => { loadState(); updateHeader(); render(); });
+
+  document.getElementById('cash-received').addEventListener('input', updateChange);
+  document.getElementById('btn-cash').addEventListener('click', () => initiatePayment('cash'));
+  document.getElementById('btn-card').addEventListener('click', () => initiatePayment('card'));
+  document.getElementById('btn-clear').addEventListener('click', clearCart);
+  document.getElementById('confirm-cancel').addEventListener('click', closeOverlay);
+  document.getElementById('confirm-ok').addEventListener('click', confirmPayment);
+  document.getElementById('pay-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('pay-overlay')) closeOverlay();
+  });
+
+  function saveJSON() {
+    if (!appState) { showToast('No data to save.', 'error'); return; }
+    const json = JSON.stringify(appState, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const name = (appState.meta && appState.meta.event) ? appState.meta.event.replace(/\s+/g, '_') : 'ZollTool';
+    a.download = name + '_pos.json';
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  document.getElementById('btn-load-json').addEventListener('click', () => {
+    document.getElementById('pos-file-input').click();
+  });
+  document.getElementById('btn-save-json').addEventListener('click', saveJSON);
+  document.getElementById('pos-file-input').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      try {
+        const parsed = JSON.parse(evt.target.result);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+        loadState();
+        updateHeader();
+        render();
+        document.getElementById('btn-save-json').style.display = '';
+        showToast('Loaded: ' + file.name, 'success');
+      } catch (err) {
+        showToast('Invalid JSON file.', 'error');
+      }
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  });
+
+  render();
+</script>
+</body>
+</html>

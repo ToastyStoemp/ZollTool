@@ -3596,3 +3596,11 @@ function initHeightBridge() {
 }
 
 document.addEventListener('DOMContentLoaded', () => { init(); initDisclaimer(); initHeightBridge(); loadEventPresets(); });
+
+// Sync sold quantities if POS updates localStorage from another tab
+window.addEventListener('storage', e => {
+  if (e.key !== STORAGE_KEY) return;
+  loadFromStorage();
+  renderTable();
+  renderTotals();
+});
