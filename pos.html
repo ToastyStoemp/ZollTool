@@ -384,6 +384,17 @@
   </div>
 </div>
 
+<!-- Variant picker overlay -->
+<div class="overlay hidden" id="variant-overlay">
+  <div class="type-modal" style="max-width:420px">
+    <div class="type-modal-hdr">
+      <span class="type-modal-title" id="variant-modal-title">Choose a variant</span>
+      <button class="btn btn-ghost" id="variant-overlay-close" style="padding:4px 9px">✕</button>
+    </div>
+    <div class="type-modal-body" id="variant-modal-body" style="grid-template-columns:repeat(auto-fill,minmax(120px,1fr))"></div>
+  </div>
+</div>
+
 <!-- Type drill-down overlay -->
 <div class="overlay hidden" id="type-overlay">
   <div class="type-modal">
@@ -524,15 +535,41 @@
     return { totalValue, effectiveUnitPrice, totalWeightKg };
   }
 
+  // ── Variant helpers ────────────────────────────────────────────────────────
+  function hasVariants(p) {
+    return Array.isArray(p.variants) && p.variants.length > 0;
+  }
+  function variantPrice(p, v) {
+    const raw = (v.price != null && v.price !== '') ? v.price : p.price;
+    return (raw != null && !isNaN(parseFloat(raw))) ? parseFloat(raw) : null;
+  }
+  function variantWeight(p, v) {
+    const raw = (v.weightG != null && v.weightG !== '') ? v.weightG : p.weightG;
+    return parseFloat(raw) || 0;
+  }
+
+  // Cart keys: plain productId for non-variant products, "productId:variantId" for variants.
+  function parseCartKey(key) {
+    const idx = key.indexOf(':');
+    return idx === -1 ? { pid: key, vid: null } : { pid: key.slice(0, idx), vid: key.slice(idx + 1) };
+  }
+
   // ── Cart helpers ───────────────────────────────────────────────────────────
   function cartTotal() {
     if (!appState) return 0;
-    return appState.products.reduce((sum, p) => {
-      const qty = cart[p.id] || 0;
+    return Object.entries(cart).reduce((sum, [key, qty]) => {
       if (!qty) return sum;
-      const c = calcProduct(p);
-      const unitPrice = c.effectiveUnitPrice;
-      return sum + (unitPrice != null ? unitPrice * qty : 0);
+      const { pid, vid } = parseCartKey(key);
+      const p = appState.products.find(pr => pr.id === pid);
+      if (!p) return sum;
+      let price;
+      if (vid) {
+        const v = (p.variants || []).find(vv => vv.id === vid);
+        price = v ? variantPrice(p, v) : null;
+      } else {
+        price = calcProduct(p).effectiveUnitPrice;
+      }
+      return sum + (price != null ? price * qty : 0);
     }, 0);
   }
 
@@ -540,30 +577,75 @@
     return Object.values(cart).reduce((s, q) => s + q, 0);
   }
 
-  function remainingStock(p) {
-    // already sold + cart qty vs total amount
-    const alreadySold = p.soldQty || 0;
-    const inCart = cart[p.id] || 0;
-    return (p.amount || 0) - alreadySold - inCart;
+  function remainingStock(p, vid) {
+    if (vid) {
+      const v = (p.variants || []).find(vv => vv.id === vid);
+      if (!v) return 0;
+      return (v.amount || 0) - (v.soldQty || 0) - (cart[`${p.id}:${vid}`] || 0);
+    }
+    if (hasVariants(p)) {
+      return p.variants.reduce((s, v) => s + remainingStock(p, v.id), 0);
+    }
+    return (p.amount || 0) - (p.soldQty || 0) - (cart[p.id] || 0);
   }
 
-  function addToCart(productId) {
-    const p = appState.products.find(p => p.id === productId);
+  function addToCart(productId, variantId) {
+    const p = appState && appState.products.find(pr => pr.id === productId);
     if (!p) return;
-    cart[productId] = (cart[productId] || 0) + 1;
+    if (hasVariants(p) && !variantId) { openVariantPicker(productId); return; }
+    const key = variantId ? `${productId}:${variantId}` : productId;
+    cart[key] = (cart[key] || 0) + 1;
     render();
   }
 
-  function setCartQty(productId, qty) {
-    const p = appState.products.find(p => p.id === productId);
-    if (!p) return;
+  function setCartQty(key, qty) {
     qty = Math.max(0, qty);
-    if (qty === 0) delete cart[productId];
-    else cart[productId] = qty;
+    if (qty === 0) delete cart[key];
+    else cart[key] = qty;
     render();
   }
 
   function clearCart() { cart = {}; render(); }
+
+  // ── Variant picker ─────────────────────────────────────────────────────────
+  let variantPickerProductId = null;
+
+  function openVariantPicker(productId) {
+    const p = appState.products.find(pr => pr.id === productId);
+    if (!p) return;
+    variantPickerProductId = productId;
+    const color = p.type ? typeColor(p.type) : 'var(--blue)';
+    const title = document.getElementById('variant-modal-title');
+    title.textContent = p.title || 'Choose a variant';
+    title.style.color = color;
+    const body = document.getElementById('variant-modal-body');
+    body.style.borderTop = `3px solid ${color}`;
+    body.innerHTML = p.variants.map(v => {
+      const stock = remainingStock(p, v.id);
+      const price = variantPrice(p, v);
+      const stockClass = stock <= 0 ? 'none' : stock <= 3 ? 'low' : '';
+      const stockLabel = stock <= 0 ? 'Out of stock' : stock <= 3 ? `${stock} left` : `${stock} in stock`;
+      return `<button class="product-btn${stock <= 0 ? ' out-of-stock' : ''}"
+                style="border-left:4px solid ${color}"
+                onclick="addToCart('${productId}','${v.id}');closeVariantPicker()">
+        <span class="pb-title">${escHtml(v.name || '(untitled)')}</span>
+        ${v.sku ? `<span class="pb-sku">${escHtml(v.sku)}</span>` : ''}
+        ${price != null ? `<span class="pb-price">${fmtPrice(price)}</span>` : ''}
+        <span class="pb-stock ${stockClass}">${stockLabel}</span>
+      </button>`;
+    }).join('');
+    document.getElementById('variant-overlay').classList.remove('hidden');
+  }
+
+  function closeVariantPicker() {
+    document.getElementById('variant-overlay').classList.add('hidden');
+    variantPickerProductId = null;
+  }
+
+  document.getElementById('variant-overlay-close').addEventListener('click', closeVariantPicker);
+  document.getElementById('variant-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('variant-overlay')) closeVariantPicker();
+  });
 
   // ── Discounts ──────────────────────────────────────────────────────────────
   // Discounts live in appState.discounts so they are included in the exported JSON.
@@ -601,10 +683,21 @@
       const items = [];
       for (const pid of disc.productIds) {
         const p = appState.products.find(pr => pr.id === pid);
-        const qty = cart[pid] || 0;
-        if (!p || !qty) continue;
-        const unitPrice = calcProduct(p).effectiveUnitPrice || 0;
-        for (let i = 0; i < qty; i++) items.push(unitPrice);
+        if (!p) continue;
+        if (hasVariants(p)) {
+          for (const [key, qty] of Object.entries(cart)) {
+            const { pid: kpid, vid } = parseCartKey(key);
+            if (kpid !== pid || !vid || !qty) continue;
+            const v = (p.variants || []).find(vv => vv.id === vid);
+            const price = v ? (variantPrice(p, v) || 0) : 0;
+            for (let i = 0; i < qty; i++) items.push(price);
+          }
+        } else {
+          const qty = cart[pid] || 0;
+          if (!qty) continue;
+          const price = calcProduct(p).effectiveUnitPrice || 0;
+          for (let i = 0; i < qty; i++) items.push(price);
+        }
       }
       if (!items.length) continue;
       items.sort((a, b) => a - b); // cheapest first
@@ -780,13 +873,22 @@
     // Reload fresh state before writing to avoid overwriting concurrent changes
     loadState();
 
-    appState.products.forEach(p => {
-      const qty = cart[p.id] || 0;
+    Object.entries(cart).forEach(([key, qty]) => {
       if (!qty) return;
-      const c = calcProduct(p);
-      const addedValue = c.effectiveUnitPrice != null ? c.effectiveUnitPrice * qty : 0;
-      p.soldQty   = (p.soldQty   || 0) + qty;
-      p.soldValue = (p.soldValue || 0) + addedValue;
+      const { pid, vid } = parseCartKey(key);
+      const p = appState.products.find(pr => pr.id === pid);
+      if (!p) return;
+      if (vid) {
+        const v = (p.variants || []).find(vv => vv.id === vid);
+        if (!v) return;
+        const price = variantPrice(p, v);
+        v.soldQty   = (v.soldQty   || 0) + qty;
+        v.soldValue = (v.soldValue || 0) + (price != null ? price * qty : 0);
+      } else {
+        const c = calcProduct(p);
+        p.soldQty   = (p.soldQty   || 0) + qty;
+        p.soldValue = (p.soldValue || 0) + (c.effectiveUnitPrice != null ? c.effectiveUnitPrice * qty : 0);
+      }
     });
 
     saveState();
@@ -877,16 +979,36 @@
 
   // ── Render ─────────────────────────────────────────────────────────────────
   function productCardHtml(p) {
-    const c = calcProduct(p);
     const stock = remainingStock(p);
-    const price = p.priceNote || (c.effectiveUnitPrice != null ? fmtPrice(c.effectiveUnitPrice) : '—');
-    const stockClass = stock <= 0 ? 'none' : stock <= 3 ? 'low' : '';
-    const stockLabel = stock <= 0 ? 'Out of stock' : stock <= 3 ? `${stock} left` : `${stock} in stock`;
+    const allOut = stock <= 0;
+    const stockClass = allOut ? 'none' : stock <= 3 ? 'low' : '';
     const discBadges = getProductDiscounts(p.id).map(d => `<span class="pb-discount">${escHtml(d.name)}</span>`).join('');
     const color = p.type ? typeColor(p.type) : null;
-    return `<button class="product-btn${stock <= 0 ? ' out-of-stock' : ''}"
-              style="${color ? `border-left:4px solid ${color}` : ''}"
-              onclick="addToCart('${p.id}')">
+    const colorStyle = color ? `border-left:4px solid ${color}` : '';
+
+    if (hasVariants(p)) {
+      const stockLabel = allOut ? 'Out of stock' : `${stock} in stock`;
+      const prices = [...new Set(p.variants.map(v => variantPrice(p, v)).filter(x => x != null))];
+      const priceStr = prices.length === 0 ? '—'
+        : prices.length === 1 ? fmtPrice(prices[0])
+        : `${fmtPrice(Math.min(...prices))} – ${fmtPrice(Math.max(...prices))}`;
+      return `<button class="product-btn${allOut ? ' out-of-stock' : ''}"
+                style="${colorStyle}" onclick="addToCart('${p.id}')">
+        <span class="pb-title">${escHtml(p.title || '(untitled)')}</span>
+        ${p.sku ? `<span class="pb-sku">${escHtml(p.sku)}</span>` : ''}
+        ${p.type ? `<span class="pb-type" style="color:${color}">${escHtml(p.type)}</span>` : ''}
+        <span class="pb-price">${escHtml(priceStr)}</span>
+        <span class="pb-discount" style="background:rgba(37,99,235,.1);color:var(--blue)">${p.variants.length} variants</span>
+        ${discBadges}
+        <span class="pb-stock ${stockClass}">${stockLabel}</span>
+      </button>`;
+    }
+
+    const c = calcProduct(p);
+    const price = p.priceNote || (c.effectiveUnitPrice != null ? fmtPrice(c.effectiveUnitPrice) : '—');
+    const stockLabel = allOut ? 'Out of stock' : stock <= 3 ? `${stock} left` : `${stock} in stock`;
+    return `<button class="product-btn${allOut ? ' out-of-stock' : ''}"
+              style="${colorStyle}" onclick="addToCart('${p.id}')">
       <span class="pb-title">${escHtml(p.title || '(untitled)')}</span>
       ${p.sku ? `<span class="pb-sku">${escHtml(p.sku)}</span>` : ''}
       ${p.type ? `<span class="pb-type" style="color:${color}">${escHtml(p.type)}</span>` : ''}
@@ -955,21 +1077,30 @@
     if (!entries.length) {
       container.innerHTML = '<div class="cart-empty">Cart is empty</div>';
     } else {
-      container.innerHTML = entries.map(([id, qty]) => {
-        const p = appState.products.find(p => p.id === id);
+      container.innerHTML = entries.map(([key, qty]) => {
+        const { pid, vid } = parseCartKey(key);
+        const p = appState.products.find(pr => pr.id === pid);
         if (!p) return '';
-        const c = calcProduct(p);
-        const lineTotal = c.effectiveUnitPrice != null ? c.effectiveUnitPrice * qty : null;
-        const unitLabel = p.priceNote || (c.effectiveUnitPrice != null ? fmtPrice(c.effectiveUnitPrice) : '—');
+        let unitPrice, displayTitle;
+        if (vid) {
+          const v = (p.variants || []).find(vv => vv.id === vid);
+          unitPrice    = v ? variantPrice(p, v) : null;
+          displayTitle = `${p.title || '(untitled)'}${v ? ' — ' + v.name : ''}`;
+        } else {
+          unitPrice    = calcProduct(p).effectiveUnitPrice;
+          displayTitle = p.title || '(untitled)';
+        }
+        const lineTotal = unitPrice != null ? unitPrice * qty : null;
+        const unitLabel = (vid ? null : p.priceNote) || (unitPrice != null ? fmtPrice(unitPrice) : '—');
         return `<div class="cart-item">
           <div class="ci-info">
-            <div class="ci-title">${escHtml(p.title || '(untitled)')}</div>
+            <div class="ci-title">${escHtml(displayTitle)}</div>
             <div class="ci-price">${escHtml(unitLabel)} each</div>
           </div>
           <div class="ci-qty">
-            <button class="qty-btn" onclick="setCartQty('${id}', ${qty - 1})">−</button>
+            <button class="qty-btn" onclick="setCartQty('${key}', ${qty - 1})">−</button>
             <span class="qty-val">${qty}</span>
-            <button class="qty-btn" onclick="setCartQty('${id}', ${qty + 1})">+</button>
+            <button class="qty-btn" onclick="setCartQty('${key}', ${qty + 1})">+</button>
           </div>
           <div class="ci-line">${lineTotal != null ? fmtPrice(lineTotal) : '—'}</div>
         </div>`;

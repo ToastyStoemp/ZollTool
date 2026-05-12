@@ -423,27 +423,73 @@ function fmtRate(r) {
 }
 
 /* =========================================================
+   VARIANT HELPERS
+   ========================================================= */
+function hasVariants(p) {
+  return Array.isArray(p.variants) && p.variants.length > 0;
+}
+function variantPrice(p, v) {
+  const raw = (v.price != null && v.price !== '') ? v.price : p.price;
+  return (raw != null && !isNaN(parseFloat(raw))) ? parseFloat(raw) : null;
+}
+function variantWeight(p, v) {
+  const raw = (v.weightG != null && v.weightG !== '') ? v.weightG : p.weightG;
+  return parseFloat(raw) || 0;
+}
+
+/* =========================================================
    CALCULATIONS
    ========================================================= */
 function calcProduct(p) {
-  const amount = p.amount || 0;
+  if (hasVariants(p)) {
+    let amount = 0, totalWeightKg = 0, totalValue = 0;
+    let soldQty = 0, soldValue = 0, soldWeightKg = 0;
+    for (const v of p.variants) {
+      const amt   = v.amount || 0;
+      const wg    = variantWeight(p, v);
+      const price = variantPrice(p, v);
+      amount        += amt;
+      totalWeightKg += Math.round(amt * wg) / 1000;
+      if (price != null) totalValue += price * amt;
+      soldQty       += v.soldQty   || 0;
+      soldValue     += v.soldValue || 0;
+      soldWeightKg  += (v.soldQty || 0) * wg / 1000;
+    }
+    totalWeightKg = Math.round(totalWeightKg * 1000) / 1000;
+    const prices  = p.variants.map(v => variantPrice(p, v)).filter(x => x != null);
+    const weights = p.variants.map(v => variantWeight(p, v));
+    const allSamePrice  = prices.length  > 0 && prices.every(x => x === prices[0]);
+    const allSameWeight = weights.length > 0 && weights.every(x => x === weights[0]);
+    const effectiveUnitPrice  = allSamePrice  ? prices[0]
+      : (amount > 0 && totalValue > 0 ? totalValue / amount : null);
+    const effectiveUnitWeightG = allSameWeight ? weights[0]
+      : (amount > 0 ? Math.round(totalWeightKg * 1000 / amount) : (p.weightG || 0));
+    return {
+      totalWeightKg,
+      totalValue:           totalValue > 0 ? Math.round(totalValue) : null,
+      effectiveUnitPrice,
+      effectiveUnitWeightG,
+      soldWeightKg,
+      amount, soldQty, soldValue,
+    };
+  }
 
+  const amount = p.amount || 0;
   // Weight: round to nearest gram first to eliminate floating-point noise, then convert to kg
   const totalWeightKg = Math.round(amount * (p.weightG || 0)) / 1000;
-
-  // Value: round to whole CHF -the total is the authoritative number
+  // Value: round to whole CHF — the total is the authoritative number
   let totalValue = p.totalValueCHF != null ? Math.round(parseFloat(p.totalValueCHF)) : null;
   if (totalValue == null && p.price != null && p.price !== '') {
     totalValue = Math.round(parseFloat(p.price) * amount);
   }
-
   // Effective per-unit values derived from the rounded totals (not from raw stored inputs)
   const effectiveUnitPrice   = (totalValue != null && amount > 0) ? totalValue / amount : null;
   const effectiveUnitWeightG = amount > 0 ? (totalWeightKg * 1000) / amount : (p.weightG || 0);
-
   const soldWeightKg = (p.soldQty || 0) * (p.weightG || 0) / 1000;
-
-  return { totalWeightKg, totalValue, effectiveUnitPrice, effectiveUnitWeightG, soldWeightKg };
+  return {
+    totalWeightKg, totalValue, effectiveUnitPrice, effectiveUnitWeightG, soldWeightKg,
+    amount, soldQty: p.soldQty || 0, soldValue: p.soldValue || 0,
+  };
 }
 
 function calcTotals() {
@@ -454,12 +500,12 @@ function calcTotals() {
 
   state.products.forEach(p => {
     const c = calcProduct(p);
-    totalAmount    += (p.amount || 0);
+    totalAmount    += c.amount;
     totalWeightKg  += c.totalWeightKg;
     if (c.totalValue != null) totalValue += c.totalValue;
-    totalSoldQty   += (p.soldQty || 0);
-    totalSoldVal   += (p.soldValue || 0);
-    totalSoldVat   += floorN((p.soldValue || 0) * ((p.vatRate || 0) / 100), 2);
+    totalSoldQty   += c.soldQty;
+    totalSoldVal   += c.soldValue;
+    totalSoldVat   += floorN(c.soldValue * ((p.vatRate || 0) / 100), 2);
     totalSoldWeight += c.soldWeightKg;
     if (c.totalValue != null) totalImportVat += floorN(c.totalValue * ((p.vatRate || 0) / 100), 2);
 
@@ -467,7 +513,7 @@ function calcTotals() {
     const rateKey = p.tariffRate != null ? String(parseFloat(p.tariffRate)) : '?';
     if (!byTariffRate[rateKey]) byTariffRate[rateKey] = { value: 0, soldVal: 0 };
     if (c.totalValue != null) byTariffRate[rateKey].value   += c.totalValue;
-    byTariffRate[rateKey].soldVal += (p.soldValue || 0);
+    byTariffRate[rateKey].soldVal += c.soldValue;
   });
 
   return { totalAmount, totalWeightKg, totalValue, totalImportVat, totalSoldQty, totalSoldVal, totalSoldVat, totalSoldWeight, byTariffRate };
@@ -618,7 +664,11 @@ function buildProductRow(p, idx) {
   // Title
   const titleCell = document.createElement('td');
   titleCell.className = 'col-title';
-  titleCell.textContent = p.title || '—';
+  if (hasVariants(p)) {
+    titleCell.innerHTML = `${p.title || '—'} <span class="badge badge-variants">${p.variants.length} variant${p.variants.length !== 1 ? 's' : ''}</span>`;
+  } else {
+    titleCell.textContent = p.title || '—';
+  }
   tr.appendChild(titleCell);
 
   // SKU
@@ -640,7 +690,7 @@ function buildProductRow(p, idx) {
   const amtCell = document.createElement('td');
   amtCell.className = 'col-amount';
   amtCell.style.textAlign = 'right';
-  amtCell.textContent = p.amount != null ? p.amount.toLocaleString() : '—';
+  amtCell.textContent = c.amount != null ? c.amount.toLocaleString() : '—';
   tr.appendChild(amtCell);
 
   // Unit weight
@@ -719,43 +769,52 @@ function buildProductRow(p, idx) {
   tr.appendChild(td('col-origin', effectiveOrigin));
 
   // --- Sold columns ---
-  // Sold Qty (editable)
   const soldQtyCell = document.createElement('td');
   soldQtyCell.className = 'col-soldqty sold-col-start';
   soldQtyCell.style.textAlign = 'right';
-  const soldQtyInput = document.createElement('input');
-  soldQtyInput.type = 'number';
-  soldQtyInput.className = 'sold-input';
-  soldQtyInput.min = '0';
-  soldQtyInput.step = '1';
-  soldQtyInput.value = p.soldQty != null ? p.soldQty : 0;
-  soldQtyInput.addEventListener('change', () => {
-    updateProductField(p.id, 'soldQty', parseFloat(soldQtyInput.value) || 0);
-  });
-  soldQtyCell.appendChild(soldQtyInput);
-  tr.appendChild(soldQtyCell);
 
-  // Sold Value (editable)
   const soldValCell = document.createElement('td');
   soldValCell.className = 'col-soldval';
   soldValCell.style.textAlign = 'right';
-  const soldValInput = document.createElement('input');
-  soldValInput.type = 'number';
-  soldValInput.className = 'sold-input';
-  soldValInput.min = '0';
-  soldValInput.step = '0.01';
-  soldValInput.value = p.soldValue != null ? formatNum(p.soldValue, 2) : '0.00';
-  soldValInput.addEventListener('change', () => {
-    updateProductField(p.id, 'soldValue', parseFloat(soldValInput.value) || 0);
-  });
-  soldValCell.appendChild(soldValInput);
+
+  if (hasVariants(p)) {
+    // Variant products: sold data is per-variant, show aggregate as read-only
+    soldQtyCell.textContent = c.soldQty;
+    soldValCell.textContent = formatNum(c.soldValue, 2);
+  } else {
+    // Sold Qty (editable)
+    const soldQtyInput = document.createElement('input');
+    soldQtyInput.type = 'number';
+    soldQtyInput.className = 'sold-input';
+    soldQtyInput.min = '0';
+    soldQtyInput.step = '1';
+    soldQtyInput.value = p.soldQty != null ? p.soldQty : 0;
+    soldQtyInput.addEventListener('change', () => {
+      updateProductField(p.id, 'soldQty', parseFloat(soldQtyInput.value) || 0);
+    });
+    soldQtyCell.appendChild(soldQtyInput);
+
+    // Sold Value (editable)
+    const soldValInput = document.createElement('input');
+    soldValInput.type = 'number';
+    soldValInput.className = 'sold-input';
+    soldValInput.min = '0';
+    soldValInput.step = '0.01';
+    soldValInput.value = p.soldValue != null ? formatNum(p.soldValue, 2) : '0.00';
+    soldValInput.addEventListener('change', () => {
+      updateProductField(p.id, 'soldValue', parseFloat(soldValInput.value) || 0);
+    });
+    soldValCell.appendChild(soldValInput);
+  }
+
+  tr.appendChild(soldQtyCell);
   tr.appendChild(soldValCell);
 
   // Sold VAT (derived, read-only)
   const soldVatCell = document.createElement('td');
   soldVatCell.className = 'col-soldvat';
   soldVatCell.style.textAlign = 'right';
-  soldVatCell.textContent = formatNum(floorN((p.soldValue || 0) * ((p.vatRate || 0) / 100), 2), 2);
+  soldVatCell.textContent = formatNum(floorN(c.soldValue * ((p.vatRate || 0) / 100), 2), 2);
   tr.appendChild(soldVatCell);
 
   // Sold Weight (derived, read-only display)
@@ -967,6 +1026,11 @@ function resetModalForm() {
   if (vatHint) { vatHint.textContent = 'Standard rate'; vatHint.style.color = ''; }
   // Reset radio
   document.querySelector('input[name="m-forsale"][value="true"]').checked = true;
+  // Reset variants
+  document.getElementById('m-has-variants').checked = false;
+  document.getElementById('m-variants-body').style.display = 'none';
+  document.getElementById('m-variant-rows').innerHTML = '';
+  document.getElementById('m-amount-group').style.display = '';
   updateModalPreview();
 }
 
@@ -1011,6 +1075,14 @@ function populateModalForm(p) {
   // VAT hint
   updateVatHint();
 
+  // Variants
+  const variantsEnabled = hasVariants(p);
+  document.getElementById('m-has-variants').checked = variantsEnabled;
+  document.getElementById('m-variants-body').style.display = variantsEnabled ? '' : 'none';
+  document.getElementById('m-amount-group').style.display = variantsEnabled ? 'none' : '';
+  document.getElementById('m-variant-rows').innerHTML = '';
+  if (variantsEnabled) p.variants.forEach(v => addModalVariantRow(v));
+
   updateModalPreview();
 }
 
@@ -1039,39 +1111,110 @@ function collectModalForm() {
   const totalValueStr = document.getElementById('m-totalvalue').value.trim();
   const totalValueCHF = totalValueStr !== '' ? parseFloat(totalValueStr) : null;
 
+  const variantsEnabled = document.getElementById('m-has-variants').checked;
+  let variants = [];
+  if (variantsEnabled) {
+    variants = [...document.querySelectorAll('#m-variant-rows .variant-edit-row')].map(row => ({
+      id:        row.dataset.vid || uuid(),
+      name:      row.querySelector('.vr-name').value.trim(),
+      sku:       row.querySelector('.vr-sku').value.trim(),
+      amount:    parseInt(row.querySelector('.vr-amount').value) || 0,
+      price:     row.querySelector('.vr-price').value  !== '' ? parseFloat(row.querySelector('.vr-price').value)  : null,
+      weightG:   row.querySelector('.vr-weight').value !== '' ? parseFloat(row.querySelector('.vr-weight').value) : null,
+      soldQty:   parseFloat(row.dataset.soldqty)  || 0,
+      soldValue: parseFloat(row.dataset.soldval)  || 0,
+    }));
+  }
+
   return {
     title,
     sku,
     type,
     forSale,
-    amount:       amount  != null ? amount  : 0,
-    weightG:      weightG != null ? weightG : 0,
+    amount:        variantsEnabled ? 0 : (amount  != null ? amount  : 0),
+    weightG:       weightG != null ? weightG : 0,
     price,
     priceNote,
-    totalValueCHF,
+    totalValueCHF: variantsEnabled ? null : totalValueCHF,
     tariffNo,
     tariffRate:    tariffRate !== '' ? parseFloat(tariffRate) : null,
     vatRate:       vatRate    !== '' ? parseFloat(vatRate)    : null,
     packagingType,
     originCountry,
+    variants,
   };
 }
 
 function validateModalForm() {
   const title  = document.getElementById('m-title').value.trim();
-  const amount = document.getElementById('m-amount').value;
   if (!title) {
     showToast('Please enter a product title.', 'error');
     document.getElementById('m-title').focus();
     return false;
   }
-  if (amount === '' || isNaN(parseFloat(amount))) {
-    showToast('Please enter a valid amount.', 'error');
-    document.getElementById('m-amount').focus();
-    return false;
+  const variantsEnabled = document.getElementById('m-has-variants').checked;
+  if (!variantsEnabled) {
+    const amount = document.getElementById('m-amount').value;
+    if (amount === '' || isNaN(parseFloat(amount))) {
+      showToast('Please enter a valid amount.', 'error');
+      document.getElementById('m-amount').focus();
+      return false;
+    }
+  } else {
+    const rows = document.querySelectorAll('#m-variant-rows .variant-edit-row');
+    if (!rows.length) {
+      showToast('Add at least one variant, or disable variants.', 'error');
+      return false;
+    }
+    for (const row of rows) {
+      if (!row.querySelector('.vr-name').value.trim()) {
+        showToast('Each variant needs a name.', 'error');
+        row.querySelector('.vr-name').focus();
+        return false;
+      }
+    }
   }
   return true;
 }
+
+function addModalVariantRow(v = null) {
+  const container = document.getElementById('m-variant-rows');
+  const row = document.createElement('div');
+  row.className = 'variant-edit-row';
+  row.dataset.vid      = v ? (v.id || uuid()) : uuid();
+  row.dataset.soldqty  = v ? (v.soldQty  || 0) : 0;
+  row.dataset.soldval  = v ? (v.soldValue || 0) : 0;
+  row.innerHTML = `
+    <input type="text"   class="vr-name"   placeholder="Name *" />
+    <input type="text"   class="vr-sku"    placeholder="SKU (optional)" />
+    <input type="number" class="vr-amount" placeholder="Amount *" min="0" step="1" />
+    <input type="number" class="vr-price"  placeholder="Inherit" min="0" step="0.01" />
+    <input type="number" class="vr-weight" placeholder="Inherit" min="0" step="1" />
+    <button type="button" class="vr-remove">✕</button>
+  `;
+  if (v) {
+    row.querySelector('.vr-name').value   = v.name   || '';
+    row.querySelector('.vr-sku').value    = v.sku    || '';
+    row.querySelector('.vr-amount').value = v.amount != null ? v.amount : '';
+    if (v.price   != null) row.querySelector('.vr-price').value  = v.price;
+    if (v.weightG != null) row.querySelector('.vr-weight').value = v.weightG;
+  }
+  row.querySelector('.vr-remove').addEventListener('click', () => row.remove());
+  container.appendChild(row);
+}
+
+// Wire up variant toggle and add-variant button (runs once after DOM ready)
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('m-has-variants').addEventListener('change', e => {
+    const on = e.target.checked;
+    document.getElementById('m-variants-body').style.display = on ? '' : 'none';
+    document.getElementById('m-amount-group').style.display  = on ? 'none' : '';
+    if (on && !document.querySelector('#m-variant-rows .variant-edit-row')) {
+      addModalVariantRow(); // start with one empty row
+    }
+  });
+  document.getElementById('m-add-variant').addEventListener('click', () => addModalVariantRow());
+});
 
 function saveModal() {
   if (!validateModalForm()) return;
@@ -3284,44 +3427,171 @@ document.addEventListener('keydown', (e) => {
 });
 
 /* =========================================================
-   DRAG AND DROP REORDERING
+   DRAG AND DROP REORDERING + MERGE
    ========================================================= */
+function commonWordPrefix(a, b) {
+  const wa = a.trim().split(/\s+/);
+  const wb = b.trim().split(/\s+/);
+  const shared = [];
+  for (let i = 0; i < Math.min(wa.length, wb.length); i++) {
+    if (wa[i].toLowerCase() === wb[i].toLowerCase()) shared.push(wa[i]);
+    else break;
+  }
+  return shared.join(' ');
+}
+
+function variantSuffix(title, prefix) {
+  const s = prefix ? title.slice(prefix.length).trim() : title.trim();
+  return s || title.trim();
+}
+
+function mergeProductsAsVariants(srcId, tgtId) {
+  const srcIdx = state.products.findIndex(p => p.id === srcId);
+  const tgtIdx = state.products.findIndex(p => p.id === tgtId);
+  if (srcIdx === -1 || tgtIdx === -1) return;
+  const src = state.products[srcIdx];
+  const tgt = state.products[tgtIdx];
+
+  const srcHas = hasVariants(src);
+  const tgtHas = hasVariants(tgt);
+
+  function makeVariantFrom(p, name) {
+    return {
+      id: 'v' + Date.now() + Math.random().toString(36).slice(2, 6),
+      name,
+      sku: p.sku || '',
+      amount: p.amount || 0,
+      soldQty: p.soldQty || 0,
+      soldValue: p.soldValue || 0,
+      price: p.price,
+      weightG: p.weightG
+    };
+  }
+
+  if (tgtHas && !srcHas) {
+    // Drop plain onto variant product — add src as new variant
+    const prefix = commonWordPrefix(tgt.title, src.title);
+    const varName = variantSuffix(src.title, prefix) || src.title;
+    const newVar = makeVariantFrom(src, varName);
+    tgt.variants.push(newVar);
+    state.products.splice(srcIdx, 1);
+  } else if (srcHas && !tgtHas) {
+    // Drop variant product onto plain — absorb tgt into src as a variant
+    const prefix = commonWordPrefix(src.title, tgt.title);
+    const varName = variantSuffix(tgt.title, prefix) || tgt.title;
+    const newVar = makeVariantFrom(tgt, varName);
+    src.variants.push(newVar);
+    state.products.splice(tgtIdx, 1);
+  } else if (!srcHas && !tgtHas) {
+    // Both plain — create new merged product with two variants
+    const prefix = commonWordPrefix(tgt.title, src.title);
+    const parentTitle = prefix || tgt.title;
+    const tgtName = variantSuffix(tgt.title, prefix) || tgt.title;
+    const srcName = variantSuffix(src.title, prefix) || src.title;
+
+    // Use tgt price/weight as parent base; override per variant if they differ
+    const pricesDiffer = src.price !== tgt.price;
+    const weightsDiffer = src.weightG !== tgt.weightG;
+
+    const merged = {
+      ...tgt,
+      title: parentTitle,
+      sku: '',
+      amount: 0,
+      soldQty: 0,
+      soldValue: 0,
+      soldVAT: 0,
+      variants: [
+        {
+          id: 'v' + Date.now() + Math.random().toString(36).slice(2, 6),
+          name: tgtName,
+          sku: tgt.sku || '',
+          amount: tgt.amount || 0,
+          soldQty: tgt.soldQty || 0,
+          soldValue: tgt.soldValue || 0,
+          price: pricesDiffer ? tgt.price : null,
+          weightG: weightsDiffer ? tgt.weightG : null
+        },
+        {
+          id: 'v' + (Date.now() + 1) + Math.random().toString(36).slice(2, 6),
+          name: srcName,
+          sku: src.sku || '',
+          amount: src.amount || 0,
+          soldQty: src.soldQty || 0,
+          soldValue: src.soldValue || 0,
+          price: pricesDiffer ? src.price : null,
+          weightG: weightsDiffer ? src.weightG : null
+        }
+      ]
+    };
+    // Replace tgt in place, remove src
+    state.products[tgtIdx] = merged;
+    state.products.splice(srcIdx, 1);
+  } else {
+    // Both have variants — merge src variants into tgt
+    for (const v of src.variants) {
+      tgt.variants.push({ ...v, id: 'v' + Date.now() + Math.random().toString(36).slice(2, 6) });
+    }
+    state.products.splice(srcIdx, 1);
+  }
+
+  saveToStorage();
+  renderTable();
+}
+
 function initDragDrop() {
   const tbody = document.getElementById('products-tbody');
   let dragSrcId = null;
+  let dragMode = 'reorder'; // 'reorder' | 'merge'
+
+  function clearDragStyles() {
+    tbody.querySelectorAll('tr[data-drag]').forEach(r => delete r.dataset.drag);
+    tbody.querySelectorAll('tr.drag-over').forEach(r => r.classList.remove('drag-over'));
+  }
 
   tbody.addEventListener('dragstart', e => {
     const row = e.target.closest('tr[data-id]');
     if (!row) return;
+    // Drag from the ⋮ handle = reorder; drag from anywhere else = merge
+    dragMode = e.target.closest('.drag-handle') ? 'reorder' : 'merge';
     dragSrcId = row.dataset.id;
     setTimeout(() => row.classList.add('dragging'), 0);
-    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.effectAllowed = 'copyMove';
   });
 
   tbody.addEventListener('dragover', e => {
     e.preventDefault();
     const row = e.target.closest('tr[data-id]');
-    if (!row || row.dataset.id === dragSrcId) return;
-    tbody.querySelectorAll('tr.drag-over').forEach(r => r.classList.remove('drag-over'));
-    row.classList.add('drag-over');
+    if (!row || row.dataset.id === dragSrcId) { clearDragStyles(); return; }
+    clearDragStyles();
+    row.dataset.drag = dragMode;
+    e.dataTransfer.dropEffect = dragMode === 'merge' ? 'copy' : 'move';
   });
 
   tbody.addEventListener('drop', e => {
     e.preventDefault();
     const row = e.target.closest('tr[data-id]');
     const targetId = row ? row.dataset.id : null;
+    clearDragStyles();
     if (!dragSrcId || !targetId || dragSrcId === targetId) return;
-    const srcIdx = state.products.findIndex(p => p.id === dragSrcId);
-    const tgtIdx = state.products.findIndex(p => p.id === targetId);
-    const [moved] = state.products.splice(srcIdx, 1);
-    state.products.splice(tgtIdx, 0, moved);
-    saveToStorage();
-    renderTable();
+
+    if (dragMode === 'merge') {
+      mergeProductsAsVariants(dragSrcId, targetId);
+    } else {
+      const srcIdx = state.products.findIndex(p => p.id === dragSrcId);
+      const tgtIdx = state.products.findIndex(p => p.id === targetId);
+      const [moved] = state.products.splice(srcIdx, 1);
+      state.products.splice(tgtIdx, 0, moved);
+      saveToStorage();
+      renderTable();
+    }
   });
 
   tbody.addEventListener('dragend', () => {
-    tbody.querySelectorAll('tr').forEach(r => r.classList.remove('dragging', 'drag-over'));
+    clearDragStyles();
+    tbody.querySelectorAll('tr').forEach(r => r.classList.remove('dragging'));
     dragSrcId = null;
+    dragMode = 'reorder';
   });
 }
 

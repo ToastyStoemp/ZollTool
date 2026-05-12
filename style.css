@@ -737,6 +737,9 @@ input::placeholder {
 .drag-handle:active { cursor: grabbing; }
 tr.dragging      { opacity: 0.4; }
 tr.drag-over td  { background: var(--red-light) !important; }
+tr[data-drag="reorder"] td { border-top: 2px solid var(--accent) !important; }
+tr[data-drag="merge"] td  { background: #e8f4ff !important; box-shadow: inset 0 0 0 2px #3b82f6; }
+[data-theme="dark"] tr[data-drag="merge"] td { background: #1a2a3a !important; }
 .col-soldqty     { width: 84px;  text-align: right; }
 .col-soldval     { width: 96px;  text-align: right; }
 .col-soldvat     { display: none; }
@@ -798,6 +801,49 @@ tr.drag-over td  { background: var(--red-light) !important; }
   background: var(--gray-200);
   color: var(--gray-600);
 }
+.badge-variants {
+  background: #e8eeff;
+  color: #3b5bdb;
+}
+[data-theme="dark"] .badge-variants { background: #1e2a5e; color: #a5b4fc; }
+
+/* Variant edit rows in the product modal */
+.variant-edit-header {
+  display: grid;
+  grid-template-columns: 1fr 100px 75px 75px 80px 28px;
+  gap: 6px;
+  padding: 0 4px 4px;
+  font-size: 11px;
+  color: var(--gray-600);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.variant-edit-row {
+  display: grid;
+  grid-template-columns: 1fr 100px 75px 75px 80px 28px;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--gray-200);
+}
+.variant-edit-row:last-child { border-bottom: none; }
+.variant-edit-row input {
+  padding: 5px 8px;
+  border: 1px solid var(--gray-300);
+  border-radius: 5px;
+  font-size: 13px;
+  background: var(--gray-100);
+  color: var(--gray-800);
+  width: 100%;
+  outline: none;
+}
+.variant-edit-row input:focus { border-color: #3b5bdb; }
+.variant-edit-row input::placeholder { color: var(--gray-400); }
+.vr-sku { font-family: var(--font-mono); }
+.vr-remove { background: none; border: none; cursor: pointer; color: var(--gray-400); font-size: 16px; padding: 0; line-height: 1; }
+.vr-remove:hover { color: var(--red); }
+#m-variants-wrap { border: 1px solid var(--gray-300); border-radius: 6px; padding: 8px; margin-top: 6px; background: var(--gray-100); }
 
 /* Tariff code display */
 .tariff-code {
