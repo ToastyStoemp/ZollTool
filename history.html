@@ -220,11 +220,29 @@
     .toast.success { background: var(--green); color: #fff; }
     .toast.error   { background: var(--red);   color: #fff; }
 
-    @media (max-width: 600px) {
+    @media (max-width: 640px) {
+      .main { padding: 16px 12px; }
+      .stats-bar { gap: 8px; }
+      .stat-chip { min-width: 0; flex: 1 1 calc(50% - 4px); padding: 8px 12px; }
+      .stat-value { font-size: 15px; }
+      .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
+      .toolbar-left { flex-wrap: wrap; }
+      .toolbar-right { justify-content: flex-end; }
+      /* Hide unit price column — still shown in total */
       .tx-items-table th:nth-child(3),
       .tx-items-table td:nth-child(3) { display: none; }
-      .stats-bar { gap: 10px; }
-      .stat-chip { min-width: 100px; padding: 8px 12px; }
+    }
+
+    @media (max-width: 480px) {
+      .pos-header { padding: 8px 12px; }
+      .page-title { font-size: 17px; }
+      .stat-chip { flex: 1 1 100%; }
+      .tx-card-hdr { padding: 10px 12px; gap: 8px; }
+      .tx-total { font-size: 14px; }
+      .tx-datetime { font-size: 12px; }
+      .tx-items-table td, .tx-items-table th { padding: 7px 10px; }
+      .tx-footer { padding: 8px 12px; }
+      .confirm-modal { padding: 22px 16px; }
     }
   </style>
 </head>

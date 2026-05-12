@@ -11,6 +11,7 @@
   </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { overflow-x: hidden; }
 
     /* ── Palette: mirrors main style.css exactly ── */
     :root {
@@ -113,7 +114,9 @@
     .product-btn:hover { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(59,91,219,.15), var(--shadow-sm); }
     .product-btn.out-of-stock { opacity: .5; }
     .product-btn.out-of-stock:hover { border-color: var(--red); box-shadow: 0 0 0 3px rgba(212,0,0,.12); }
-    .pb-title { font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--text); }
+    .pb-title { font-size: 13px; font-weight: 600; line-height: 1.3; color: var(--text);
+                display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+                overflow: hidden; }
     .pb-sku   { font-size: 10px; font-family: 'SF Mono', 'Fira Mono', Consolas, monospace;
                 color: var(--text-muted); }
     .pb-type  { font-size: 11px; color: var(--text-muted); }
@@ -305,9 +308,99 @@
     [data-theme="dark"] .product-check:has(input:checked) { background: rgba(59,91,219,.15); }
     .product-check input { accent-color: var(--blue); }
 
-    @media (max-width: 600px) {
-      .cart-panel { width: 260px; }
-      .products-grid { grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); }
+    /* ── Mobile cart bottom-sheet ── */
+    .cart-fab {
+      display: none; /* desktop: hidden */
+    }
+    .cart-drag-handle {
+      display: none; /* desktop: hidden */
+      width: 36px; height: 4px; background: var(--border-mid); border-radius: 2px;
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    }
+    .cart-mobile-close { display: none; }
+    .cart-backdrop {
+      display: none;
+      position: fixed; inset: 0; background: rgba(0,0,0,.45);
+      z-index: 44; cursor: pointer;
+    }
+
+    @media (max-width: 768px) {
+      /* Cart becomes a fixed bottom-sheet (taken out of normal flow),
+         so products-panel expands to fill full width naturally.
+         DO NOT change pos-body overflow — the flex height chain must stay intact. */
+
+      /* Products panel: let flex handle the height; just pad the bottom
+         so the last row of cards isn't hidden behind the FAB bar. */
+      .products-panel {
+        padding-bottom: 74px;
+      }
+
+      /* Cart becomes fixed bottom-sheet */
+      .cart-panel {
+        position: fixed; bottom: 0; left: 0; right: 0; top: auto;
+        width: 100%; height: 88dvh;
+        transform: translateY(100%);
+        transition: transform .3s cubic-bezier(.4,0,.2,1);
+        z-index: 45;
+        border-left: none;
+        border-top: 1px solid var(--border);
+        border-radius: 16px 16px 0 0;
+        box-shadow: 0 -8px 40px rgba(0,0,0,.22);
+      }
+      .cart-panel.open { transform: translateY(0); }
+      .cart-backdrop.open { display: block; }
+
+      /* Drag handle and close button visible on mobile */
+      .cart-drag-handle { display: block; }
+      .cart-header { padding-top: 22px; position: relative; }
+      .cart-mobile-close { display: flex; }
+
+      /* FAB: sticky bottom bar (~64px tall) */
+      .cart-fab {
+        display: flex; align-items: center; gap: 12px;
+        position: fixed; bottom: 0; left: 0; right: 0;
+        background: var(--surface); border-top: 2px solid var(--border);
+        padding: 10px 16px; z-index: 40;
+        box-shadow: 0 -4px 20px rgba(0,0,0,.12);
+      }
+      .cart-fab-left { flex: 1; min-width: 0; }
+      .cart-fab-count { font-size: 12px; color: var(--text-muted); font-weight: 500; line-height: 1.3; }
+      .cart-fab-total { font-size: 20px; font-weight: 800; color: var(--blue); line-height: 1.2; }
+      .cart-fab-total.empty { color: var(--text-muted); font-size: 14px; font-weight: 400; }
+
+      /* Header: go icon-only at tablet width to prevent overflow */
+      .pos-event { display: none; }
+      .pos-header-right .btn-label { display: none; }
+      .pos-header-right .btn { padding: 6px 9px; }
+
+      /* Modals: narrower on tablets */
+      .disc-modal { width: min(440px, 94vw); }
+      .disc-form-modal { width: min(460px, 94vw); }
+      .confirm-modal { width: min(380px, 92vw); }
+    }
+
+    @media (max-width: 480px) {
+      /* Header: tighter padding on phones */
+      .pos-header { padding: 8px 12px; gap: 8px; }
+
+      /* Products: tighter grid — keep bottom padding for FAB */
+      .products-panel { padding: 8px 8px 74px; gap: 8px; }
+      .products-panel-hdr { flex-wrap: wrap; gap: 6px; }
+      .products-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+      .product-btn, .type-card { padding: 10px 8px; }
+      .pb-title { font-size: 12px; }
+      .pb-price { font-size: 13px; }
+
+      /* Cart bottom sheet full height on small phones */
+      .cart-panel { height: 92dvh; border-radius: 12px 12px 0 0; }
+      .cart-items { flex: 1; }
+
+      /* FAB: tighter */
+      .cart-fab { padding: 8px 14px; }
+      .cart-fab-total { font-size: 18px; }
+
+      /* Payment modal fits screen */
+      .confirm-modal { padding: 22px 18px; }
     }
   </style>
 </head>
@@ -322,23 +415,23 @@
     <input type="file" id="pos-file-input" accept=".json" style="display:none" />
     <button class="btn btn-ghost" id="btn-load-json" title="Load ZollTool JSON file">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      Load JSON
+      <span class="btn-label">Load JSON</span>
     </button>
     <button class="btn btn-ghost" id="btn-save-json" title="Save updated data for ZollTool" style="display:none">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      Save JSON
+      <span class="btn-label">Save JSON</span>
     </button>
     <button class="btn btn-ghost" id="btn-discounts">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-      Discounts
+      <span class="btn-label">Discounts</span>
     </button>
     <a href="history.html" class="btn btn-ghost" id="btn-history">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      History
+      <span class="btn-label">History</span>
     </a>
     <a href="index.html" class="btn btn-ghost">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
-      Back to ZollTool
+      <span class="btn-label">ZollTool</span>
     </a>
     <button class="btn btn-ghost" id="btn-toggle-theme" title="Toggle dark mode">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -368,10 +461,12 @@
   </div>
 
   <!-- Cart -->
-  <div class="cart-panel">
+  <div class="cart-panel" id="cart-panel">
+    <div class="cart-drag-handle"></div>
     <div class="cart-header">
       <span class="cart-title">Current Sale</span>
       <span class="cart-count" id="cart-count">0</span>
+      <button class="btn btn-ghost cart-mobile-close" id="cart-mobile-close" style="padding:4px 9px;margin-left:4px">✕</button>
     </div>
     <div class="cart-items" id="cart-items">
       <div class="cart-empty">Cart is empty</div>
@@ -522,6 +617,20 @@
       <button class="btn btn-green" id="df-save">Save discount</button>
     </div>
   </div>
+</div>
+
+<!-- Mobile: cart backdrop (dims products when cart is open) -->
+<div class="cart-backdrop" id="cart-backdrop"></div>
+
+<!-- Mobile: sticky cart FAB (replaces fixed cart panel) -->
+<div class="cart-fab" id="cart-fab">
+  <div class="cart-fab-left">
+    <div class="cart-fab-count" id="fab-item-count">Cart is empty</div>
+    <div class="cart-fab-total empty" id="fab-total">Tap to view</div>
+  </div>
+  <button class="btn btn-blue" id="fab-open-cart" style="white-space:nowrap">
+    View Cart
+  </button>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -1203,6 +1312,20 @@
     document.getElementById('tot-price').textContent = count ? cur + ' ' + grandTotal.toFixed(2) : '—';
     document.getElementById('btn-cash').disabled = count === 0;
     document.getElementById('btn-card').disabled = count === 0;
+
+    // Sync mobile FAB
+    const fabCount = document.getElementById('fab-item-count');
+    const fabTotal = document.getElementById('fab-total');
+    if (fabCount && fabTotal) {
+      fabCount.textContent = count ? `${count} item${count !== 1 ? 's' : ''} in cart` : 'Cart is empty';
+      if (count) {
+        fabTotal.textContent = cur + ' ' + grandTotal.toFixed(2);
+        fabTotal.className = 'cart-fab-total';
+      } else {
+        fabTotal.textContent = 'Tap to view';
+        fabTotal.className = 'cart-fab-total empty';
+      }
+    }
   }
 
   function render() { renderProducts(); renderCart(); }
@@ -1500,6 +1623,22 @@
   });
 
   render();
+
+  // ── Mobile cart bottom-sheet ──────────────────────────────────────────────
+  function openMobileCart() {
+    document.getElementById('cart-panel').classList.add('open');
+    document.getElementById('cart-backdrop').classList.add('open');
+  }
+  function closeMobileCart() {
+    document.getElementById('cart-panel').classList.remove('open');
+    document.getElementById('cart-backdrop').classList.remove('open');
+  }
+  document.getElementById('fab-open-cart').addEventListener('click', openMobileCart);
+  document.getElementById('cart-mobile-close').addEventListener('click', closeMobileCart);
+  document.getElementById('cart-backdrop').addEventListener('click', closeMobileCart);
+  // Also close cart sheet when payment dialog opens (so user sees it)
+  document.getElementById('btn-cash').addEventListener('click', closeMobileCart);
+  document.getElementById('btn-card').addEventListener('click', closeMobileCart);
 </script>
 </body>
 </html>

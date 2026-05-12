@@ -715,7 +715,7 @@ input::placeholder {
 
 /* Column widths — sized to fit within the card without horizontal scroll */
 .col-num         { width: 36px;  text-align: center; }
-.col-title       { /* no explicit width — fills remaining space, shrinks as needed */ min-width: 80px; }
+.col-title       { width: 180px; min-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .col-sku         { width: 90px;  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
                    font-size: 11px; color: var(--gray-500); font-family: monospace; }
 .col-sale        { width: 78px; }
@@ -989,17 +989,32 @@ tr[data-drag="merge"] td  { background: #e8f4ff !important; box-shadow: inset 0 
 }
 
 /* ---- Responsive ---- */
+
+/* ── 768px: tablets ── */
 @media (max-width: 768px) {
   .app-header-inner {
-    padding: 10px 16px;
+    padding: 10px 14px;
+    gap: 10px;
   }
   .main-content {
-    padding: 16px;
-    gap: 16px;
+    padding: 14px;
+    gap: 14px;
   }
+
+  /* Product section header: allow wrapping */
+  .card-header {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+  .section-header-actions {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* Modal */
   .modal {
     max-width: 100%;
-    max-height: 95vh;
+    max-height: 95dvh;
   }
   .modal-form-grid {
     grid-template-columns: 1fr;
@@ -1007,34 +1022,122 @@ tr[data-drag="merge"] td  { background: #e8f4ff !important; box-shadow: inset 0 
   .modal-form-grid .form-group-wide {
     grid-column: 1;
   }
-  .header-actions .btn {
-    padding: 8px 12px;
-    font-size: 12px;
-  }
-  .app-subtitle {
-    display: none;
-  }
-  .form-grid {
-    grid-template-columns: 1fr;
-  }
   .modal-preview {
     flex-direction: column;
     gap: 12px;
   }
+
+  /* Forms */
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* 11.74 grouping UI: 2 cols instead of 3 */
+  .group-cols {
+    grid-template-columns: 1fr 1fr;
+  }
+  /* Unassigned column full-width on 2-col layout */
+  .group-col-unassigned {
+    grid-column: 1 / -1;
+  }
 }
 
+/* ── 640px: large phones landscape / small tablets ── */
+@media (max-width: 640px) {
+  /* Hide print button labels; icon remains + title attr for tooltip */
+  .section-header-actions .btn-ghost .btn-label {
+    display: none;
+  }
+  .section-header-actions .btn-ghost {
+    padding: 5px 8px;
+  }
+
+  /* 11.74 grouping: single column */
+  .group-cols {
+    grid-template-columns: 1fr;
+  }
+  .group-col-unassigned {
+    grid-column: auto;
+  }
+  .group-auto-preview {
+    grid-template-columns: 1fr;
+  }
+
+  /* Variant edit rows: scroll horizontally instead of squishing */
+  #m-variants-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .variant-edit-header,
+  .variant-edit-row {
+    min-width: 500px;
+  }
+
+  /* Collapsible section summary: hide on very narrow cards */
+  .section-summary {
+    display: none;
+  }
+}
+
+/* ── 480px: phones portrait ── */
 @media (max-width: 480px) {
+  /* App logo: smaller */
   .app-logo .logo-cross {
     width: 30px;
     height: 30px;
     font-size: 14px;
   }
-  .app-title {
-    font-size: 15px;
+  .app-title { font-size: 15px; }
+  .app-subtitle { display: none; }
+
+  /* Header: icon-only buttons */
+  .header-actions .btn-label { display: none; }
+  .header-actions .btn { padding: 7px 10px; }
+
+  /* Main content: tighter padding */
+  .main-content { padding: 10px; gap: 10px; }
+
+  /* Cards */
+  .card-header { padding: 12px 14px; }
+  .collapsible-body { padding: 14px; }
+
+  /* LRP row: allow wrapping */
+  .lrp-row { flex-wrap: wrap; }
+  .lrp-row .btn { width: 100%; justify-content: center; }
+
+  /* Edec action buttons: full width on phones */
+  .edec-actions .btn-lg {
+    flex: 1 1 100%;
+    justify-content: center;
+    padding: 11px 14px;
+    font-size: 13px;
   }
-  .header-actions .btn span {
-    display: none;
+
+  /* Add Product button: full label always visible */
+  .section-header-actions .btn-primary .btn-label {
+    display: inline;
   }
+
+  /* Modal: bottom-sheet style on phones */
+  .modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+  .modal {
+    border-radius: var(--radius) var(--radius) 0 0;
+    max-height: 96dvh;
+  }
+  .modal-header { padding: 14px 16px; }
+  .modal-body   { padding: 14px 16px; }
+  .modal-footer { padding: 12px 16px; }
+
+  /* date-range-row: stack on very small screens */
+  .date-range-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+  .date-range-sep { display: none; }
 }
 
 /* ---- Select elements ---- */
