@@ -51,27 +51,82 @@
            background: var(--bg); color: var(--text); height: 100dvh;
            display: flex; flex-direction: column; overflow: hidden; }
 
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      cursor: pointer;
+      margin-right: 8px;
+      gap: 8px;
+    }
+    .theme-toggle .toggle-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: var(--surface-2);
+      color: var(--text-muted);
+      font-size: 14px;
+      border: 1px solid var(--border);
+    }
+    .theme-toggle input { display: none; }
+    .toggle-track {
+      width: 40px; height: 22px;
+      background: var(--border-mid);
+      border-radius: 11px;
+      position: relative;
+      transition: background .18s ease;
+    }
+    .theme-toggle input:checked ~ .toggle-track { background: var(--red); }
+    .toggle-thumb {
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 16px; height: 16px;
+      background: #ffffff;
+      border-radius: 50%;
+      transition: transform .18s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+    }
+    .theme-toggle input:checked ~ .toggle-track .toggle-thumb { transform: translateX(18px); }
+
     /* ── Header ── */
     .pos-header { background: var(--surface); border-bottom: 1px solid var(--border);
                   padding: 10px 18px; display: flex; align-items: center;
                   justify-content: space-between; flex-shrink: 0; gap: 12px;
                   box-shadow: var(--shadow-sm); }
     .pos-header-left { display: flex; align-items: center; gap: 12px; }
-    .pos-logo { font-weight: 700; font-size: 15px; letter-spacing: -0.2px; }
-    .pos-logo span { color: var(--red); }
+    .app-logo { display: flex; align-items: center; gap: 12px; }
+    .logo-cross { display: flex; align-items: center; justify-content: center;
+                  width: 36px; height: 36px; background: var(--red); color: #fff;
+                  border-radius: 10px; font-size: 18px; font-weight: 700;
+                  flex-shrink: 0; }
+    .app-title { font-size: 17px; font-weight: 700; color: var(--text);
+                 letter-spacing: -0.3px; }
+    .app-subtitle { font-size: 11px; color: var(--text-muted);
+                    text-transform: uppercase; letter-spacing: .06em;
+                    margin-top: 1px; }
     .pos-event { font-size: 13px; color: var(--text-muted);
                  padding-left: 12px; border-left: 1px solid var(--border-mid); }
     .pos-header-right { display: flex; align-items: center; gap: 6px; }
     .shortcuts-help-desktop { display: inline-flex; }
 
     /* ── Buttons ── */
-    .btn { border: none; border-radius: var(--radius); padding: 7px 14px; font-size: 13px;
-           font-weight: 500; cursor: pointer; display: inline-flex; align-items: center;
-           gap: 6px; transition: filter .15s, opacity .15s; white-space: nowrap; }
-    .btn:hover:not(:disabled) { filter: brightness(0.93); }
-    .btn-ghost { background: transparent; color: var(--text); border: 1px solid var(--border-mid); }
-    .btn-ghost:hover:not(:disabled) { background: var(--surface-2); filter: none; }
-    .btn-red   { background: var(--red);   color: #fff; }
+    .btn { display: inline-flex; align-items: center; justify-content: center;
+           gap: 6px; padding: 8px 18px; border-radius: 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+           font-size: 12px; font-weight: 600; cursor: pointer; border: 1.5px solid transparent;
+           transition: background .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease;
+           white-space: nowrap; text-decoration: none; line-height: 1; background: transparent; }
+    .btn:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+    .btn:hover:not(:disabled) { filter: none; }
+    .btn-ghost { background: transparent; color: var(--text-muted);
+                 border-color: var(--border-mid); }
+    .btn-ghost:hover:not(:disabled) { background: var(--bg);
+                                      border-color: var(--text); color: var(--text); }
+    .btn-red, .btn-primary { background: var(--red); color: #fff; border-color: var(--red); }
+    .btn-red:hover, .btn-primary:hover { background: var(--red-dark); border-color: var(--red-dark);
+                                         box-shadow: 0 2px 8px rgba(212,0,0,0.25); }
+    .btn-red:active, .btn-primary:active { background: var(--red-dark); box-shadow: none; }
     .btn-green { background: var(--green); color: #fff; }
     .btn-blue  { background: var(--blue);  color: #fff; }
     .btn-amber { background: var(--amber); color: #fff; }
@@ -100,9 +155,12 @@
     .view-toggle-btn.active { background: var(--accent); color: #fff; }
     .view-toggle-btn:not(.active):hover { background: var(--surface-2); color: var(--text); }
     .products-grid { flex: 1; overflow-y: auto; display: grid;
-                     grid-template-columns: repeat(auto-fill, minmax(145px, 1fr));
+                     grid-template-columns: repeat(auto-fill, 160px);
                      gap: 10px; align-content: start;
                      scrollbar-width: thin; scrollbar-color: var(--border-mid) transparent; }
+    .products-type-group { grid-column: 1 / -1; display: grid;
+                           grid-template-columns: repeat(auto-fill, 160px);
+                           gap: 10px; }
 
     /* ── Type cards (grouped view) ── */
     .type-card { background: var(--surface); border: 1.5px solid var(--border);
@@ -189,7 +247,13 @@
     .cart-empty { color: var(--text-muted); font-size: 13px; text-align: center;
                   padding: 36px 16px; }
     .cart-item { display: flex; align-items: center; gap: 8px;
-                 padding: 9px 16px; border-bottom: 1px solid var(--border); }
+                 padding: 9px 16px; border-bottom: 1px solid var(--border); position: relative;
+                 background: var(--surface); transition: transform .18s ease, background .15s ease; }
+    .cart-item::after { content: 'Remove'; position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+                       color: var(--red); font-size: 12px; font-weight: 700; opacity: 0; pointer-events: none;
+                       transition: opacity .15s ease; }
+    .cart-item.swipe-active { background: rgba(212,0,0,.06); }
+    .cart-item.swipe-active::after { opacity: 1; }
     .cart-item:last-child { border-bottom: none; }
     .ci-info { flex: 1; min-width: 0; }
     .ci-title { font-size: 13px; font-weight: 500; white-space: nowrap;
@@ -431,7 +495,7 @@
       }
       .cart-fab-left { flex: 1; min-width: 0; }
       .cart-fab-count { font-size: 12px; color: var(--text-muted); font-weight: 500; line-height: 1.3; }
-      .cart-fab-total { font-size: 20px; font-weight: 800; color: var(--accent); line-height: 1.2; }
+      .cart-fab-total { font-size: 20px; font-weight: 800; color: var(--text); line-height: 1.2; }
       .cart-fab-total.empty { color: var(--text-muted); font-size: 14px; font-weight: 400; }
 
       /* Header: go icon-only at tablet width to prevent overflow */
@@ -479,16 +543,29 @@
 
 <div class="pos-header">
   <div class="pos-header-left">
-    <div class="pos-logo"><span>✚</span> ZollTool POS</div>
+    <div class="app-logo">
+      <span class="logo-cross">&#10010;</span>
+      <div>
+        <div class="app-title">ZollTool POS</div>
+        <div class="app-subtitle">Point of Sale</div>
+      </div>
+    </div>
     <div class="pos-event" id="hdr-event">—</div>
   </div>
   <div class="pos-header-right">
     <input type="file" id="pos-file-input" accept=".json" style="display:none" />
+    <label class="theme-toggle" title="Toggle dark mode">
+      <span class="toggle-icon" aria-hidden="true">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      </span>
+      <input type="checkbox" id="theme-toggle-cb" aria-label="Toggle dark mode" />
+      <span class="toggle-track"><span class="toggle-thumb"></span></span>
+    </label>
     <button class="btn btn-ghost" id="btn-load-json" title="Load ZollTool JSON file">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       <span class="btn-label">Load JSON</span>
     </button>
-    <button class="btn btn-ghost" id="btn-save-json" title="Save updated data for ZollTool" style="display:none">
+    <button class="btn btn-primary" id="btn-save-json" title="Save updated data for ZollTool" style="display:none">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       <span class="btn-label">Save JSON</span>
     </button>
@@ -507,9 +584,6 @@
     <button class="btn btn-ghost shortcuts-help-desktop" id="btn-shortcuts-help" title="POS keyboard shortcuts">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 1 1 5.82 1c0 2-3 2-3 4"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       <span class="btn-label">Shortcuts</span>
-    </button>
-    <button class="btn btn-ghost" id="btn-toggle-theme" title="Toggle dark mode">
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
     </button>
   </div>
 </div>
@@ -865,7 +939,6 @@
     if (!p) return;
     if (hasVariants(p) && !variantId) { openVariantPicker(productId); return; }
     const key = variantId ? `${productId}:${variantId}` : productId;
-    if (remainingStock(p, variantId) <= 0) { showToast('Out of stock.', 'error'); return; }
     cart[key] = (cart[key] || 0) + 1;
     render();
   }
@@ -1574,7 +1647,7 @@
     if (posView === 'grouped') {
       renderGroupedProducts(grid, forSale);
     } else {
-      grid.innerHTML = forSale.map(p => productCardHtml(p)).join('');
+      renderUngroupedProducts(grid, forSale);
     }
     applyNumberShortcuts(grid);
     // Refresh the type overlay if it's open so stock counts stay accurate
@@ -1582,6 +1655,18 @@
     if (!typeOverlay.classList.contains('hidden')) {
       renderTypeProducts(document.getElementById('type-modal-title').textContent);
     }
+  }
+
+  function renderUngroupedProducts(grid, forSale) {
+    const typeMap = new Map();
+    for (const p of forSale) {
+      const key = p.type || '(no type)';
+      if (!typeMap.has(key)) typeMap.set(key, []);
+      typeMap.get(key).push(p);
+    }
+    grid.innerHTML = [...typeMap.entries()].map(([type, products]) => {
+      return `<div class="products-type-group">${products.map(p => productCardHtml(p)).join('')}</div>`;
+    }).join('');
   }
 
   function renderGroupedProducts(grid, forSale) {
@@ -1636,7 +1721,7 @@
         }
         const lineTotal = unitPrice != null ? unitPrice * qty : null;
         const unitLabel = (vid ? null : p.priceNote) || (unitPrice != null ? fmtPrice(unitPrice) : '—');
-        return `<div class="cart-item">
+        return `<div class="cart-item" data-cart-key="${escHtml(key)}" style="touch-action: pan-y;">
           <div class="ci-info">
             <div class="ci-title">${escHtml(displayTitle)}</div>
             <div class="ci-price">${escHtml(unitLabel)} each</div>
@@ -1692,6 +1777,76 @@
 
   function render() { renderProducts(); renderCart(); }
 
+  const cartSwipeState = {
+    activeItem: null,
+    startX: 0,
+    startY: 0,
+    pointerId: null,
+    dragging: false,
+    threshold: 90,
+    maxTranslate: 120,
+  };
+
+  function initCartSwipe() {
+    const container = document.getElementById('cart-items');
+    if (!container) return;
+
+    container.addEventListener('pointerdown', e => {
+      const item = e.target.closest('.cart-item');
+      if (!item || e.target.closest('.qty-btn')) return;
+      cartSwipeState.activeItem = item;
+      cartSwipeState.startX = e.clientX;
+      cartSwipeState.startY = e.clientY;
+      cartSwipeState.pointerId = e.pointerId;
+      cartSwipeState.dragging = true;
+      item.setPointerCapture(e.pointerId);
+      item.classList.add('swipe-active');
+      item.style.transition = 'none';
+    });
+
+    container.addEventListener('pointermove', e => {
+      const item = cartSwipeState.activeItem;
+      if (!cartSwipeState.dragging || !item || e.pointerId !== cartSwipeState.pointerId) return;
+      const dx = e.clientX - cartSwipeState.startX;
+      const dy = e.clientY - cartSwipeState.startY;
+      if (Math.abs(dy) > Math.abs(dx)) return;
+      e.preventDefault();
+      const translate = Math.max(-cartSwipeState.maxTranslate, Math.min(0, dx));
+      item.style.transform = `translateX(${translate}px)`;
+    });
+
+    const resetSwipe = () => {
+      const item = cartSwipeState.activeItem;
+      if (!item) return;
+      item.style.transition = 'transform .18s ease';
+      item.style.transform = '';
+      item.classList.remove('swipe-active');
+      cartSwipeState.activeItem = null;
+      cartSwipeState.dragging = false;
+      cartSwipeState.pointerId = null;
+    };
+
+    container.addEventListener('pointerup', e => {
+      const item = cartSwipeState.activeItem;
+      if (!item || e.pointerId !== cartSwipeState.pointerId) return;
+      const dx = e.clientX - cartSwipeState.startX;
+      if (dx < -cartSwipeState.threshold) {
+        const key = item.dataset.cartKey;
+        if (key) setCartQty(key, 0);
+        showToast('Removed item from cart', '');
+      } else {
+        resetSwipe();
+      }
+    });
+
+    container.addEventListener('pointercancel', resetSwipe);
+    container.addEventListener('pointerleave', e => {
+      if (cartSwipeState.activeItem && e.pointerId === cartSwipeState.pointerId) resetSwipe();
+    });
+  }
+
+  initCartSwipe();
+
   // ── Toast ──────────────────────────────────────────────────────────────────
   let toastTimer;
   function showToast(msg, type = '') {
@@ -1709,15 +1864,17 @@
   // ── Theme — mirrors main app: dark by default unless 'light' is saved ──────
   function applyTheme() {
     const saved = localStorage.getItem('zolltool_theme');
+    const checkbox = document.getElementById('theme-toggle-cb');
     if (saved !== 'light') {
       document.documentElement.setAttribute('data-theme', 'dark');
+      if (checkbox) checkbox.checked = true;
     } else {
       document.documentElement.removeAttribute('data-theme');
+      if (checkbox) checkbox.checked = false;
     }
   }
-  document.getElementById('btn-toggle-theme').addEventListener('click', () => {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    localStorage.setItem('zolltool_theme', isDark ? 'light' : 'dark');
+  document.getElementById('theme-toggle-cb').addEventListener('change', (event) => {
+    localStorage.setItem('zolltool_theme', event.target.checked ? 'dark' : 'light');
     applyTheme();
   });
 

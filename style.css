@@ -47,10 +47,23 @@
 
 /* Toggle switch */
 .theme-toggle {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   cursor: pointer;
   margin-right: 8px;
+  gap: 8px;
+}
+.theme-toggle .toggle-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: var(--gray-100);
+  color: var(--text-muted);
+  font-size: 14px;
+  border: 1px solid var(--border);
 }
 .theme-toggle input { display: none; }
 .toggle-track {
@@ -1113,6 +1126,12 @@ tr[data-drag="merge"] td  { background: #e8f4ff !important; box-shadow: inset 0 
   /* Header: icon-only buttons */
   .header-actions .btn-label { display: none; }
   .header-actions .btn { padding: 7px 10px; }
+  /* Save button: always show label and ensure red */
+  .header-actions #btn-save-json .btn-label { display: inline; }
+  .header-actions #btn-save-json { background: var(--red) !important; color: #fff !important; border-color: var(--red) !important; }
+  /* Save button: always show label and ensure red */
+  .header-actions #btn-save-json .btn-label { display: inline; }
+  .header-actions #btn-save-json { background: var(--red) !important; color: #fff !important; border-color: var(--red) !important; }
 
   /* Main content: tighter padding */
   .main-content { padding: 10px; gap: 10px; }
