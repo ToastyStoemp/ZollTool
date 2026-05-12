@@ -299,6 +299,20 @@
             <td class="col-soldweight" id="total-soldweight">0 kg</td>
             <td></td>
           </tr>
+          <tr id="totals-row-customs" style="display:none">
+            <td colspan="5" class="totals-label totals-label-customs">excl. unlisted</td>
+            <td class="col-amount" id="total-amount-customs">0</td>
+            <td></td>
+            <td class="col-totalweight" id="total-weight-customs">0 kg</td>
+            <td></td>
+            <td class="col-totalval" id="total-value-customs">CHF 0</td>
+            <td colspan="4"></td>
+            <td class="col-soldqty" id="total-soldqty-customs">0</td>
+            <td class="col-soldval" id="total-soldval-customs">0</td>
+            <td class="col-soldvat" id="total-soldvat-customs">0.00</td>
+            <td class="col-soldweight" id="total-soldweight-customs">0 kg</td>
+            <td></td>
+          </tr>
         </tfoot>
       </table>
       <div class="vat-estimate-bar" id="vat-estimate-bar">
@@ -524,6 +538,14 @@
               <input type="radio" name="m-forsale" value="false" /> Not For Sale
             </label>
           </div>
+        </div>
+
+        <div class="form-group">
+          <label>Customs Documents</label>
+          <label class="radio-label" style="cursor:pointer;display:flex;align-items:center;gap:6px;margin-top:4px">
+            <input type="checkbox" id="m-unlisted" />
+            <span>Unlisted <span class="field-hint-inline">(POS + stock tracking only - excluded from all customs docs)</span></span>
+          </label>
         </div>
 
         <div class="form-group" id="m-amount-group">
