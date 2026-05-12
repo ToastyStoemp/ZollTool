@@ -1811,45 +1811,6 @@ function saveJSON() {
   showToast('JSON saved: ' + filename, 'success');
 }
 
-function csvCell(value) {
-  const s = String(value ?? '');
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
-function downloadTextFile(filename, text, type) {
-  const blob = new Blob([text], { type });
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href     = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 100);
-}
-
-function exportProductsCSV() {
-  const rows = [['product','variant','sku','type','for_sale','unlisted','stock','sold_qty','remaining','unit_price','currency']];
-  for (const p of state.products) {
-    if (hasVariants(p)) {
-      for (const v of p.variants) {
-        const price = variantPrice(p, v);
-        const sold = v.soldQty || 0;
-        rows.push([p.title || '', v.name || '', v.sku || p.sku || '', p.type || '', p.forSale !== false ? 'yes' : 'no', p.unlisted ? 'yes' : 'no', v.amount || 0, sold, Math.max(0, (v.amount || 0) - sold), price != null ? price : '', getCurrency()]);
-      }
-    } else {
-      const price = calcProduct(p).effectiveUnitPrice;
-      const sold = p.soldQty || 0;
-      rows.push([p.title || '', '', p.sku || '', p.type || '', p.forSale !== false ? 'yes' : 'no', p.unlisted ? 'yes' : 'no', p.amount || 0, sold, Math.max(0, (p.amount || 0) - sold), price != null ? price : '', getCurrency()]);
-    }
-  }
-  const name = buildFilename().replace(/\.json$/i, '_products.csv');
-  downloadTextFile(name, rows.map(r => r.map(csvCell).join(',')).join('\n'), 'text/csv;charset=utf-8');
-  showToast('Product CSV exported: ' + name, 'success');
-}
-
 function buildFilename() {
   const event  = state.meta.event  || 'ZollTool';
   const artist = state.artist.companyName || state.artist.fullName || '';
@@ -4734,7 +4695,6 @@ function init() {
   // Add product button
   document.getElementById('btn-add-product').addEventListener('click', openAddModal);
   document.getElementById('btn-bulk-inventory').addEventListener('click', openBulkInventory);
-  document.getElementById('btn-products-csv').addEventListener('click', exportProductsCSV);
   document.getElementById('bulk-close').addEventListener('click', closeBulkInventory);
   document.getElementById('bulk-cancel').addEventListener('click', closeBulkInventory);
   document.getElementById('bulk-save').addEventListener('click', saveBulkInventory);
