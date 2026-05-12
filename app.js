@@ -1732,11 +1732,11 @@ function printGoodsList(docNum) {
       const pd = p.priceNote || (c.effectiveUnitPrice != null ? formatNum(floorN(c.effectiveUnitPrice, 2), 2) : '—');
       const tv = c.totalValue != null ? c.totalValue : '—';
       const pOrig = (p.originCountry && p.originCountry.trim()) ? p.originCountry.trim().toUpperCase() : (countryToCode(a.countryOfOrigin) || '');
-      totAmt += (p.amount || 0); totWkg += c.totalWeightKg;
+      totAmt += (c.amount || 0); totWkg += c.totalWeightKg;
       if (c.totalValue != null) totVal += c.totalValue;
       return `<tr><td class="c">${i+1}</td><td>${esc(p.title||'')}</td>
         <td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td>
-        <td class="r">${p.amount??''}</td><td class="r">${p.weightG!=null?p.weightG+' g':''}</td>
+        <td class="r">${c.amount??''}</td><td class="r">${c.effectiveUnitWeightG!=null?Math.round(c.effectiveUnitWeightG)+' g':''}</td>
         <td class="r">${fmtWeightKg(c.totalWeightKg)}</td><td class="r">${esc(pd)}</td>
         <td class="r">${tv}</td><td class="r">${esc(p.tariffNo||'')}</td>
         <td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td>
@@ -1792,12 +1792,12 @@ function printGoodsList(docNum) {
     let totRetQty=0, totRetWkg=0, totRetVal=0;
     let rowNum = 0;
     const rows = state.products.map(p => {
-      const retQty = (p.amount||0) - (p.soldQty||0);
+      const c = calcProduct(p);
+      const retQty = (c.amount||0) - (c.soldQty||0);
       if (retQty <= 0) return '';
       if (!hasCustomsInfo(p)) return '';
       rowNum++;
-      const c = calcProduct(p);
-      const retWkg = Math.round(retQty * (p.weightG||0)) / 1000;
+      const retWkg = Math.round(retQty * (c.effectiveUnitWeightG||0)) / 1000;
       const retVal = c.effectiveUnitPrice != null ? Math.round(c.effectiveUnitPrice * retQty) : null;
       totRetQty += retQty; totRetWkg += retWkg;
       if (retVal != null) totRetVal += retVal;
@@ -1805,9 +1805,9 @@ function printGoodsList(docNum) {
       const retValStr = retVal != null ? retVal : '—';
       const pOrig = (p.originCountry && p.originCountry.trim()) ? p.originCountry.trim().toUpperCase() : (countryToCode(a.countryOfOrigin) || '');
       return `<tr><td class="c">${rowNum}</td><td>${esc(p.title||'')}</td><td>${esc(p.type||'')}</td>
-        <td class="r">${p.amount??''}</td><td class="r">${p.soldQty||0}</td>
+        <td class="r">${c.amount??''}</td><td class="r">${c.soldQty||0}</td>
         <td class="r"><strong>${retQty}</strong></td>
-        <td class="r">${p.weightG!=null?p.weightG+' g':''}</td>
+        <td class="r">${c.effectiveUnitWeightG!=null?Math.round(c.effectiveUnitWeightG)+' g':''}</td>
         <td class="r">${fmtWeightKg(retWkg)}</td>
         <td class="r">${esc(pd)}</td>
         <td class="r">${retValStr}</td>
@@ -1893,7 +1893,7 @@ function printProformaInvoice() {
   let totQty = 0, totVal = 0, totWkg = 0;
   const rows = products.map((p, i) => {
     const c = calcProduct(p);
-    const qty = p.amount || 0;
+    const qty = c.amount || 0;
     const unitPrice = c.effectiveUnitPrice != null ? formatNum(floorN(c.effectiveUnitPrice, 2), 2) : (p.priceNote || '—');
     const totalVal  = c.totalValue != null ? c.totalValue : 0;
     const originCc  = (p.originCountry && p.originCountry.trim()) ? p.originCountry.trim().toUpperCase() : (countryToCode(a.countryOfOrigin) || '');
@@ -1905,7 +1905,7 @@ function printProformaInvoice() {
       <td>${esc(p.title || '')}</td>
       <td>${esc(p.tariffNo || '—')}</td>
       <td class="r">${qty}</td>
-      <td class="r">${p.weightG != null ? p.weightG + ' g' : '—'}</td>
+      <td class="r">${c.effectiveUnitWeightG != null ? Math.round(c.effectiveUnitWeightG) + ' g' : '—'}</td>
       <td class="r">${fmtWeightKg(c.totalWeightKg)}</td>
       <td class="r">${esc(String(unitPrice))}</td>
       <td class="r">${c.totalValue != null ? c.totalValue : '—'}</td>
@@ -2017,10 +2017,10 @@ function compute1174Groups() {
     const g = { tariffNo: '—', qty: 0, weightKg: 0, value: 0, retQty: 0, retWeightKg: 0, retValue: 0 };
     products.forEach(p => {
       const c = calcProduct(p);
-      g.qty      += (p.amount || 0);
+      g.qty      += (c.amount || 0);
       g.weightKg += c.totalWeightKg;
       if (c.totalValue != null) g.value += c.totalValue;
-      const retQty = Math.max(0, (p.amount || 0) - (p.soldQty || 0));
+      const retQty = Math.max(0, (c.amount || 0) - (c.soldQty || 0));
       g.retQty      += retQty;
       g.retWeightKg += Math.round(retQty * (p.weightG || 0)) / 1000;
       if (c.effectiveUnitPrice != null) g.retValue += Math.round(c.effectiveUnitPrice * retQty);
