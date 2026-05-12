@@ -1454,3 +1454,94 @@ select:focus {
 [data-theme="dark"] .group-drop-zone.drag-over { background: #1a2a4a; }
 [data-theme="dark"] .g-card { background: var(--gray-200); border-color: var(--gray-300); }
 [data-theme="dark"] .g-card:hover { box-shadow: var(--shadow-sm); }
+
+/* ─── Variant Product Display ─── */
+.product-title-with-expand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.variant-expand-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background: none;
+  border: 1px solid var(--gray-300);
+  border-radius: 4px;
+  color: var(--gray-600);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.18s ease;
+  flex-shrink: 0;
+}
+
+.variant-expand-btn:hover {
+  background: var(--gray-100);
+  color: var(--gray-800);
+  border-color: var(--gray-400);
+}
+
+.variant-expand-btn.expanded {
+  transform: rotate(180deg);
+}
+
+[data-theme="dark"] .variant-expand-btn {
+  border-color: var(--gray-300);
+  color: var(--gray-400);
+}
+
+[data-theme="dark"] .variant-expand-btn:hover {
+  background: var(--gray-200);
+  color: var(--gray-600);
+  border-color: var(--gray-400);
+}
+
+/* Variant rows in table */
+tr.variant-row {
+  background: var(--gray-100);
+  opacity: 1;
+  animation: slideDown 0.18s ease;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+tr.variant-row td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--gray-200);
+  font-size: 13px;
+}
+
+.variant-title {
+  color: var(--gray-600);
+  font-style: italic;
+  padding-left: 20px;
+}
+
+tr.variant-row:hover {
+  background: var(--gray-200);
+}
+
+[data-theme="dark"] tr.variant-row {
+  background: var(--gray-200);
+}
+
+[data-theme="dark"] tr.variant-row:hover {
+  background: var(--gray-300);
+}
+
+[data-theme="dark"] .variant-title {
+  color: var(--gray-400);
+}

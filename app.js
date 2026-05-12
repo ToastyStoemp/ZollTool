@@ -627,6 +627,14 @@ function renderTable() {
     state.products.forEach((p, idx) => {
       const row = buildProductRow(p, idx);
       tbody.appendChild(row);
+      
+      // If product has variants, add variant rows
+      if (hasVariants(p)) {
+        p.variants.forEach(v => {
+          const variantRow = buildVariantRow(p, v);
+          tbody.appendChild(variantRow);
+        });
+      }
     });
   }
 
@@ -665,7 +673,28 @@ function buildProductRow(p, idx) {
   const titleCell = document.createElement('td');
   titleCell.className = 'col-title';
   if (hasVariants(p)) {
-    titleCell.innerHTML = `${p.title || '—'} <span class="badge badge-variants">${p.variants.length} variant${p.variants.length !== 1 ? 's' : ''}</span>`;
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'product-title-with-expand';
+    const expandBtn = document.createElement('button');
+    expandBtn.className = 'variant-expand-btn';
+    expandBtn.title = 'Toggle variants';
+    expandBtn.innerHTML = '▼';
+    expandBtn.dataset.expanded = 'false';
+    expandBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const expanded = expandBtn.dataset.expanded === 'true';
+      expandBtn.dataset.expanded = !expanded;
+      expandBtn.classList.toggle('expanded');
+      const variantRows = document.querySelectorAll(`tr.variant-row[data-parent-id="${p.id}"]`);
+      variantRows.forEach(vr => {
+        vr.style.display = expanded ? 'none' : '';
+      });
+    });
+    titleDiv.appendChild(expandBtn);
+    const titleSpan = document.createElement('span');
+    titleSpan.textContent = p.title || '—';
+    titleDiv.appendChild(titleSpan);
+    titleCell.appendChild(titleDiv);
   } else {
     titleCell.textContent = p.title || '—';
   }
@@ -853,6 +882,193 @@ function buildProductRow(p, idx) {
   actionsDiv.appendChild(delBtn);
   actionsCell.appendChild(actionsDiv);
   tr.appendChild(actionsCell);
+
+  return tr;
+}
+
+function buildVariantRow(parentProduct, variant) {
+  const tr = document.createElement('tr');
+  tr.className = 'variant-row';
+  tr.dataset.parentId = parentProduct.id;
+  tr.dataset.variantId = variant.id;
+  tr.style.display = 'none'; // Hidden by default
+
+  const td = (cls, content) => {
+    const cell = document.createElement('td');
+    if (cls) cell.className = cls;
+    if (content instanceof Node) {
+      cell.appendChild(content);
+    } else if (content != null) {
+      cell.textContent = content;
+    }
+    return cell;
+  };
+
+  // Empty handle cell for variant
+  tr.appendChild(td('col-handle', ''));
+  
+  // Empty number cell for variant
+  tr.appendChild(td('col-num', ''));
+
+  // Variant name with indent
+  const nameCell = document.createElement('td');
+  nameCell.className = 'col-title variant-title';
+  nameCell.textContent = '→ ' + (variant.name || '—');
+  tr.appendChild(nameCell);
+
+  // Variant SKU
+  tr.appendChild(td('col-sku', variant.sku || '—'));
+
+  // For Sale (inherited from parent)
+  const saleBadge = document.createElement('span');
+  saleBadge.className = parentProduct.forSale ? 'badge badge-sale' : 'badge badge-nosale';
+  saleBadge.textContent = parentProduct.forSale ? 'For Sale' : 'Not For Sale';
+  const saleCell = document.createElement('td');
+  saleCell.className = 'col-sale';
+  saleCell.appendChild(saleBadge);
+  tr.appendChild(saleCell);
+
+  // Type (inherited from parent)
+  tr.appendChild(td('col-type', parentProduct.type || '—'));
+
+  // Amount (variant-specific)
+  const amtCell = document.createElement('td');
+  amtCell.className = 'col-amount';
+  amtCell.style.textAlign = 'right';
+  amtCell.textContent = (variant.amount || 0).toLocaleString();
+  tr.appendChild(amtCell);
+
+  // Unit weight (variant-specific)
+  const uwCell = document.createElement('td');
+  uwCell.className = 'col-weight';
+  uwCell.style.textAlign = 'right';
+  const varWg = variant.weightG != null ? variant.weightG : parentProduct.weightG;
+  uwCell.textContent = varWg != null ? varWg + ' g' : '—';
+  tr.appendChild(uwCell);
+
+  // Total weight
+  const twCell = document.createElement('td');
+  twCell.className = 'col-totalweight';
+  twCell.style.textAlign = 'right';
+  const totalWeightKg = Math.round((variant.amount || 0) * (varWg || 0)) / 1000;
+  twCell.textContent = fmtWeightKg(totalWeightKg);
+  tr.appendChild(twCell);
+
+  // Unit price (variant-specific)
+  const priceCell = document.createElement('td');
+  priceCell.className = 'col-price';
+  priceCell.style.textAlign = 'right';
+  const varPrice = variant.price != null ? variant.price : parentProduct.price;
+  if (parentProduct.priceNote) {
+    const note = document.createElement('span');
+    note.className = 'price-note';
+    note.textContent = parentProduct.priceNote;
+    priceCell.appendChild(note);
+  } else if (varPrice != null) {
+    priceCell.textContent = getCurrency() + ' ' + formatNum(floorN(varPrice, 2), 2);
+  } else {
+    priceCell.textContent = '—';
+  }
+  tr.appendChild(priceCell);
+
+  // Total value
+  const valCell = document.createElement('td');
+  valCell.className = 'col-totalval';
+  valCell.style.textAlign = 'right';
+  const totalVal = varPrice != null ? Math.round(varPrice * (variant.amount || 0)) : null;
+  valCell.textContent = totalVal != null ? getCurrency() + ' ' + totalVal : '—';
+  tr.appendChild(valCell);
+
+  // Tariff No. (inherited from parent)
+  const tariffCell = document.createElement('td');
+  tariffCell.className = 'col-tariff';
+  if (parentProduct.tariffNo) {
+    const span = document.createElement('span');
+    span.className = 'tariff-code';
+    span.textContent = parentProduct.tariffNo;
+    tariffCell.appendChild(span);
+  } else {
+    tariffCell.textContent = '—';
+  }
+  tr.appendChild(tariffCell);
+
+  // Tariff Rate (inherited from parent)
+  tr.appendChild(td('col-tariffrate', parentProduct.tariffRate != null ? parentProduct.tariffRate + '%' : '—'));
+
+  // VAT Rate (inherited from parent)
+  tr.appendChild(td('col-vat', parentProduct.vatRate != null ? parentProduct.vatRate + '%' : '—'));
+
+  // Origin (inherited from parent)
+  const effectiveOrigin = (parentProduct.originCountry && parentProduct.originCountry.trim())
+    ? parentProduct.originCountry.trim().toUpperCase()
+    : countryToCode(state.artist.countryOfOrigin) || '—';
+  tr.appendChild(td('col-origin', effectiveOrigin));
+
+  // --- Sold columns ---
+  const soldQtyCell = document.createElement('td');
+  soldQtyCell.className = 'col-soldqty sold-col-start';
+  soldQtyCell.style.textAlign = 'right';
+
+  const soldValCell = document.createElement('td');
+  soldValCell.className = 'col-soldval';
+  soldValCell.style.textAlign = 'right';
+
+  // Sold Qty (variant-specific, editable)
+  const soldQtyInput = document.createElement('input');
+  soldQtyInput.type = 'number';
+  soldQtyInput.className = 'sold-input';
+  soldQtyInput.min = '0';
+  soldQtyInput.step = '1';
+  soldQtyInput.value = variant.soldQty != null ? variant.soldQty : 0;
+  soldQtyInput.addEventListener('change', () => {
+    const varIdx = parentProduct.variants.findIndex(v => v.id === variant.id);
+    if (varIdx >= 0) {
+      parentProduct.variants[varIdx].soldQty = parseFloat(soldQtyInput.value) || 0;
+      saveToStorage();
+      renderTable();
+      calcTotals();
+    }
+  });
+  soldQtyCell.appendChild(soldQtyInput);
+
+  // Sold Value (variant-specific, editable)
+  const soldValInput = document.createElement('input');
+  soldValInput.type = 'number';
+  soldValInput.className = 'sold-input';
+  soldValInput.min = '0';
+  soldValInput.step = '0.01';
+  soldValInput.value = variant.soldValue != null ? formatNum(variant.soldValue, 2) : '0.00';
+  soldValInput.addEventListener('change', () => {
+    const varIdx = parentProduct.variants.findIndex(v => v.id === variant.id);
+    if (varIdx >= 0) {
+      parentProduct.variants[varIdx].soldValue = parseFloat(soldValInput.value) || 0;
+      saveToStorage();
+      renderTable();
+      calcTotals();
+    }
+  });
+  soldValCell.appendChild(soldValInput);
+
+  tr.appendChild(soldQtyCell);
+  tr.appendChild(soldValCell);
+
+  // Sold VAT (derived, read-only)
+  const soldVatCell = document.createElement('td');
+  soldVatCell.className = 'col-soldvat';
+  soldVatCell.style.textAlign = 'right';
+  soldVatCell.textContent = formatNum(floorN((variant.soldValue || 0) * ((parentProduct.vatRate || 0) / 100), 2), 2);
+  tr.appendChild(soldVatCell);
+
+  // Sold Weight (derived, read-only display)
+  const soldWtCell = document.createElement('td');
+  soldWtCell.className = 'col-soldweight';
+  soldWtCell.style.textAlign = 'right';
+  const soldWeightKg = (variant.soldQty || 0) * (varWg || 0) / 1000;
+  soldWtCell.textContent = fmtWeightKg(soldWeightKg);
+  tr.appendChild(soldWtCell);
+
+  // Empty actions cell for variant (no edit/delete for variants from here)
+  tr.appendChild(td('col-actions', ''));
 
   return tr;
 }
