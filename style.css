@@ -716,6 +716,8 @@ input::placeholder {
 /* Column widths — sized to fit within the card without horizontal scroll */
 .col-num         { width: 36px;  text-align: center; }
 .col-title       { /* no explicit width — fills remaining space, shrinks as needed */ min-width: 80px; }
+.col-sku         { width: 90px;  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+                   font-size: 11px; color: var(--gray-500); font-family: monospace; }
 .col-sale        { width: 78px; }
 .col-type        { width: 72px;  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .col-amount      { width: 58px;  text-align: right; }

@@ -327,11 +327,12 @@ function loadFromStorage() {
       const parsed = JSON.parse(raw);
       // Merge carefully to handle schema changes
       state = {
-        meta:     Object.assign({}, DEFAULT_STATE.meta,     parsed.meta     || {}),
-        artist:   Object.assign({}, DEFAULT_STATE.artist,   parsed.artist   || {}),
-        edec:     Object.assign({}, DEFAULT_STATE.edec,     parsed.edec     || {}),
-        products: Array.isArray(parsed.products) ? parsed.products : [],
-        form1174: Object.assign({}, DEFAULT_STATE.form1174, parsed.form1174 || {}),
+        meta:      Object.assign({}, DEFAULT_STATE.meta,     parsed.meta     || {}),
+        artist:    Object.assign({}, DEFAULT_STATE.artist,   parsed.artist   || {}),
+        edec:      Object.assign({}, DEFAULT_STATE.edec,     parsed.edec     || {}),
+        products:  Array.isArray(parsed.products)  ? parsed.products  : [],
+        form1174:  Object.assign({}, DEFAULT_STATE.form1174, parsed.form1174 || {}),
+        discounts: Array.isArray(parsed.discounts) ? parsed.discounts : [],
       };
       if (!Array.isArray(state.form1174.assignments)) state.form1174.assignments = [];
       // Ensure fields added in later schema versions are never left empty
@@ -620,6 +621,9 @@ function buildProductRow(p, idx) {
   titleCell.textContent = p.title || '—';
   tr.appendChild(titleCell);
 
+  // SKU
+  tr.appendChild(td('col-sku', p.sku || '—'));
+
   // For Sale badge
   const saleBadge = document.createElement('span');
   saleBadge.className = p.forSale ? 'badge badge-sale' : 'badge badge-nosale';
@@ -850,7 +854,13 @@ function updateProductField(id, field, value) {
    PRODUCT CRUD
    ========================================================= */
 function deleteProduct(id) {
-  if (!confirm('Delete this product?')) return;
+  const affectedDiscounts = (state.discounts || []).filter(d => (d.productIds || []).includes(id));
+  let msg = 'Delete this product?';
+  if (affectedDiscounts.length) {
+    const names = affectedDiscounts.map(d => `"${d.name}"`).join(', ');
+    msg += `\n\nWarning: this product is used in the following POS discount${affectedDiscounts.length > 1 ? 's' : ''}: ${names}.\nThe discount will still exist but this product will no longer be included.`;
+  }
+  if (!confirm(msg)) return;
   state.products = state.products.filter(p => p.id !== id);
   saveToStorage();
   renderTable();
@@ -871,6 +881,7 @@ function addProduct(productData) {
     {
       id:          uuid(),
       title:       '',
+      sku:         '',
       forSale:     true,
       type:        '',
       amount:      0,
@@ -938,6 +949,7 @@ function hideModal() {
 
 function resetModalForm() {
   document.getElementById('m-title').value       = '';
+  document.getElementById('m-sku').value         = '';
   document.getElementById('m-type').value        = '';
   document.getElementById('m-amount').value      = '';
   document.getElementById('m-weight').value      = '';
@@ -960,6 +972,7 @@ function resetModalForm() {
 
 function populateModalForm(p) {
   document.getElementById('m-title').value        = p.title        || '';
+  document.getElementById('m-sku').value          = p.sku          || '';
   document.getElementById('m-type').value         = p.type         || '';
   document.getElementById('m-amount').value       = p.amount       != null ? p.amount  : '';
   document.getElementById('m-weight').value       = p.weightG      != null ? p.weightG : '';
@@ -1003,6 +1016,7 @@ function populateModalForm(p) {
 
 function collectModalForm() {
   const title      = document.getElementById('m-title').value.trim();
+  const sku        = document.getElementById('m-sku').value.trim();
   const type       = document.getElementById('m-type').value.trim();
   const forSale    = document.querySelector('input[name="m-forsale"]:checked').value === 'true';
   const amountStr  = document.getElementById('m-amount').value;
@@ -1027,6 +1041,7 @@ function collectModalForm() {
 
   return {
     title,
+    sku,
     type,
     forSale,
     amount:       amount  != null ? amount  : 0,
@@ -1409,8 +1424,9 @@ function handleFileLoad(e) {
         meta:     Object.assign({}, DEFAULT_STATE.meta,     parsed.meta     || {}),
         artist:   Object.assign({}, DEFAULT_STATE.artist,   parsed.artist   || {}),
         edec:     Object.assign({}, DEFAULT_STATE.edec,     parsed.edec     || {}),
-        products: Array.isArray(parsed.products) ? parsed.products : [],
-        form1174: Object.assign({}, DEFAULT_STATE.form1174, parsed.form1174 || {}),
+        products:  Array.isArray(parsed.products)  ? parsed.products  : [],
+        form1174:  Object.assign({}, DEFAULT_STATE.form1174, parsed.form1174 || {}),
+        discounts: Array.isArray(parsed.discounts) ? parsed.discounts : [],
       };
       if (!Array.isArray(state.form1174.assignments)) state.form1174.assignments = [];
       if (!state.meta.venueTIN) state.meta.venueTIN = DEFAULT_STATE.meta.venueTIN;
