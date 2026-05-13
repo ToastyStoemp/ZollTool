@@ -209,7 +209,7 @@
                    padding: 4px 7px; border-radius: 0 0 0 6px; line-height: 1; box-shadow: var(--shadow-sm); }
     .card-dot { display: none; }
 
-    .shortcut-index { position: absolute; top: 6px; left: 9px; min-width: 22px; height: 22px;
+    .shortcut-index { position: absolute; top: 8px; right: 8px; min-width: 22px; height: 22px;
                       display: flex; align-items: center; justify-content: center;
                       border-radius: 999px; background: var(--surface); border: 1px solid var(--border-mid);
                       color: var(--text-muted); font-size: 11px; font-weight: 800;
@@ -277,8 +277,9 @@
                  padding: 3px 0; color: var(--text-muted); }
     .total-row.grand { font-size: 18px; font-weight: 700; color: var(--text);
                        padding-top: 10px; border-top: 1px solid var(--border-mid); margin-top: 8px; }
-    .payment-btns { display: flex; flex-direction: column; gap: 8px; }
+    .payment-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .payment-btns .btn { justify-content: center; padding: 13px; font-size: 14px; font-weight: 600; }
+    .payment-btns .btn-wide { grid-column: 1 / -1; }
     .btn-clear { margin-top: 8px; width: 100%; justify-content: center;
                  padding: 7px; font-size: 12px; color: var(--text-muted); }
 
@@ -372,6 +373,13 @@
     .cart-disc { display: flex; justify-content: space-between; align-items: center;
                  padding: 4px 16px; font-size: 12px; color: var(--green); }
     .cart-disc .cd-amount { font-weight: 700; }
+    .cart-discount-btn { background: var(--surface-2); border-color: var(--border-mid); color: var(--text);
+                         gap: 6px; }
+    .cart-discount-btn.active { border-color: var(--green); background: rgba(26,122,62,.1); color: var(--green); }
+    [data-theme="dark"] .cart-discount-btn.active { background: rgba(26,122,62,.18); }
+    .custom-discount-row { display: flex; align-items: center; gap: 8px; }
+    .custom-discount-row .df-input { flex: 1; }
+    .custom-discount-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 
     /* ── Discount manager modal ── */
     .disc-modal { background: var(--surface); border-radius: 12px; width: 440px;
@@ -432,6 +440,9 @@
     .product-check { display: flex; align-items: center; gap: 8px; padding: 6px 9px;
                      border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
                      font-size: 13px; transition: border-color .12s; }
+    .product-check.variant-check { margin-left: 18px; background: var(--surface-2); font-size: 12px; }
+    .product-check-title { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .product-check-meta { color: var(--text-muted); font-size: 11px; }
     .product-check:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
     [data-theme="dark"] .product-check:has(input:checked) { background: var(--accent-soft); }
     .product-check input { accent-color: var(--accent); }
@@ -630,22 +641,66 @@
         <div class="total-row grand"><span>Total</span><span id="tot-price">—</span></div>
       </div>
       <div class="payment-btns">
-        <button class="btn btn-green" id="btn-cash" disabled>
+        <button class="btn btn-green btn-wide" id="btn-cash" disabled>
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
           Pay with Cash
         </button>
-        <button class="btn btn-blue" id="btn-card" disabled>
+        <button class="btn btn-blue btn-wide" id="btn-card" disabled>
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
           Pay with Card
         </button>
         <button class="btn btn-amber" id="btn-split" disabled>
           Split Payment
         </button>
+        <button class="btn btn-ghost cart-discount-btn" id="btn-cart-discount" disabled>
+          Discount
+        </button>
       </div>
       <button class="btn btn-ghost btn-clear" id="btn-clear">Clear cart</button>
     </div>
   </div>
 
+</div>
+
+<!-- Custom cart discount overlay -->
+<div class="overlay hidden" id="cart-discount-overlay" style="z-index:110">
+  <div class="disc-form-modal">
+    <div class="disc-modal-hdr">
+      <span class="disc-modal-title">Custom Cart Discount</span>
+      <button class="btn btn-ghost" id="cart-discount-close" style="padding:4px 9px">x</button>
+    </div>
+    <div class="df-body">
+      <div>
+        <div class="df-label">Name</div>
+        <input id="cart-disc-name" class="df-input" type="text" placeholder="e.g. Event discount" />
+      </div>
+      <div>
+        <div class="df-label">Discount type</div>
+        <div class="custom-discount-mode">
+          <label class="type-option">
+            <input type="radio" name="cart-disc-type" value="amount" checked />
+            <div><div style="font-weight:600">Amount off</div><div class="type-option-desc">Subtract a fixed amount</div></div>
+          </label>
+          <label class="type-option">
+            <input type="radio" name="cart-disc-type" value="percent" />
+            <div><div style="font-weight:600">Percent off</div><div class="type-option-desc">Apply to cart subtotal</div></div>
+          </label>
+        </div>
+      </div>
+      <div>
+        <div class="df-label">Value</div>
+        <div class="custom-discount-row">
+          <input id="cart-disc-value" class="df-input" type="number" min="0" step="0.01" placeholder="0.00" />
+          <span id="cart-disc-unit" style="font-size:13px;color:var(--text-muted);font-weight:700"></span>
+        </div>
+      </div>
+    </div>
+    <div class="df-footer">
+      <button class="btn btn-ghost" id="cart-discount-remove">Remove</button>
+      <button class="btn btn-ghost" id="cart-discount-cancel">Cancel</button>
+      <button class="btn btn-green" id="cart-discount-apply">Apply</button>
+    </div>
+  </div>
 </div>
 
 <!-- Shortcuts help overlay -->
@@ -802,8 +857,8 @@
         </label>
       </div>
       <div>
-        <div class="df-label">Applies to (select one or more products)</div>
-        <input id="df-product-search" class="df-input df-search" type="search" placeholder="Search products by name, SKU, or type" autocomplete="off" />
+        <div class="df-label">Applies to (products or variants)</div>
+        <input id="df-product-search" class="df-input df-search" type="search" placeholder="Search products, variants, SKU, or type" autocomplete="off" />
         <div class="products-check-list" id="df-products"></div>
         <div class="product-check-empty" id="df-products-empty" style="display:none">No matching products.</div>
       </div>
@@ -845,6 +900,7 @@
   // ── State ──────────────────────────────────────────────────────────────────
   let appState = null;   // full ZollTool state from localStorage
   let cart = {};         // { productId: qty }
+  let cartDiscount = null;
   let pendingPayment = null; // { method: 'cash'|'card'|'split', total, payments? }
 
   function loadState() {
@@ -1014,10 +1070,11 @@
     qty = Math.max(0, qty);
     if (qty === 0) delete cart[key];
     else cart[key] = qty;
+    if (cartItemCount() === 0) cartDiscount = null;
     render();
   }
 
-  function clearCart() { cart = {}; render(); }
+  function clearCart() { cart = {}; cartDiscount = null; render(); }
 
   // ── Variant picker ─────────────────────────────────────────────────────────
   let variantPickerProductId = null;
@@ -1122,19 +1179,31 @@
     return '';
   }
 
+  function discountProductIds(d) {
+    return Array.isArray(d.productIds) ? d.productIds : [];
+  }
+
+  function discountVariantIds(d) {
+    return Array.isArray(d.variantIds) ? d.variantIds : [];
+  }
+
   function calculateDiscounts() {
     if (!appState) return [];
     const results = [];
     for (const disc of loadDiscounts()) {
-      if (!disc.productIds || !disc.productIds.length) continue;
+      const productTargets = discountProductIds(disc);
+      const variantTargets = discountVariantIds(disc);
+      if (!productTargets.length && !variantTargets.length) continue;
       const items = [];
-      for (const pid of disc.productIds) {
+      const seenCartKeys = new Set();
+      for (const pid of productTargets) {
         const p = appState.products.find(pr => pr.id === pid);
         if (!p) continue;
         if (hasVariants(p)) {
           for (const [key, qty] of Object.entries(cart)) {
             const { pid: kpid, vid } = parseCartKey(key);
             if (kpid !== pid || !vid || !qty) continue;
+            seenCartKeys.add(key);
             const v = (p.variants || []).find(vv => vv.id === vid);
             const price = v ? (variantPrice(p, v) || 0) : 0;
             for (let i = 0; i < qty; i++) items.push(price);
@@ -1142,9 +1211,22 @@
         } else {
           const qty = cart[pid] || 0;
           if (!qty) continue;
+          seenCartKeys.add(pid);
           const price = calcProduct(p).effectiveUnitPrice || 0;
           for (let i = 0; i < qty; i++) items.push(price);
         }
+      }
+      for (const variantKey of variantTargets) {
+        if (seenCartKeys.has(variantKey)) continue;
+        const { pid, vid } = parseCartKey(variantKey);
+        if (!pid || !vid) continue;
+        const qty = cart[variantKey] || 0;
+        if (!qty) continue;
+        const p = appState.products.find(pr => pr.id === pid);
+        const v = p ? (p.variants || []).find(vv => vv.id === vid) : null;
+        if (!p || !v) continue;
+        const price = variantPrice(p, v) || 0;
+        for (let i = 0; i < qty; i++) items.push(price);
       }
       if (!items.length) continue;
       items.sort((a, b) => a - b); // cheapest first
@@ -1179,13 +1261,79 @@
     return results;
   }
 
+  function calculateCartDiscount(baseTotal) {
+    if (!cartDiscount || !baseTotal) return 0;
+    const value = parseFloat(cartDiscount.value) || 0;
+    if (value <= 0) return 0;
+    if (cartDiscount.type === 'percent') return Math.min(baseTotal, baseTotal * Math.min(value, 100) / 100);
+    return Math.min(baseTotal, value);
+  }
+
+  function cartDiscountLabel() {
+    if (!cartDiscount) return '';
+    const name = cartDiscount.name && cartDiscount.name.trim() ? cartDiscount.name.trim() : 'Custom discount';
+    if (cartDiscount.type === 'percent') return `${name} (${parseFloat(cartDiscount.value) || 0}%)`;
+    return name;
+  }
+
+  function updateCartDiscountUnit() {
+    const type = document.querySelector('input[name="cart-disc-type"]:checked')?.value || 'amount';
+    document.getElementById('cart-disc-unit').textContent = type === 'percent' ? '%' : getCurrency();
+  }
+
+  function openCartDiscountForm() {
+    if (cartItemCount() === 0) return;
+    const type = cartDiscount ? cartDiscount.type : 'amount';
+    document.querySelectorAll('input[name="cart-disc-type"]').forEach(r => {
+      r.checked = r.value === type;
+    });
+    document.getElementById('cart-disc-name').value = cartDiscount ? (cartDiscount.name || '') : '';
+    document.getElementById('cart-disc-value').value = cartDiscount ? (cartDiscount.value || '') : '';
+    document.getElementById('cart-discount-remove').disabled = !cartDiscount;
+    updateCartDiscountUnit();
+    document.getElementById('cart-discount-overlay').classList.remove('hidden');
+  }
+
+  function closeCartDiscountForm() {
+    document.getElementById('cart-discount-overlay').classList.add('hidden');
+  }
+
+  function applyCartDiscount() {
+    const type = document.querySelector('input[name="cart-disc-type"]:checked').value;
+    const value = parseFloat(document.getElementById('cart-disc-value').value) || 0;
+    if (value <= 0) { showToast('Enter a discount value.', 'error'); return; }
+    if (type === 'percent' && value > 100) { showToast('Percent discount cannot be over 100%.', 'error'); return; }
+    cartDiscount = {
+      type,
+      value,
+      name: document.getElementById('cart-disc-name').value.trim() || 'Custom discount'
+    };
+    closeCartDiscountForm();
+    renderCart();
+  }
+
+  function removeCartDiscount() {
+    cartDiscount = null;
+    closeCartDiscountForm();
+    renderCart();
+  }
+
   function cartGrandTotal() {
-    const discAmt = calculateDiscounts().reduce((s, r) => s + r.amount, 0);
-    return Math.max(0, cartTotal() - discAmt);
+    const subtotal = cartTotal();
+    const ruleDiscAmt = calculateDiscounts().reduce((s, r) => s + r.amount, 0);
+    const afterRuleDiscounts = Math.max(0, subtotal - ruleDiscAmt);
+    return Math.max(0, afterRuleDiscounts - calculateCartDiscount(afterRuleDiscounts));
   }
 
   function getProductDiscounts(productId) {
-    return loadDiscounts().filter(d => (d.productIds || []).includes(productId));
+    return loadDiscounts().filter(d => discountProductIds(d).includes(productId));
+  }
+
+  function getVariantDiscounts(productId, variantId) {
+    return loadDiscounts().filter(d =>
+      discountProductIds(d).includes(productId) ||
+      discountVariantIds(d).includes(`${productId}:${variantId}`)
+    );
   }
 
   // ── Cash shortcuts ─────────────────────────────────────────────────────────
@@ -1449,6 +1597,15 @@
       }
     });
 
+    const ruleDiscounts = calculateDiscounts().map(r => ({
+      id: r.disc.id,
+      name: r.disc.name,
+      amount: r.amount
+    }));
+    const subtotal = txItems.reduce((s, item) => s + (item.lineTotal || 0), 0);
+    const ruleDiscountTotal = ruleDiscounts.reduce((s, d) => s + d.amount, 0);
+    const customDiscountAmount = calculateCartDiscount(Math.max(0, subtotal - ruleDiscountTotal));
+
     // Record transaction in history
     if (!Array.isArray(appState.transactions)) appState.transactions = [];
     appState.transactions.push({
@@ -1458,6 +1615,10 @@
       payments: pendingPayment.payments || [{ method: pendingPayment.method, amount: pendingPayment.total }],
       total: pendingPayment.total,
       currency: getCurrency(),
+      discounts: [
+        ...ruleDiscounts,
+        ...(customDiscountAmount > 0.001 ? [{ name: cartDiscountLabel(), amount: customDiscountAmount, custom: true }] : [])
+      ],
       reverted: false,
       revertedAt: null,
       items: txItems,
@@ -1738,6 +1899,8 @@
 
     const subtotal = cartTotal();
     const discResults = calculateDiscounts();
+    const ruleDiscAmt = discResults.reduce((s, r) => s + r.amount, 0);
+    const cartDiscAmt = calculateCartDiscount(Math.max(0, subtotal - ruleDiscAmt));
     const grandTotal = cartGrandTotal();
     const count = cartItemCount();
     const cur = getCurrency();
@@ -1745,17 +1908,25 @@
     document.getElementById('tot-items').textContent = count;
     const subtotalRow = document.getElementById('tot-subtotal-row');
     const discLines   = document.getElementById('tot-disc-lines');
-    if (count && discResults.length) {
+    if (count && (discResults.length || cartDiscAmt > 0.001)) {
       subtotalRow.style.display = '';
       document.getElementById('tot-subtotal').textContent = cur + ' ' + subtotal.toFixed(2);
-      discLines.innerHTML = discResults.map(r =>
+      const ruleLines = discResults.map(r =>
         `<div class="cart-disc"><span>🎁 ${escHtml(r.disc.name)}</span><span class="cd-amount">− ${cur} ${r.amount.toFixed(2)}</span></div>`
       ).join('');
+      const customLine = cartDiscAmt > 0.001
+        ? `<div class="cart-disc"><span>${escHtml(cartDiscountLabel())}</span><span class="cd-amount">âˆ’ ${cur} ${cartDiscAmt.toFixed(2)}</span></div>`
+        : '';
+      discLines.innerHTML = ruleLines + customLine;
     } else {
       subtotalRow.style.display = 'none';
       discLines.innerHTML = '';
     }
     document.getElementById('tot-price').textContent = count ? cur + ' ' + grandTotal.toFixed(2) : '—';
+    const cartDiscBtn = document.getElementById('btn-cart-discount');
+    cartDiscBtn.disabled = count === 0;
+    cartDiscBtn.textContent = cartDiscount ? 'Edit Discount' : 'Discount';
+    cartDiscBtn.classList.toggle('active', !!cartDiscount);
     document.getElementById('btn-cash').disabled = count === 0;
     document.getElementById('btn-card').disabled = count === 0;
     document.getElementById('btn-split').disabled = count === 0;
@@ -1903,6 +2074,7 @@
   document.getElementById('btn-cash').addEventListener('click', () => openPayment('cash'));
   document.getElementById('btn-card').addEventListener('click', () => openPayment('card'));
   document.getElementById('btn-split').addEventListener('click', () => openPayment('split'));
+  document.getElementById('btn-cart-discount').addEventListener('click', openCartDiscountForm);
   document.getElementById('btn-clear').addEventListener('click', clearCart);
   document.getElementById('barcode-input').addEventListener('keydown', e => {
     if (e.key !== 'Enter') return;
@@ -1914,6 +2086,16 @@
   document.getElementById('confirm-ok').addEventListener('click', confirmPayment);
   document.getElementById('pay-overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('pay-overlay')) closeOverlay();
+  });
+  document.getElementById('cart-discount-close').addEventListener('click', closeCartDiscountForm);
+  document.getElementById('cart-discount-cancel').addEventListener('click', closeCartDiscountForm);
+  document.getElementById('cart-discount-apply').addEventListener('click', applyCartDiscount);
+  document.getElementById('cart-discount-remove').addEventListener('click', removeCartDiscount);
+  document.getElementById('cart-discount-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('cart-discount-overlay')) closeCartDiscountForm();
+  });
+  document.querySelectorAll('input[name="cart-disc-type"]').forEach(r => {
+    r.addEventListener('change', updateCartDiscountUnit);
   });
 
   function openShortcutsHelp() {
@@ -1937,10 +2119,12 @@
     const helpOpen = !document.getElementById('shortcuts-overlay').classList.contains('hidden');
     const discountOpen = !document.getElementById('disc-overlay').classList.contains('hidden')
       || !document.getElementById('disc-form-overlay').classList.contains('hidden');
+    const cartDiscountOpen = !document.getElementById('cart-discount-overlay').classList.contains('hidden');
 
     if (e.key === 'Escape') {
       if (payOpen) closeOverlay();
       else if (helpOpen) closeShortcutsHelp();
+      else if (cartDiscountOpen) closeCartDiscountForm();
       else if (!document.getElementById('variant-overlay').classList.contains('hidden')) closeVariantPicker();
       else if (!document.getElementById('type-overlay').classList.contains('hidden')) closeTypeView();
       return;
@@ -1951,7 +2135,7 @@
       return;
     }
     if (typing) return;
-    if (helpOpen || discountOpen) return;
+    if (helpOpen || discountOpen || cartDiscountOpen) return;
     if (/^[1-9]$/.test(e.key) && triggerNumberShortcut(e.key)) {
       e.preventDefault();
       return;
@@ -2008,10 +2192,17 @@
     }
     const products = (appState && appState.products) ? appState.products : [];
     container.innerHTML = discounts.map(d => {
-      const resolved = (d.productIds || []).map(pid => {
+      const resolvedProducts = discountProductIds(d).map(pid => {
         const p = products.find(pr => pr.id === pid);
         return { pid, title: p ? p.title : null };
       });
+      const resolvedVariants = discountVariantIds(d).map(key => {
+        const { pid, vid } = parseCartKey(key);
+        const p = products.find(pr => pr.id === pid);
+        const v = p ? (p.variants || []).find(vv => vv.id === vid) : null;
+        return { key, title: p && v ? `${p.title || '(untitled)'} - ${v.name || v.sku || 'Variant'}` : null };
+      });
+      const resolved = [...resolvedProducts, ...resolvedVariants];
       const missing = resolved.filter(r => !r.title);
       const productNames = resolved.filter(r => r.title).map(r => r.title).join(', ') || '—';
       const warningHtml = missing.length
@@ -2073,7 +2264,10 @@
     renderTierRows(tiers);
     document.getElementById('df-tier-continue').checked = !!(existing && existing.tierContinue);
 
-    renderProductCheckboxes(existing ? (existing.productIds || []) : []);
+    renderProductCheckboxes(existing ? {
+      productIds: discountProductIds(existing),
+      variantIds: discountVariantIds(existing)
+    } : { productIds: [], variantIds: [] });
     filterDiscountProducts();
 
     document.getElementById('disc-form-overlay').classList.remove('hidden');
@@ -2115,19 +2309,37 @@
     return qtys.map((qty, i) => ({ qty, total: totals[i] }));
   }
 
-  function renderProductCheckboxes(selectedIds) {
+  function renderProductCheckboxes(selectedTargets) {
     const container = document.getElementById('df-products');
     const products = (appState && appState.products) ? appState.products.filter(p => p.forSale !== false) : [];
     if (!products.length) {
       container.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">No products — load a JSON file first.</div>';
       return;
     }
-    container.innerHTML = products.map(p =>
-      `<label class="product-check" data-search="${escHtml([p.title, p.sku, p.type].filter(Boolean).join(' ').toLowerCase())}">
-        <input type="checkbox" value="${p.id}" ${selectedIds.includes(p.id) ? 'checked' : ''} />
-        <span>${escHtml(p.title || '(untitled)')}${p.sku ? ` <span style="color:var(--text-muted);font-size:11px">(${escHtml(p.sku)})</span>` : ''}</span>
-      </label>`
-    ).join('');
+    const selectedProducts = new Set(selectedTargets.productIds || []);
+    const selectedVariants = new Set(selectedTargets.variantIds || []);
+    container.innerHTML = products.map(p => {
+      const productSearch = [p.title, p.sku, p.type].filter(Boolean).join(' ').toLowerCase();
+      const productRow = `<label class="product-check" data-search="${escHtml(productSearch)}">
+        <input type="checkbox" data-target-kind="product" value="${p.id}" ${selectedProducts.has(p.id) ? 'checked' : ''} />
+        <span class="product-check-title">
+          <span>${escHtml(p.title || '(untitled)')}</span>
+          ${p.sku ? `<span class="product-check-meta">${escHtml(p.sku)}</span>` : ''}
+        </span>
+      </label>`;
+      const variantRows = hasVariants(p) ? (p.variants || []).map(v => {
+        const key = `${p.id}:${v.id}`;
+        const variantSearch = [p.title, p.sku, p.type, v.name, v.sku].filter(Boolean).join(' ').toLowerCase();
+        return `<label class="product-check variant-check" data-parent-id="${escHtml(p.id)}" data-search="${escHtml(variantSearch)}">
+          <input type="checkbox" data-target-kind="variant" value="${escHtml(key)}" ${selectedVariants.has(key) ? 'checked' : ''} />
+          <span class="product-check-title">
+            <span>${escHtml(v.name || 'Variant')}</span>
+            <span class="product-check-meta">${escHtml(p.title || '(untitled)')}${v.sku ? ` - ${escHtml(v.sku)}` : ''}</span>
+          </span>
+        </label>`;
+      }).join('') : '';
+      return productRow + variantRows;
+    }).join('');
   }
 
   function filterDiscountProducts() {
@@ -2147,10 +2359,12 @@
     if (!name) { showToast('Please enter a discount name.', 'error'); return; }
 
     const type = document.querySelector('input[name="df-type"]:checked').value;
-    const selectedIds = [...document.querySelectorAll('#df-products input[type="checkbox"]:checked')].map(el => el.value);
-    if (!selectedIds.length) { showToast('Select at least one product.', 'error'); return; }
+    const checkedTargets = [...document.querySelectorAll('#df-products input[type="checkbox"]:checked')];
+    const selectedIds = checkedTargets.filter(el => el.dataset.targetKind !== 'variant').map(el => el.value);
+    const selectedVariantIds = checkedTargets.filter(el => el.dataset.targetKind === 'variant').map(el => el.value);
+    if (!selectedIds.length && !selectedVariantIds.length) { showToast('Select at least one product or variant.', 'error'); return; }
 
-    const disc = { id: editingDiscId || uuid(), name, type, productIds: selectedIds };
+    const disc = { id: editingDiscId || uuid(), name, type, productIds: selectedIds, variantIds: selectedVariantIds };
 
     if (type === 'bxgy') {
       disc.buyQty  = parseInt(document.getElementById('df-buy').value,  10) || 2;
