@@ -1,48 +1,76 @@
 {% comment %}
   ZollTool — Swiss Customs Declaration Tool
-  Place this file in your Shopify theme's /templates/ folder.
-  Then in the Shopify admin: Pages > Create page > Template = page.zolltool
+  Place this file in your Shopify theme under /templates/
+  Then in Shopify admin: Pages → select page → Template = page.zolltool
+
+  Works with the Dawn theme. The iframe is dynamically sized to fill exactly
+  the viewport space below the sticky header — no hardcoded heights needed.
 {% endcomment %}
 
 <style>
+  /* ── Hide Dawn chrome that doesn't belong in a full-screen tool ── */
+  #shopify-section-footer              { display: none !important; }
+  .main-page-title, .page-title        { display: none !important; }
+
+  /* ── Zero out Dawn's page-width container padding / max-width ── */
+  #MainContent                         { padding-top: 0 !important; padding-bottom: 0 !important; }
+  #MainContent .shopify-section        { padding: 0 !important; margin: 0 !important; }
+  .page-width                          { padding-inline: 0 !important; max-width: 100% !important; }
+
+  /* ── Keep the page from growing a scroll bar ── */
+  html, body { overflow: hidden !important; }
+
+  /* ── Frame container + iframe ── */
   .zolltool-wrap {
-    /* Push past the theme's side padding so the tool has full width */
-    margin-left: calc(-1 * var(--page-width-padding, 0px));
-    margin-right: calc(-1 * var(--page-width-padding, 0px));
-    width: calc(100% + 2 * var(--page-width-padding, 0px));
+    display: block;
+    width: 100%;
   }
 
   .zolltool-frame {
     display: block;
     width: 100%;
-    /* Start with a sensible fallback; JS will expand this to full content height */
-    height: 800px;
     border: none;
-    background: #f4f5f6;
     overflow: hidden;
+    background: #1e1e2e; /* dark fill while loading */
   }
-
-  /* Hide the Shopify page title — the tool has its own header */
-  .page-title { display: none; }
 </style>
 
-<div class="zolltool-wrap">
+<div class="zolltool-wrap" id="zolltool-wrap">
   <iframe
     id="zolltool-frame"
     class="zolltool-frame"
     src="https://toastystoemp.github.io/ZollTool/"
     title="ZollTool — Swiss Customs Declaration Tool"
-    loading="lazy"
     allow="clipboard-write"
-    scrolling="no"
   ></iframe>
 </div>
 
 <script>
-  window.addEventListener('message', function(e) {
-    if (e.data && e.data.type === 'zolltool-height') {
-      var frame = document.getElementById('zolltool-frame');
-      if (frame) frame.style.height = e.data.height + 'px';
+  (function () {
+    var frame = document.getElementById('zolltool-frame');
+    var wrap  = document.getElementById('zolltool-wrap');
+
+    function sizeFrame() {
+      if (!frame) return;
+      // Reset to 1px so getBoundingClientRect gives the true top offset
+      // (not inflated by the previous height value)
+      frame.style.height = '1px';
+      var top       = frame.getBoundingClientRect().top;
+      var available = window.innerHeight - top;
+      frame.style.height = Math.max(200, available) + 'px';
+      if (wrap) wrap.style.height = frame.style.height;
     }
-  });
+
+    // Size immediately, after full load (sticky header settles), and on resize
+    sizeFrame();
+    window.addEventListener('load',   sizeFrame);
+    window.addEventListener('resize', sizeFrame);
+
+    // Dawn's sticky header changes height on scroll — re-measure when it does
+    var headerEl = document.querySelector('sticky-header') ||
+                   document.querySelector('#shopify-section-header');
+    if (headerEl && typeof ResizeObserver !== 'undefined') {
+      new ResizeObserver(sizeFrame).observe(headerEl);
+    }
+  })();
 </script>
