@@ -1695,11 +1695,8 @@
     splitSection.style.display = method === 'split' ? '' : 'none';
 
     if (method === 'cash') {
-      document.getElementById('cash-received').value = '';
-      document.getElementById('change-val').textContent = '-';
-      document.getElementById('change-val').className = 'change-val';
-      document.getElementById('confirm-ok').disabled = true;
       buildCashShortcuts(total, cur);
+      setCashReceived(total);
     } else if (method === 'split') {
       document.getElementById('split-cash').value = '';
       document.getElementById('split-card').value = '';
