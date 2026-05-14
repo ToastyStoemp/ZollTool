@@ -365,6 +365,17 @@
                      font-size: 13px; }
     .split-summary strong { font-size: 15px; }
 
+    /* ── Cart quantity badge on product card ── */
+    .cart-qty-badge {
+      position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+      background: var(--accent); color: #fff;
+      font-size: 13px; font-weight: 800;
+      min-width: 24px; height: 24px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0 5px; line-height: 1; pointer-events: none;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.30);
+    }
+
     /* ── Discount badge on product card ── */
     .pb-discount { display: none; }
     [data-theme="dark"] .pb-discount { background: rgba(26,122,62,.22); }
@@ -1094,9 +1105,11 @@
       const price = variantPrice(p, v);
       const stockClass = stock <= 0 ? 'none' : stock <= 3 ? 'low' : '';
       const stockLabel = stock <= 0 ? 'Out of stock' : stock <= 3 ? `${stock} left` : `${stock} in stock`;
+      const vCartQty = cart[`${productId}:${v.id}`] || 0;
       return `<button class="product-btn${stock <= 0 ? ' out-of-stock' : ''}"
                 style="--card-accent:${color}"
                 onclick="addToCart('${productId}','${v.id}');closeVariantPicker()">
+        ${vCartQty > 0 ? `<span class="cart-qty-badge">${vCartQty}</span>` : ''}
         <span class="pb-title">${escHtml(v.name || '(untitled)')}</span>
         ${v.sku ? `<span class="pb-sku">${escHtml(v.sku)}</span>` : ''}
         <span class="pb-footer"><span class="pb-stock ${stockClass}">${stockLabel}</span>${price != null ? `<span class="pb-price">${fmtPrice(price)}</span>` : ''}</span>
@@ -1242,6 +1255,7 @@
         for (let i = nth - 1; i < totalQty; i += nth) amount += (items[i] || 0) * pct;
       } else if (disc.type === 'tiered') {
         if (!disc.tiers || !disc.tiers.length) continue;
+        if (totalQty < 2) continue;
         const normalTotal = items.reduce((s, v) => s + v, 0);
         const avgUnit = normalTotal / totalQty;
         const sortedTiers = [...disc.tiers].sort((a, b) => b.qty - a.qty);
@@ -1554,11 +1568,8 @@
     const cashSection = document.getElementById('cash-section');
     if (method === 'cash') {
       cashSection.style.display = '';
-      document.getElementById('cash-received').value = '';
-      document.getElementById('change-val').textContent = '—';
-      document.getElementById('change-val').className = 'change-val';
-      document.getElementById('confirm-ok').disabled = true;
       buildCashShortcuts(total, cur);
+      setCashReceived(total);
     } else {
       cashSection.style.display = 'none';
       document.getElementById('confirm-ok').disabled = false;
@@ -1793,9 +1804,12 @@
     const stock = remainingStock(p);
     const allOut = stock <= 0;
     const stockClass = allOut ? 'none' : stock <= 3 ? 'low' : '';
-    const markerHtml = '';
     const color = p.type ? typeColor(p.type) : null;
     const colorStyle = color ? `--card-accent:${color}` : '';
+    const cartQty = hasVariants(p)
+      ? (p.variants || []).reduce((s, v) => s + (cart[`${p.id}:${v.id}`] || 0), 0)
+      : (cart[p.id] || 0);
+    const cartBadge = cartQty > 0 ? `<span class="cart-qty-badge">${cartQty}</span>` : '';
 
     if (hasVariants(p)) {
       const stockLabel = allOut ? 'Out of stock' : `${stock} in stock`;
@@ -1805,7 +1819,7 @@
         : `${fmtPrice(Math.min(...prices))} – ${fmtPrice(Math.max(...prices))}`;
       return `<button class="product-btn${allOut ? ' out-of-stock' : ''}"
                 style="${colorStyle}" onclick="addToCart('${p.id}')">
-        ${markerHtml ? `<span class="card-markers">${markerHtml}</span>` : ''}
+        ${cartBadge}
         <span class="pb-title">${escHtml(p.title || '(untitled)')}</span>
         <span class="pb-footer"><span class="pb-stock ${stockClass}">${stockLabel}</span><span class="pb-price">${escHtml(priceStr)}</span></span>
       </button>`;
@@ -1816,7 +1830,7 @@
     const stockLabel = allOut ? 'Out of stock' : stock <= 3 ? `${stock} left` : `${stock} in stock`;
     return `<button class="product-btn${allOut ? ' out-of-stock' : ''}"
               style="${colorStyle}" onclick="addToCart('${p.id}')">
-      ${markerHtml ? `<span class="card-markers">${markerHtml}</span>` : ''}
+      ${cartBadge}
       <span class="pb-title">${escHtml(p.title || '(untitled)')}</span>
       <span class="pb-footer"><span class="pb-stock ${stockClass}">${stockLabel}</span><span class="pb-price">${escHtml(price)}</span></span>
     </button>`;
@@ -2290,7 +2304,7 @@
       document.getElementById('df-pct').value = 50;
     }
 
-    const tiers = (existing && existing.type === 'tiered' && existing.tiers) ? existing.tiers : [{ qty: 1, total: '' }, { qty: 3, total: '' }];
+    const tiers = (existing && existing.type === 'tiered' && existing.tiers) ? existing.tiers : [{ qty: 3, total: '' }];
     renderTierRows(tiers);
     document.getElementById('df-tier-continue').checked = !!(existing && existing.tierContinue);
 
@@ -2371,6 +2385,14 @@
       return productRow + variantRows;
     }).join('');
   }
+
+  document.getElementById('df-products').addEventListener('change', e => {
+    const cb = e.target;
+    if (cb.dataset.targetKind !== 'product') return;
+    const pid = cb.value;
+    document.querySelectorAll(`#df-products .variant-check[data-parent-id="${CSS.escape(pid)}"] input[type="checkbox"]`)
+      .forEach(v => { v.checked = cb.checked; });
+  });
 
   function filterDiscountProducts() {
     const q = document.getElementById('df-product-search').value.trim().toLowerCase();
