@@ -118,11 +118,24 @@
       box-shadow: var(--shadow-sm); padding: 14px 16px; margin-bottom: 20px;
     }
     .chart-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin-bottom: 10px; }
-    .best-row { display: grid; grid-template-columns: minmax(110px, 1fr) 3fr auto; gap: 10px; align-items: center; margin-bottom: 8px; font-size: 13px; }
+    .chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 8px; }
+    .chart-header .chart-title { margin-bottom: 0; }
+
+    /* time chart */
+    .time-chart-bars { display: flex; align-items: flex-end; gap: 5px; overflow-x: auto; padding-bottom: 2px; }
+    .time-bar-col { flex-shrink: 0; flex: 1; min-width: 26px; max-width: 54px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .time-bar-wrap { display: flex; flex-direction: column; align-items: center; width: 100%; }
+    .time-bar-val { font-size: 9px; color: var(--text-muted); font-weight: 600; margin-bottom: 2px; white-space: nowrap; }
+    .time-bar { width: 70%; background: var(--blue); border-radius: 3px 3px 0 0; min-height: 2px; }
+    .time-bar-label { font-size: 10px; color: var(--text-muted); white-space: nowrap; text-align: center; }
+
+    /* best sellers / best types rows */
+    .best-row { display: grid; grid-template-columns: minmax(110px, 1fr) 3fr auto auto; gap: 10px; align-items: center; margin-bottom: 8px; font-size: 13px; }
     .best-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
     .best-track { height: 10px; background: var(--surface-2); border-radius: 99px; overflow: hidden; border: 1px solid var(--border); }
     .best-bar { height: 100%; background: var(--blue); border-radius: 99px; }
-    .best-value { color: var(--text-muted); font-weight: 700; }
+    .best-value { color: var(--text-muted); font-weight: 700; white-space: nowrap; }
+    .best-rev { color: var(--green); font-weight: 700; font-size: 12px; white-space: nowrap; }
 
     /* ── Transaction list ── */
     .tx-list { display: flex; flex-direction: column; gap: 10px; }
@@ -286,9 +299,29 @@
 
   <!-- Stats -->
   <div class="stats-bar" id="stats-bar"></div>
+
+  <!-- Sales / Revenue over time -->
+  <div class="chart-panel" id="time-chart-panel" style="display:none">
+    <div class="chart-header">
+      <div class="chart-title" id="time-chart-title">SALES OVER TIME</div>
+      <div class="filter-toggle">
+        <button class="filter-btn active" id="time-sales-btn">Sales</button>
+        <button class="filter-btn" id="time-rev-btn">Revenue</button>
+      </div>
+    </div>
+    <div class="time-chart-bars" id="time-chart-bars"></div>
+  </div>
+
+  <!-- Best Sellers -->
   <div class="chart-panel" id="best-sellers-panel" style="display:none">
     <div class="chart-title">Best Sellers</div>
     <div id="best-sellers-chart"></div>
+  </div>
+
+  <!-- Best Selling Types -->
+  <div class="chart-panel" id="best-types-panel" style="display:none">
+    <div class="chart-title">Best Selling Types</div>
+    <div id="best-types-chart"></div>
   </div>
 
   <!-- Toolbar -->
@@ -305,6 +338,7 @@
       </div>
     </div>
     <div class="toolbar-right">
+      <button class="btn btn-ghost" id="btn-recalc" style="font-size:12px;padding:5px 12px" title="Rebuild soldQty / soldValue from transaction history">↺ Recalculate Sold</button>
       <button class="btn btn-ghost" id="btn-export-csv" style="font-size:12px;padding:5px 12px">Export CSV</button>
       <button class="btn btn-ghost" id="btn-collapse-all" style="font-size:12px;padding:5px 12px">Collapse All</button>
     </div>
@@ -312,6 +346,19 @@
 
   <!-- Transaction list -->
   <div class="tx-list" id="tx-list"></div>
+</div>
+
+<!-- Recalculate confirm overlay -->
+<div class="overlay hidden" id="recalc-overlay">
+  <div class="confirm-modal">
+    <div class="confirm-icon">↺</div>
+    <div class="confirm-title">Recalculate Sold Values?</div>
+    <div class="confirm-subtitle">This will reset all sold quantities and values on every product, then rebuild them from scratch using the transaction history — with discounts correctly applied to each item.<br><br>Any manually edited Sold Qty / Sold Value fields will be overwritten.</div>
+    <div class="confirm-btns">
+      <button class="btn btn-ghost" id="recalc-cancel">Cancel</button>
+      <button class="btn btn-amber" id="recalc-confirm">Recalculate</button>
+    </div>
+  </div>
 </div>
 
 <!-- Revert confirm overlay -->
@@ -337,6 +384,7 @@
   let filterMethod = 'all';     // 'all' | 'cash' | 'card'
   let filterReverted = 'show';  // 'show' | 'hide'
   let pendingRevertId = null;
+  let timeChartMode = 'sales';  // 'sales' | 'revenue'
 
   function loadState() {
     try {
@@ -393,7 +441,9 @@
           <div class="empty-sub">Open the <a href="pos.html">POS</a> and load your ZollTool data file first.</div>
         </div>`;
       document.getElementById('stats-bar').innerHTML = '';
+      document.getElementById('time-chart-panel').style.display = 'none';
       document.getElementById('best-sellers-panel').style.display = 'none';
+      document.getElementById('best-types-panel').style.display = 'none';
       document.getElementById('page-subtitle').textContent = 'No data loaded';
       return;
     }
@@ -442,7 +492,9 @@
         <span class="stat-value amber">${transactions.filter(t => t.reverted).length}</span>
       </div>` : ''}
     `;
+    renderTimeChart(active);
     renderBestSellers(active);
+    renderBestTypes(active);
 
     // Filter
     let visible = [...transactions].reverse(); // newest first
@@ -478,17 +530,88 @@
     const top = [...totals.values()].sort((a, b) => b.qty - a.qty || b.revenue - a.revenue).slice(0, 5);
     const panel = document.getElementById('best-sellers-panel');
     const chart = document.getElementById('best-sellers-chart');
-    if (!top.length) {
-      panel.style.display = 'none';
-      chart.innerHTML = '';
-      return;
-    }
+    if (!top.length) { panel.style.display = 'none'; chart.innerHTML = ''; return; }
+    const cur = getCurrency();
     const max = Math.max(...top.map(i => i.qty), 1);
     chart.innerHTML = top.map(item => `
       <div class="best-row">
         <div class="best-name" title="${escHtml(item.name)}">${escHtml(item.name)}</div>
         <div class="best-track"><div class="best-bar" style="width:${Math.max(4, (item.qty / max) * 100)}%"></div></div>
-        <div class="best-value">${item.qty}</div>
+        <div class="best-value">${item.qty}×</div>
+        <div class="best-rev">${fmtPrice(item.revenue, cur)}</div>
+      </div>`).join('');
+    panel.style.display = '';
+  }
+
+  function renderTimeChart(active) {
+    const panel = document.getElementById('time-chart-panel');
+    if (!active.length) { panel.style.display = 'none'; return; }
+
+    // Group by hour of day (0–23)
+    const groups = Array.from({ length: 24 }, (_, h) => ({
+      label: h === 0 ? '12am' : h < 12 ? `${h}am` : h === 12 ? '12pm' : `${h - 12}pm`,
+      sales: 0, revenue: 0
+    }));
+    for (const tx of active) {
+      const h = new Date(tx.timestamp).getHours();
+      groups[h].sales += 1;
+      groups[h].revenue += tx.total || 0;
+    }
+
+    // Trim empty hours at the edges, leaving one on each side for context
+    let first = groups.findIndex(g => g.sales > 0);
+    let last  = 23 - [...groups].reverse().findIndex(g => g.sales > 0);
+    if (first === -1) { panel.style.display = 'none'; return; }
+    first = Math.max(0, first - 1);
+    last  = Math.min(23, last + 1);
+    const visible = groups.slice(first, last + 1);
+
+    const isRev = timeChartMode === 'revenue';
+    const currency = getCurrency();
+    const maxVal = Math.max(...visible.map(g => isRev ? g.revenue : g.sales), 1);
+    const BAR_MAX = 90;
+    document.getElementById('time-chart-title').textContent = isRev ? 'REVENUE BY HOUR' : 'SALES BY HOUR';
+    document.getElementById('time-chart-bars').innerHTML = visible.map(g => {
+      const val = isRev ? g.revenue : g.sales;
+      const h = Math.max(2, Math.round((val / maxVal) * BAR_MAX));
+      const displayVal = isRev ? fmtPrice(val, currency) : (val || '');
+      return `
+        <div class="time-bar-col">
+          <div class="time-bar-wrap">
+            <div class="time-bar-val">${val > 0 ? displayVal : ''}</div>
+            <div class="time-bar" style="height:${h}px;${val === 0 ? 'opacity:.2' : ''}"></div>
+          </div>
+          <div class="time-bar-label">${g.label}</div>
+        </div>`;
+    }).join('');
+    panel.style.display = '';
+  }
+
+  function renderBestTypes(active) {
+    const panel = document.getElementById('best-types-panel');
+    const chart = document.getElementById('best-types-chart');
+    if (!active.length || !appState) { panel.style.display = 'none'; return; }
+    const totals = new Map();
+    for (const tx of active) {
+      for (const item of tx.items || []) {
+        const p = (appState.products || []).find(pr => pr.id === item.pid);
+        const type = (p && p.type) ? p.type : 'Uncategorized';
+        const current = totals.get(type) || { type, qty: 0, revenue: 0 };
+        current.qty += item.qty || 0;
+        current.revenue += item.lineTotal || 0;
+        totals.set(type, current);
+      }
+    }
+    const top = [...totals.values()].sort((a, b) => b.revenue - a.revenue);
+    if (!top.length) { panel.style.display = 'none'; return; }
+    const cur = getCurrency();
+    const maxRev = Math.max(...top.map(t => t.revenue), 1);
+    chart.innerHTML = top.map(item => `
+      <div class="best-row">
+        <div class="best-name" title="${escHtml(item.type)}">${escHtml(item.type)}</div>
+        <div class="best-track"><div class="best-bar" style="width:${Math.max(4, (item.revenue / maxRev) * 100)}%"></div></div>
+        <div class="best-value">${item.qty}×</div>
+        <div class="best-rev">${fmtPrice(item.revenue, cur)}</div>
       </div>`).join('');
     panel.style.display = '';
   }
@@ -622,6 +745,19 @@
     render();
   }
 
+  document.getElementById('time-sales-btn').addEventListener('click', () => {
+    timeChartMode = 'sales';
+    document.getElementById('time-sales-btn').classList.add('active');
+    document.getElementById('time-rev-btn').classList.remove('active');
+    renderTimeChart((appState?.transactions || []).filter(t => !t.reverted));
+  });
+  document.getElementById('time-rev-btn').addEventListener('click', () => {
+    timeChartMode = 'revenue';
+    document.getElementById('time-rev-btn').classList.add('active');
+    document.getElementById('time-sales-btn').classList.remove('active');
+    renderTimeChart((appState?.transactions || []).filter(t => !t.reverted));
+  });
+
   document.getElementById('filter-all').addEventListener('click', () => setMethodFilter('all'));
   document.getElementById('filter-cash').addEventListener('click', () => setMethodFilter('cash'));
   document.getElementById('filter-card').addEventListener('click', () => setMethodFilter('card'));
@@ -679,6 +815,81 @@
   document.getElementById('revert-confirm').addEventListener('click', confirmRevert);
   document.getElementById('revert-overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('revert-overlay')) closeRevertOverlay();
+  });
+
+  // ── Recalculate sold values from history ──────────────────────────────────
+  document.getElementById('btn-recalc').addEventListener('click', () => {
+    if (!appState || !(appState.transactions || []).length) {
+      showToast('No transactions to recalculate from.', 'error');
+      return;
+    }
+    document.getElementById('recalc-overlay').classList.remove('hidden');
+  });
+  document.getElementById('recalc-cancel').addEventListener('click', () => {
+    document.getElementById('recalc-overlay').classList.add('hidden');
+  });
+  document.getElementById('recalc-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('recalc-overlay'))
+      document.getElementById('recalc-overlay').classList.add('hidden');
+  });
+  document.getElementById('recalc-confirm').addEventListener('click', () => {
+    document.getElementById('recalc-overlay').classList.add('hidden');
+    if (!appState) return;
+    loadState();
+
+    // Reset every product and variant to zero
+    (appState.products || []).forEach(p => {
+      p.soldQty   = 0;
+      p.soldValue = 0;
+      (p.variants || []).forEach(v => { v.soldQty = 0; v.soldValue = 0; });
+    });
+
+    let fixedCount = 0;
+
+    // Replay every non-reverted transaction
+    (appState.transactions || []).filter(t => !t.reverted).forEach(tx => {
+      const items = tx.items || [];
+      const sumLines = items.reduce((s, i) => s + (i.lineTotal || 0), 0);
+      const paid     = tx.total || 0;
+
+      // If line totals don't already reflect the paid amount (pre-fix transactions),
+      // redistribute them proportionally so they sum to the actual paid total.
+      if (sumLines > 0.001 && Math.abs(sumLines - paid) > 0.005) {
+        fixedCount++;
+        const ratio = paid / sumLines;
+        let distributed = 0;
+        items.forEach((item, i) => {
+          if (i < items.length - 1) {
+            item.lineTotal  = Math.round(item.lineTotal * ratio * 100) / 100;
+            distributed    += item.lineTotal;
+          } else {
+            item.lineTotal  = Math.round((paid - distributed) * 100) / 100;
+          }
+        });
+      }
+
+      // Accumulate into product sold fields
+      items.forEach(item => {
+        const p = (appState.products || []).find(pr => pr.id === item.pid);
+        if (!p) return;
+        if (item.vid) {
+          const v = (p.variants || []).find(vv => vv.id === item.vid);
+          if (!v) return;
+          v.soldQty   = (v.soldQty   || 0) + (item.qty       || 0);
+          v.soldValue = (v.soldValue || 0) + (item.lineTotal  || 0);
+        } else {
+          p.soldQty   = (p.soldQty   || 0) + (item.qty       || 0);
+          p.soldValue = (p.soldValue || 0) + (item.lineTotal  || 0);
+        }
+      });
+    });
+
+    saveState();
+    const msg = fixedCount
+      ? `Recalculated — ${fixedCount} transaction${fixedCount !== 1 ? 's' : ''} corrected for discounts`
+      : 'Sold values recalculated from history';
+    showToast(msg, 'success');
+    render();
   });
 
   // ── Remove reverted entry ──────────────────────────────────────────────────

@@ -1574,6 +1574,7 @@
 
     const txItems = [];
 
+    // Step 1: build items with full (undiscounted) line totals
     Object.entries(cart).forEach(([key, qty]) => {
       if (!qty) return;
       const { pid, vid } = parseCartKey(key);
@@ -1585,18 +1586,15 @@
         const price = variantPrice(p, v);
         const lineTotal = price != null ? price * qty : 0;
         txItems.push({ pid, vid, title: p.title || '(untitled)', variantLabel: v.name || vid, qty, unitPrice: price, lineTotal });
-        v.soldQty   = (v.soldQty   || 0) + qty;
-        v.soldValue = (v.soldValue || 0) + lineTotal;
       } else {
         const c = calcProduct(p);
         const unitPrice = c.effectiveUnitPrice;
         const lineTotal = unitPrice != null ? unitPrice * qty : 0;
         txItems.push({ pid, vid: null, title: p.title || '(untitled)', variantLabel: null, qty, unitPrice, lineTotal });
-        p.soldQty   = (p.soldQty   || 0) + qty;
-        p.soldValue = (p.soldValue || 0) + lineTotal;
       }
     });
 
+    // Step 2: capture discount breakdown (needed for the transaction record)
     const ruleDiscounts = calculateDiscounts().map(r => ({
       id: r.disc.id,
       name: r.disc.name,
@@ -1605,6 +1603,38 @@
     const subtotal = txItems.reduce((s, item) => s + (item.lineTotal || 0), 0);
     const ruleDiscountTotal = ruleDiscounts.reduce((s, d) => s + d.amount, 0);
     const customDiscountAmount = calculateCartDiscount(Math.max(0, subtotal - ruleDiscountTotal));
+
+    // Step 3: scale each item's lineTotal to the actual paid total so soldValue
+    // matches what the customer actually paid (discounts distributed proportionally)
+    const actualTotal = pendingPayment.total;
+    if (subtotal > 0.001 && Math.abs(actualTotal - subtotal) > 0.001) {
+      const ratio = actualTotal / subtotal;
+      let distributed = 0;
+      txItems.forEach((item, i) => {
+        if (i < txItems.length - 1) {
+          item.lineTotal = Math.round(item.lineTotal * ratio * 100) / 100;
+          distributed += item.lineTotal;
+        } else {
+          // last item absorbs any cent-level rounding difference
+          item.lineTotal = Math.round((actualTotal - distributed) * 100) / 100;
+        }
+      });
+    }
+
+    // Step 4: update soldQty and soldValue using the discounted line totals
+    txItems.forEach(item => {
+      const p = appState.products.find(pr => pr.id === item.pid);
+      if (!p) return;
+      if (item.vid) {
+        const v = (p.variants || []).find(vv => vv.id === item.vid);
+        if (!v) return;
+        v.soldQty   = (v.soldQty   || 0) + item.qty;
+        v.soldValue = (v.soldValue || 0) + item.lineTotal;
+      } else {
+        p.soldQty   = (p.soldQty   || 0) + item.qty;
+        p.soldValue = (p.soldValue || 0) + item.lineTotal;
+      }
+    });
 
     // Record transaction in history
     if (!Array.isArray(appState.transactions)) appState.transactions = [];

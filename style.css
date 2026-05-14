@@ -868,7 +868,7 @@ tr[data-drag="merge"] td  { background: #e8f4ff !important; box-shadow: inset 0 
 /* Variant edit rows in the product modal */
 .variant-edit-header {
   display: grid;
-  grid-template-columns: 1fr 100px 75px 75px 80px 28px;
+  grid-template-columns: 1fr 100px 75px 75px 80px auto 28px;
   gap: 6px;
   padding: 0 4px 4px;
   font-size: 11px;
@@ -879,7 +879,7 @@ tr[data-drag="merge"] td  { background: #e8f4ff !important; box-shadow: inset 0 
 }
 .variant-edit-row {
   display: grid;
-  grid-template-columns: 1fr 100px 75px 75px 80px 28px;
+  grid-template-columns: 1fr 100px 75px 75px 80px auto 28px;
   gap: 6px;
   align-items: center;
   padding: 6px 4px;
@@ -901,6 +901,15 @@ tr[data-drag="merge"] td  { background: #e8f4ff !important; box-shadow: inset 0 
 .vr-sku { font-family: var(--font-mono); }
 .vr-remove { background: none; border: none; cursor: pointer; color: var(--gray-400); font-size: 16px; padding: 0; line-height: 1; }
 .vr-remove:hover { color: var(--red); }
+.vr-unlisted-label {
+  display: flex; align-items: center; gap: 4px;
+  font-size: 12px; color: var(--gray-500); cursor: pointer;
+  white-space: nowrap; font-weight: 500; user-select: none;
+}
+.vr-unlisted-label input[type="checkbox"] {
+  width: auto; padding: 0; border: none; background: none;
+  accent-color: var(--amber, #d97706);
+}
 #m-variants-wrap { border: 1px solid var(--gray-300); border-radius: 6px; padding: 8px; margin-top: 6px; background: var(--gray-100); }
 
 /* Tariff code display */

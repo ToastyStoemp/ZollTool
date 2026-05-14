@@ -442,11 +442,12 @@ function variantWeight(p, v) {
 /* =========================================================
    CALCULATIONS
    ========================================================= */
-function calcProduct(p) {
+function calcProduct(p, skipUnlistedVariants = false) {
   if (hasVariants(p)) {
     let amount = 0, totalWeightKg = 0, totalValue = 0;
     let soldQty = 0, soldValue = 0, soldWeightKg = 0;
     for (const v of p.variants) {
+      if (skipUnlistedVariants && v.unlisted) continue;
       const amt   = v.amount || 0;
       const wg    = variantWeight(p, v);
       const price = variantPrice(p, v);
@@ -458,8 +459,9 @@ function calcProduct(p) {
       soldWeightKg  += (v.soldQty || 0) * wg / 1000;
     }
     totalWeightKg = Math.round(totalWeightKg * 1000) / 1000;
-    const prices  = p.variants.map(v => variantPrice(p, v)).filter(x => x != null);
-    const weights = p.variants.map(v => variantWeight(p, v));
+    const activeVariants = skipUnlistedVariants ? p.variants.filter(v => !v.unlisted) : p.variants;
+    const prices  = activeVariants.map(v => variantPrice(p, v)).filter(x => x != null);
+    const weights = activeVariants.map(v => variantWeight(p, v));
     const allSamePrice  = prices.length  > 0 && prices.every(x => x === prices[0]);
     const allSameWeight = weights.length > 0 && weights.every(x => x === weights[0]);
     const effectiveUnitPrice  = allSamePrice  ? prices[0]
@@ -495,13 +497,13 @@ function calcProduct(p) {
 }
 
 function calcTotals() {
-  function aggregate(products) {
+  function aggregate(products, customsMode = false) {
     let totalAmount = 0, totalWeightKg = 0, totalValue = 0;
     let totalSoldQty = 0, totalSoldVal = 0, totalSoldVat = 0, totalSoldWeight = 0;
     let totalImportVat = 0;
     const byTariffRate = {};
     products.forEach(p => {
-      const c = calcProduct(p);
+      const c = calcProduct(p, customsMode);
       totalAmount     += c.amount;
       totalWeightKg   += c.totalWeightKg;
       if (c.totalValue != null) totalValue += c.totalValue;
@@ -519,8 +521,8 @@ function calcTotals() {
   }
 
   const all      = aggregate(state.products);
-  const customs  = aggregate(state.products.filter(p => !p.unlisted));
-  const hasUnlisted = state.products.some(p => p.unlisted);
+  const customs  = aggregate(state.products.filter(p => !p.unlisted), true);
+  const hasUnlisted = state.products.some(p => p.unlisted || (p.variants || []).some(v => v.unlisted));
   return { ...all, customs, hasUnlisted };
 }
 
@@ -931,13 +933,20 @@ function buildVariantRow(parentProduct, variant) {
   // Variant SKU
   tr.appendChild(td('col-sku', variant.sku || '—'));
 
-  // For Sale (inherited from parent)
+  // For Sale (inherited from parent) + optional variant-level Unlisted badge
   const saleBadge = document.createElement('span');
   saleBadge.className = parentProduct.forSale ? 'badge badge-sale' : 'badge badge-nosale';
   saleBadge.textContent = parentProduct.forSale ? 'For Sale' : 'Not For Sale';
   const saleCell = document.createElement('td');
   saleCell.className = 'col-sale';
   saleCell.appendChild(saleBadge);
+  if (variant.unlisted) {
+    const unlistedBadge = document.createElement('span');
+    unlistedBadge.className = 'badge badge-unlisted';
+    unlistedBadge.textContent = 'Unlisted';
+    unlistedBadge.title = 'This variant is excluded from customs documents';
+    saleCell.appendChild(unlistedBadge);
+  }
   tr.appendChild(saleCell);
 
   // Type (inherited from parent)
@@ -1387,6 +1396,7 @@ function collectModalForm() {
       amount:    parseInt(row.querySelector('.vr-amount').value) || 0,
       price:     row.querySelector('.vr-price').value  !== '' ? parseFloat(row.querySelector('.vr-price').value)  : null,
       weightG:   row.querySelector('.vr-weight').value !== '' ? parseFloat(row.querySelector('.vr-weight').value) : null,
+      unlisted:  row.querySelector('.vr-unlisted').checked || false,
       soldQty:   parseFloat(row.dataset.soldqty)  || 0,
       soldValue: parseFloat(row.dataset.soldval)  || 0,
     }));
@@ -1457,14 +1467,19 @@ function addModalVariantRow(v = null) {
     <input type="number" class="vr-amount" placeholder="Amount *" min="0" step="1" />
     <input type="number" class="vr-price"  placeholder="Inherit" min="0" step="0.01" />
     <input type="number" class="vr-weight" placeholder="Inherit" min="0" step="1" />
+    <label class="vr-unlisted-label" title="Exclude this variant from customs documents">
+      <input type="checkbox" class="vr-unlisted" />
+      Unlisted
+    </label>
     <button type="button" class="vr-remove">✕</button>
   `;
   if (v) {
     row.querySelector('.vr-name').value   = v.name   || '';
     row.querySelector('.vr-sku').value    = v.sku    || '';
     row.querySelector('.vr-amount').value = v.amount != null ? v.amount : '';
-    if (v.price   != null) row.querySelector('.vr-price').value  = v.price;
-    if (v.weightG != null) row.querySelector('.vr-weight').value = v.weightG;
+    if (v.price    != null) row.querySelector('.vr-price').value  = v.price;
+    if (v.weightG  != null) row.querySelector('.vr-weight').value = v.weightG;
+    if (v.unlisted)         row.querySelector('.vr-unlisted').checked = true;
   }
   row.querySelector('.vr-remove').addEventListener('click', () => row.remove());
   container.appendChild(row);
@@ -2443,8 +2458,8 @@ function printGoodsList(docNum, format = 'detailed') {
         const pOrig = (p.originCountry && p.originCountry.trim()) ? p.originCountry.trim().toUpperCase() : (countryToCode(a.countryOfOrigin) || '');
 
         if (format === 'detailed' && hasVariants(p)) {
-          // Detailed: each variant gets its own row
-          p.variants.forEach(v => {
+          // Detailed: each variant gets its own row (skip unlisted variants)
+          p.variants.filter(v => !v.unlisted).forEach(v => {
             const i = rowNum++;
             const varWg = v.weightG != null ? v.weightG : p.weightG;
             const varPrice = v.price != null ? v.price : p.price;
@@ -2471,7 +2486,7 @@ function printGoodsList(docNum, format = 'detailed') {
           const tv = c.totalValue != null ? c.totalValue : '—';
           totAmt += (c.amount || 0); totWkg += c.totalWeightKg;
           if (c.totalValue != null) totVal += c.totalValue;
-          const titleDisplay = hasVariants(p) ? `${esc(p.title||'')} (${p.variants.length} variants)` : esc(p.title||'');
+          const titleDisplay = hasVariants(p) ? `${esc(p.title||'')} (${p.variants.filter(v=>!v.unlisted).length} variants)` : esc(p.title||'');
           detailedRows.push(`<tr><td class="c">${i+1}</td><td>${titleDisplay}</td>
             <td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td>
             <td class="r">${c.amount??''}</td><td class="r">${c.effectiveUnitWeightG!=null?Math.round(c.effectiveUnitWeightG)+' g':''}</td>
@@ -2554,8 +2569,8 @@ function printGoodsList(docNum, format = 'detailed') {
         const c = calcProduct(p);
 
         if (format === 'detailed' && hasVariants(p)) {
-          // Detailed: each variant gets its own row if it has sold qty
-          p.variants.forEach(v => {
+          // Detailed: each variant gets its own row if it has sold qty (skip unlisted)
+          p.variants.filter(v => !v.unlisted).forEach(v => {
             if (!(v.soldQty > 0)) return;
             rowNum++;
             const varWg = v.weightG != null ? v.weightG : p.weightG;
@@ -2575,7 +2590,7 @@ function printGoodsList(docNum, format = 'detailed') {
           rowNum++;
           const rowSV = floorN(c.soldValue || 0, 2);
           totSQ += (c.soldQty || 0); totSV += rowSV; totSWkg += c.soldWeightKg;
-          const titleDisplay = hasVariants(p) ? `${esc(p.title||'')} (${p.variants.length} variants)` : esc(p.title||'');
+          const titleDisplay = hasVariants(p) ? `${esc(p.title||'')} (${p.variants.filter(v=>!v.unlisted).length} variants)` : esc(p.title||'');
           detailedRows.push(`<tr><td class="c">${rowNum}</td><td>${titleDisplay}</td><td>${esc(p.type||'')}</td>
             <td class="r">${esc(p.tariffNo||'')}</td>
             <td class="r">${c.soldQty||0}</td>
@@ -2661,8 +2676,8 @@ function printGoodsList(docNum, format = 'detailed') {
         const pOrig = (p.originCountry && p.originCountry.trim()) ? p.originCountry.trim().toUpperCase() : (countryToCode(a.countryOfOrigin) || '');
 
         if (format === 'detailed' && hasVariants(p)) {
-          // Detailed: each variant gets its own row if there's a return qty
-          p.variants.forEach(v => {
+          // Detailed: each variant gets its own row if there's a return qty (skip unlisted)
+          p.variants.filter(v => !v.unlisted).forEach(v => {
             const varRetQty = (v.amount || 0) - (v.soldQty || 0);
             if (varRetQty <= 0) return;
             rowNum++;
@@ -2697,7 +2712,7 @@ function printGoodsList(docNum, format = 'detailed') {
           if (retVal != null) totRetVal += retVal;
           const pd = p.priceNote || (c.effectiveUnitPrice != null ? formatNum(floorN(c.effectiveUnitPrice, 2), 2) : '—');
           const retValStr = retVal != null ? retVal : '—';
-          const titleDisplay = hasVariants(p) ? `${esc(p.title||'')} (${p.variants.length} variants)` : esc(p.title||'');
+          const titleDisplay = hasVariants(p) ? `${esc(p.title||'')} (${p.variants.filter(v=>!v.unlisted).length} variants)` : esc(p.title||'');
           detailedRows.push(`<tr><td class="c">${rowNum}</td><td>${titleDisplay}</td><td>${esc(p.type||'')}</td>
             <td class="r">${c.amount??''}</td><td class="r">${c.soldQty||0}</td>
             <td class="r"><strong>${retQty}</strong></td>
