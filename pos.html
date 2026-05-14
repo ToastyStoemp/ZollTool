@@ -595,6 +595,8 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
       <span class="btn-label">Discounts</span>
     </button>
+    <span id="bridge-indicator" title="Card terminal not connected"
+      style="font-size:11px;font-weight:700;letter-spacing:.03em;padding:0 4px;cursor:default;user-select:none;color:var(--text-muted)">💳 ○</span>
     <a href="history.html" class="btn btn-ghost" id="btn-history">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       <span class="btn-label">History</span>
@@ -1682,6 +1684,39 @@
     if (cartItemCount() === 0) return;
     const total = cartGrandTotal();
     const cur = getCurrency();
+
+    // ── Card via myPOS bridge ──────────────────────────────────────────────
+    if (method === 'card' && myposBridge?.readyState === WebSocket.OPEN) {
+      pendingPayment = { method: 'card', total };
+      // Show overlay in "waiting" state so user can cancel if needed
+      document.getElementById('confirm-icon').textContent    = '💳';
+      document.getElementById('confirm-title').textContent   = 'Card Payment';
+      document.getElementById('confirm-subtitle').textContent = 'Waiting for card on terminal…';
+      document.getElementById('confirm-amount').textContent  = cur + ' ' + total.toFixed(2);
+      document.getElementById('confirm-ok').style.display    = 'none';
+      document.getElementById('confirm-cancel').textContent  = 'Cancel';
+      document.getElementById('cash-section').style.display  = 'none';
+      document.getElementById('split-section').style.display = 'none';
+      document.getElementById('pay-overlay').classList.remove('hidden');
+
+      requestMyPOSPayment(total, cur)
+        .then(result => {
+          document.getElementById('confirm-ok').style.display = '';
+          if (result.approved) {
+            confirmPayment();
+            showToast(`Card approved${result.card_brand ? ' · ' + result.card_brand : ''}`, 'success');
+          } else {
+            closeOverlay();
+            showToast('Card payment declined', 'error');
+          }
+        })
+        .catch(err => {
+          document.getElementById('confirm-ok').style.display = '';
+          closeOverlay();
+          showToast('Terminal: ' + err.message, 'error');
+        });
+      return;
+    }
     pendingPayment = { method, total };
     document.getElementById('confirm-icon').textContent = method === 'cash' ? 'Cash' : method === 'card' ? 'Card' : 'Split';
     document.getElementById('confirm-title').textContent = method === 'cash' ? 'Cash Payment' : method === 'card' ? 'Card Payment' : 'Split Payment';
@@ -1709,6 +1744,125 @@
 
     document.getElementById('pay-overlay').classList.remove('hidden');
   }
+
+  // ── MyPOS Carbon bridge (ZollBridge desktop app via WebSocket) ────────────
+  let myposBridge        = null;   // active WebSocket
+  let myposResolve       = null;   // pending payment Promise resolver
+  let myposReject        = null;
+  let myposReconnectTimer = null;
+  let myposGiveUpTimer    = null;
+  let myposGaveUp         = false;
+  const BRIDGE_WS         = 'ws://localhost:8765';
+  const BRIDGE_RECONNECT  = 5000;   // retry every 5 s
+  const BRIDGE_GIVE_UP    = 300000; // stop after 5 min
+
+  function connectMyPOSBridge(isManual = false) {
+    clearTimeout(myposReconnectTimer);
+    if (isManual) {
+      // Manual reconnect: reset give-up state and restart the give-up timer
+      myposGaveUp = false;
+      clearTimeout(myposGiveUpTimer);
+      myposGiveUpTimer = setTimeout(bridgeGiveUp, BRIDGE_GIVE_UP);
+      updateBridgeIndicator('retrying');
+    }
+    if (myposGaveUp) return;
+    try {
+      const ws = new WebSocket(BRIDGE_WS);
+      ws.onopen = () => { /* wait for "connected" message */ };
+      ws.onmessage = e => {
+        let msg;
+        try { msg = JSON.parse(e.data); } catch { return; }
+        if (msg.status === 'connected') {
+          myposGaveUp = false;
+          clearTimeout(myposGiveUpTimer);
+          myposBridge = ws;
+          updateBridgeIndicator('connected');
+          return;
+        }
+        if (myposResolve) {
+          myposResolve(msg);
+          myposResolve = myposReject = null;
+        }
+      };
+      ws.onclose = () => {
+        const wasConnected = myposBridge !== null;
+        myposBridge = null;
+        if (myposReject) {
+          myposReject(new Error('Terminal disconnected'));
+          myposResolve = myposReject = null;
+        }
+        if (wasConnected) {
+          // Was connected — lost connection, restart give-up timer and retry
+          clearTimeout(myposGiveUpTimer);
+          myposGiveUpTimer = setTimeout(bridgeGiveUp, BRIDGE_GIVE_UP);
+          updateBridgeIndicator('retrying');
+        } else {
+          updateBridgeIndicator(myposGaveUp ? 'gaveup' : 'retrying');
+        }
+        if (!myposGaveUp) myposReconnectTimer = setTimeout(() => connectMyPOSBridge(), BRIDGE_RECONNECT);
+      };
+      ws.onerror = () => ws.close();
+    } catch (e) {
+      if (!myposGaveUp) myposReconnectTimer = setTimeout(() => connectMyPOSBridge(), BRIDGE_RECONNECT);
+    }
+  }
+
+  function bridgeGiveUp() {
+    myposGaveUp = true;
+    clearTimeout(myposReconnectTimer);
+    updateBridgeIndicator('gaveup');
+    console.log('[ZollBridge] Stopped retrying after 5 minutes. Click the indicator to reconnect.');
+  }
+
+  function updateBridgeIndicator(state) {
+    const el = document.getElementById('bridge-indicator');
+    if (!el) return;
+    if (state === 'connected') {
+      el.title       = 'Card terminal connected (myPOS Carbon)';
+      el.style.color = 'var(--green)';
+      el.textContent = '💳 ●';
+      el.style.cursor = 'default';
+      el.onclick = null;
+    } else if (state === 'retrying') {
+      el.title       = 'Card terminal not connected — trying to reach ZollBridge…';
+      el.style.color = 'var(--text-muted)';
+      el.textContent = '💳 ○';
+      el.style.cursor = 'default';
+      el.onclick = null;
+    } else { // gaveup
+      el.title       = 'Click to retry connecting to ZollBridge';
+      el.style.color = 'var(--amber)';
+      el.textContent = '💳 Connect';
+      el.style.cursor = 'pointer';
+      el.onclick = () => connectMyPOSBridge(true);
+    }
+  }
+
+  function requestMyPOSPayment(amount, currency) {
+    return new Promise((resolve, reject) => {
+      if (!myposBridge || myposBridge.readyState !== WebSocket.OPEN) {
+        reject(new Error('Bridge not connected')); return;
+      }
+      myposResolve = resolve;
+      myposReject  = reject;
+      myposBridge.send(JSON.stringify({
+        action:    'pay',
+        amount:    amount.toFixed(2),
+        currency:  currency,
+        reference: 'zoll-' + Date.now(),
+      }));
+      setTimeout(() => {
+        if (myposResolve === resolve) {
+          myposResolve = myposReject = null;
+          reject(new Error('Payment timed out — no response from terminal'));
+        }
+      }, 120000);
+    });
+  }
+
+  // Start trying; give up after 5 minutes if no bridge found
+  myposGiveUpTimer = setTimeout(bridgeGiveUp, BRIDGE_GIVE_UP);
+  connectMyPOSBridge();
 
   // ── Type colour ───────────────────────────────────────────────────────────
   function typeColor(type) {
