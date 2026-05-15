@@ -1776,7 +1776,7 @@
           myposGaveUp = false;
           clearTimeout(myposGiveUpTimer);
           myposBridge = ws;
-          updateBridgeIndicator('connected');
+          updateBridgeIndicator('connected', msg.provider || '');
           return;
         }
         if (myposResolve) {
@@ -1814,13 +1814,14 @@
     console.log('[ZollBridge] Stopped retrying after 5 minutes. Click the indicator to reconnect.');
   }
 
-  function updateBridgeIndicator(state) {
+  function updateBridgeIndicator(state, providerName) {
     const el = document.getElementById('bridge-indicator');
     if (!el) return;
     if (state === 'connected') {
-      el.title       = 'Card terminal connected (myPOS Carbon)';
+      const label = providerName ? ` (${providerName})` : '';
+      el.title       = `Card terminal connected${label}`;
       el.style.color = 'var(--green)';
-      el.textContent = '💳 ●';
+      el.textContent = `💳 ●${providerName ? ' ' + providerName : ''}`;
       el.style.cursor = 'default';
       el.onclick = null;
     } else if (state === 'retrying') {
