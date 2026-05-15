@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net48</TargetFramework>
+    <AssemblyName>ZollBridge</AssemblyName>
+    <RootNamespace>ZollBridge</RootNamespace>
+    <Nullable>enable</Nullable>
+    <LangVersion>9.0</LangVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+
+  <!--
+    Place myPOSTerminal.dll (from the myPOS .NET SDK) in the sdk\ subfolder.
+    Download from: https://github.com/developermypos/myPOS-SDK-DotNet
+  -->
+  <ItemGroup>
+    <Reference Include="myPOSTerminal">
+      <HintPath>sdk\myPOSTerminal.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Copy the myPOS DLL next to the exe so it can be found at runtime -->
+    <None Include="sdk\myPOSTerminal.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="config.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

@@ -4,3 +4,6 @@ WorkingData.json
 .DS_Store
 Thumbs.db
 .claude/settings.local.json
+bridge/.vs
+bridge/obj
+bridge/bin

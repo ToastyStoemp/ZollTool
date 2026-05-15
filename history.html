@@ -217,6 +217,39 @@
     .empty-title { font-size: 16px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
     .empty-sub { font-size: 13px; line-height: 1.6; }
 
+    /* ── Orphan fixer modal ── */
+    .orphan-modal {
+      background: var(--surface); border-radius: 12px;
+      width: 100%; max-width: 580px; max-height: 88vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 16px 48px rgba(0,0,0,.28); overflow: hidden;
+    }
+    .orphan-modal-hdr {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      padding: 20px 24px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0; gap: 12px;
+    }
+    .orphan-modal-title { font-size: 17px; font-weight: 700; }
+    .orphan-modal-sub { font-size: 12px; color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
+    .orphan-modal-body { overflow-y: auto; padding: 16px 24px 24px; flex: 1; }
+    .orphan-group {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 14px 16px; margin-bottom: 12px;
+    }
+    .orphan-group-hdr { margin-bottom: 12px; }
+    .orphan-orig-name { font-size: 14px; font-weight: 700; }
+    .orphan-orig-meta { font-size: 12px; color: var(--text-muted); margin-top: 3px; }
+    .orphan-field { margin-bottom: 10px; }
+    .orphan-field label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); margin-bottom: 5px; }
+    .orphan-select, .orphan-price-input {
+      width: 100%; padding: 7px 10px; border: 1.5px solid var(--border-mid);
+      border-radius: var(--radius); background: var(--surface); color: var(--text);
+      font-size: 13px; outline: none; transition: border-color .12s;
+    }
+    .orphan-select:focus, .orphan-price-input:focus { border-color: var(--blue); }
+    .orphan-price-row { display: flex; align-items: center; gap: 8px; }
+    .orphan-price-row .orphan-price-input { flex: 1; width: auto; }
+    .orphan-empty { text-align: center; padding: 32px 16px; color: var(--text-muted); font-size: 13px; }
+
     /* ── Confirm revert overlay ── */
     .overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.55);
@@ -338,6 +371,7 @@
       </div>
     </div>
     <div class="toolbar-right">
+      <button class="btn btn-ghost" id="btn-fix-orphans" style="font-size:12px;padding:5px 12px" title="Find and reassign items whose products were deleted">⚠ Fix Orphans</button>
       <button class="btn btn-ghost" id="btn-recalc" style="font-size:12px;padding:5px 12px" title="Rebuild soldQty / soldValue from transaction history">↺ Recalculate Sold</button>
       <button class="btn btn-ghost" id="btn-export-csv" style="font-size:12px;padding:5px 12px">Export CSV</button>
       <button class="btn btn-ghost" id="btn-collapse-all" style="font-size:12px;padding:5px 12px">Collapse All</button>
@@ -346,6 +380,20 @@
 
   <!-- Transaction list -->
   <div class="tx-list" id="tx-list"></div>
+</div>
+
+<!-- Orphan fixer overlay -->
+<div class="overlay hidden" id="orphan-overlay">
+  <div class="orphan-modal">
+    <div class="orphan-modal-hdr">
+      <div>
+        <div class="orphan-modal-title">⚠ Fix Orphaned Products</div>
+        <div class="orphan-modal-sub" id="orphan-subtitle"></div>
+      </div>
+      <button class="btn btn-ghost" id="orphan-close" style="padding:4px 10px;flex-shrink:0">✕</button>
+    </div>
+    <div class="orphan-modal-body" id="orphan-list"></div>
+  </div>
 </div>
 
 <!-- Recalculate confirm overlay -->
@@ -920,6 +968,168 @@
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     document.documentElement.setAttribute('data-theme', isDark ? 'light' : 'dark');
     localStorage.setItem('zolltool_theme', isDark ? 'light' : 'dark');
+  });
+
+  // ── Orphan fixer ───────────────────────────────────────────────────────────
+  let orphanGroups = [];
+
+  function hasVariants(p) { return Array.isArray(p.variants) && p.variants.length > 0; }
+
+  function openOrphanFixer() {
+    if (!appState) { showToast('No data loaded.', 'error'); return; }
+    const productMap = new Map((appState.products || []).map(p => [p.id, p]));
+    const groupMap = new Map();
+
+    for (const tx of appState.transactions || []) {
+      for (const item of tx.items || []) {
+        if (productMap.has(item.pid)) continue;
+        const key = item.vid ? `${item.pid}::${item.vid}` : item.pid;
+        if (!groupMap.has(key)) {
+          groupMap.set(key, {
+            pid: item.pid, vid: item.vid || null,
+            title: item.title || '(unknown)', variantLabel: item.variantLabel || null,
+            txIds: new Set(), totalQty: 0, totalRevenue: 0
+          });
+        }
+        const g = groupMap.get(key);
+        g.txIds.add(tx.id);
+        g.totalQty += item.qty || 0;
+        g.totalRevenue += item.lineTotal || 0;
+      }
+    }
+
+    orphanGroups = [...groupMap.values()];
+    if (!orphanGroups.length) {
+      showToast('No orphaned products found — all items reference existing products.', 'success');
+      return;
+    }
+    renderOrphanList();
+    document.getElementById('orphan-overlay').classList.remove('hidden');
+  }
+
+  function renderOrphanList() {
+    const cur = getCurrency();
+    const products = (appState && appState.products) || [];
+    const totalTx = new Set(orphanGroups.flatMap(g => [...g.txIds])).size;
+    document.getElementById('orphan-subtitle').textContent =
+      `${orphanGroups.length} deleted product${orphanGroups.length !== 1 ? 's' : ''} found across ${totalTx} transaction${totalTx !== 1 ? 's' : ''}. Reassign each to an existing product.`;
+
+    const productOptions = products.map(p =>
+      `<option value="${escHtml(p.id)}">${escHtml(p.title || '(untitled)')}</option>`
+    ).join('');
+
+    document.getElementById('orphan-list').innerHTML = orphanGroups.map((g, i) => `
+      <div class="orphan-group" id="orphan-group-${i}">
+        <div class="orphan-group-hdr">
+          <div class="orphan-orig-name">${escHtml(g.title)}${g.variantLabel ? ` — ${escHtml(g.variantLabel)}` : ''}</div>
+          <div class="orphan-orig-meta">${g.totalQty} sold · ${fmtPrice(g.totalRevenue, cur)} revenue · ${g.txIds.size} transaction${g.txIds.size !== 1 ? 's' : ''}</div>
+        </div>
+        <div class="orphan-field">
+          <label>Reassign to product</label>
+          <select class="orphan-select" id="orphan-prod-${i}" onchange="orphanProductChanged(${i})">
+            <option value="">— keep as orphan —</option>
+            ${productOptions}
+          </select>
+        </div>
+        <div class="orphan-field" id="orphan-var-field-${i}" style="display:none">
+          <label>Variant</label>
+          <select class="orphan-select" id="orphan-var-${i}"></select>
+        </div>
+        <div class="orphan-field">
+          <label>Override unit price (optional)</label>
+          <div class="orphan-price-row">
+            <span style="font-size:12px;color:var(--text-muted)">${escHtml(cur)}</span>
+            <input class="orphan-price-input" id="orphan-price-${i}" type="number" min="0" step="0.01" placeholder="Leave blank to keep existing" />
+          </div>
+        </div>
+        <button class="btn btn-amber" style="font-size:12px;padding:6px 14px" onclick="applyOrphanFix(${i})">Apply Fix</button>
+      </div>`).join('');
+  }
+
+  function orphanProductChanged(i) {
+    const pid = document.getElementById(`orphan-prod-${i}`).value;
+    const varField = document.getElementById(`orphan-var-field-${i}`);
+    const varSel = document.getElementById(`orphan-var-${i}`);
+    if (!pid || !appState) { varField.style.display = 'none'; return; }
+    const p = (appState.products || []).find(pr => pr.id === pid);
+    if (!p || !hasVariants(p)) { varField.style.display = 'none'; return; }
+    varSel.innerHTML = `<option value="">— no variant —</option>` +
+      (p.variants || []).map(v => `<option value="${escHtml(v.id)}">${escHtml(v.name || v.id)}</option>`).join('');
+    varField.style.display = '';
+  }
+
+  function applyOrphanFix(i) {
+    const g = orphanGroups[i];
+    if (!g) return;
+    const newPid = document.getElementById(`orphan-prod-${i}`).value;
+    if (!newPid) { showToast('Select a product to reassign to.', 'error'); return; }
+
+    const newVid = document.getElementById(`orphan-var-${i}`)?.value || null;
+    const priceVal = document.getElementById(`orphan-price-${i}`).value;
+    const priceOverride = priceVal !== '' ? parseFloat(priceVal) : null;
+
+    const newProduct = (appState.products || []).find(p => p.id === newPid);
+    if (!newProduct) return;
+    const newVariant = newVid ? (newProduct.variants || []).find(v => v.id === newVid) : null;
+    const newTitle = newProduct.title || '(untitled)';
+    const newVarLabel = newVariant ? (newVariant.name || newVid) : null;
+
+    let count = 0;
+    for (const tx of appState.transactions || []) {
+      for (const item of tx.items || []) {
+        if (item.pid !== g.pid) continue;
+        if (g.vid ? item.vid !== g.vid : item.vid) continue;
+        item.pid = newPid;
+        if (newVid) item.vid = newVid; else delete item.vid;
+        item.title = newTitle;
+        if (newVarLabel) item.variantLabel = newVarLabel; else delete item.variantLabel;
+        if (priceOverride !== null) {
+          item.unitPrice = priceOverride;
+          item.lineTotal = Math.round(priceOverride * (item.qty || 1) * 100) / 100;
+        }
+        count++;
+      }
+    }
+
+    // Rebuild sold values from updated history
+    (appState.products || []).forEach(p => {
+      p.soldQty = 0; p.soldValue = 0;
+      (p.variants || []).forEach(v => { v.soldQty = 0; v.soldValue = 0; });
+    });
+    (appState.transactions || []).filter(t => !t.reverted).forEach(tx => {
+      (tx.items || []).forEach(item => {
+        const p = (appState.products || []).find(pr => pr.id === item.pid);
+        if (!p) return;
+        if (item.vid) {
+          const v = (p.variants || []).find(vv => vv.id === item.vid);
+          if (v) { v.soldQty = (v.soldQty || 0) + (item.qty || 0); v.soldValue = (v.soldValue || 0) + (item.lineTotal || 0); }
+        } else {
+          p.soldQty = (p.soldQty || 0) + (item.qty || 0);
+          p.soldValue = (p.soldValue || 0) + (item.lineTotal || 0);
+        }
+      });
+    });
+
+    saveState();
+    showToast(`Fixed ${count} item${count !== 1 ? 's' : ''} → reassigned to ${newTitle}${newVarLabel ? ` (${newVarLabel})` : ''}`, 'success');
+
+    orphanGroups.splice(i, 1);
+    if (!orphanGroups.length) {
+      document.getElementById('orphan-overlay').classList.add('hidden');
+      render();
+    } else {
+      renderOrphanList();
+    }
+    render();
+  }
+
+  document.getElementById('btn-fix-orphans').addEventListener('click', () => { loadState(); openOrphanFixer(); });
+  document.getElementById('orphan-close').addEventListener('click', () => {
+    document.getElementById('orphan-overlay').classList.add('hidden');
+  });
+  document.getElementById('orphan-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('orphan-overlay'))
+      document.getElementById('orphan-overlay').classList.add('hidden');
   });
 
   // ── Live-sync with POS ─────────────────────────────────────────────────────
