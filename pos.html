@@ -2354,6 +2354,28 @@
       confirmPayment();
       return;
     }
+    // When the cash dialog is open, number/decimal/backspace keys type into the cash amount field
+    if (payOpen && document.getElementById('cash-section').style.display !== 'none') {
+      const cashInput = document.getElementById('cash-received');
+      if (/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+        cashInput.value += e.key;
+        cashInput.dispatchEvent(new Event('input'));
+        return;
+      }
+      if (e.key === '.' || e.key === ',') {
+        e.preventDefault();
+        if (!cashInput.value.includes('.')) cashInput.value = (cashInput.value || '0') + '.';
+        cashInput.dispatchEvent(new Event('input'));
+        return;
+      }
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        cashInput.value = cashInput.value.slice(0, -1);
+        cashInput.dispatchEvent(new Event('input'));
+        return;
+      }
+    }
     if (typing) return;
     if (helpOpen || discountOpen || cartDiscountOpen) return;
     if (/^[1-9]$/.test(e.key) && triggerNumberShortcut(e.key)) {

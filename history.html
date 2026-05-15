@@ -121,13 +121,35 @@
     .chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 8px; }
     .chart-header .chart-title { margin-bottom: 0; }
 
+    /* daily chart */
+    .day-chart-bars { display: flex; align-items: flex-end; gap: 4px; overflow-x: auto; padding-bottom: 2px; }
+    .day-bar-col { flex-shrink: 0; display: flex; flex-direction: column; align-items: center; gap: 3px;
+                   cursor: pointer; padding: 4px 3px 0; border-radius: var(--radius);
+                   border: 1.5px solid transparent; transition: border-color .12s; min-width: 40px; }
+    .day-bar-col:hover { border-color: var(--border-mid); }
+    .day-bar-col.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, transparent); }
+    .day-bar-col.selected .day-bar { background: var(--accent); }
+    .day-bar-wrap { display: flex; flex-direction: column; align-items: center; width: 100%; }
+    .day-bar { width: 28px; background: var(--blue); border-radius: 3px 3px 0 0; min-height: 2px; transition: height .2s; }
+    .day-bar-val { font-size: 9px; color: var(--text-muted); font-weight: 600; margin-bottom: 2px; white-space: nowrap; }
+    .day-bar-label { font-size: 10px; color: var(--text-muted); white-space: nowrap; }
+    .day-stats-row { display: flex; gap: 16px; margin-top: 10px; flex-wrap: wrap; }
+    .day-stat { font-size: 12px; color: var(--text-muted); }
+    .day-stat strong { color: var(--text); font-weight: 700; }
+    .compare-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); cursor: pointer; user-select: none; }
+    .compare-toggle input { cursor: pointer; accent-color: var(--accent); }
+
     /* time chart */
     .time-chart-bars { display: flex; align-items: flex-end; gap: 5px; overflow-x: auto; padding-bottom: 2px; }
     .time-bar-col { flex-shrink: 0; flex: 1; min-width: 26px; max-width: 54px; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+    .time-bar-pair { display: flex; align-items: flex-end; gap: 2px; width: 100%; justify-content: center; }
     .time-bar-wrap { display: flex; flex-direction: column; align-items: center; width: 100%; }
     .time-bar-val { font-size: 9px; color: var(--text-muted); font-weight: 600; margin-bottom: 2px; white-space: nowrap; }
-    .time-bar { width: 70%; background: var(--blue); border-radius: 3px 3px 0 0; min-height: 2px; }
+    .time-bar { background: var(--blue); border-radius: 3px 3px 0 0; min-height: 2px; }
+    .time-bar.compare { background: var(--text-muted); opacity: 0.35; }
     .time-bar-label { font-size: 10px; color: var(--text-muted); white-space: nowrap; text-align: center; }
+    .compare-legend { display: flex; gap: 12px; margin-top: 8px; font-size: 11px; color: var(--text-muted); }
+    .compare-legend-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
 
     /* best sellers / best types rows */
     .best-row { display: grid; grid-template-columns: minmax(110px, 1fr) 3fr auto auto; gap: 10px; align-items: center; margin-bottom: 8px; font-size: 13px; }
@@ -333,16 +355,38 @@
   <!-- Stats -->
   <div class="stats-bar" id="stats-bar"></div>
 
-  <!-- Sales / Revenue over time -->
+  <!-- Daily Overview -->
+  <div class="chart-panel" id="daily-chart-panel" style="display:none">
+    <div class="chart-header">
+      <div class="chart-title">DAILY OVERVIEW</div>
+      <div class="filter-toggle">
+        <button class="filter-btn active" id="day-sales-btn">Sales</button>
+        <button class="filter-btn" id="day-rev-btn">Revenue</button>
+      </div>
+    </div>
+    <div class="day-chart-bars" id="day-chart-bars"></div>
+    <div class="day-stats-row" id="day-stats-row"></div>
+  </div>
+
+  <!-- Hourly Breakdown -->
   <div class="chart-panel" id="time-chart-panel" style="display:none">
     <div class="chart-header">
-      <div class="chart-title" id="time-chart-title">SALES OVER TIME</div>
+      <div style="display:flex;flex-direction:column;gap:4px">
+        <div class="chart-title" id="time-chart-title">SALES BY HOUR</div>
+        <label class="compare-toggle" id="compare-toggle-wrap" style="display:none">
+          <input type="checkbox" id="compare-checkbox"> Compare previous day
+        </label>
+      </div>
       <div class="filter-toggle">
         <button class="filter-btn active" id="time-sales-btn">Sales</button>
         <button class="filter-btn" id="time-rev-btn">Revenue</button>
       </div>
     </div>
     <div class="time-chart-bars" id="time-chart-bars"></div>
+    <div class="compare-legend" id="compare-legend" style="display:none">
+      <span><span class="compare-legend-dot" style="background:var(--blue)"></span>Selected day</span>
+      <span><span class="compare-legend-dot" style="background:var(--text-muted);opacity:.6"></span>Previous day</span>
+    </div>
   </div>
 
   <!-- Best Sellers -->
@@ -433,6 +477,9 @@
   let filterReverted = 'show';  // 'show' | 'hide'
   let pendingRevertId = null;
   let timeChartMode = 'sales';  // 'sales' | 'revenue'
+  let dayChartMode  = 'sales';  // 'sales' | 'revenue'
+  let selectedDay   = null;     // 'YYYY-MM-DD' or null = all days
+  let compareMode   = false;    // show previous-day overlay on hourly chart
 
   function loadState() {
     try {
@@ -489,6 +536,7 @@
           <div class="empty-sub">Open the <a href="pos.html">POS</a> and load your ZollTool data file first.</div>
         </div>`;
       document.getElementById('stats-bar').innerHTML = '';
+      document.getElementById('daily-chart-panel').style.display = 'none';
       document.getElementById('time-chart-panel').style.display = 'none';
       document.getElementById('best-sellers-panel').style.display = 'none';
       document.getElementById('best-types-panel').style.display = 'none';
@@ -512,6 +560,13 @@
     const cardRev = active.filter(t => t.method === 'card').reduce((s,t) => s + (t.total||0), 0);
     const splitRev = active.filter(t => t.method === 'split').reduce((s,t) => s + (t.total||0), 0);
 
+    // Count unique days
+    const uniqueDays = new Set(active.map(t => {
+      const d = new Date(t.timestamp);
+      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+    })).size;
+    const avgRev = uniqueDays > 0 ? totalRev / uniqueDays : 0;
+
     document.getElementById('stats-bar').innerHTML = `
       <div class="stat-chip">
         <span class="stat-label">Total Revenue</span>
@@ -520,6 +575,10 @@
       <div class="stat-chip">
         <span class="stat-label">Transactions</span>
         <span class="stat-value blue">${active.length}</span>
+      </div>
+      <div class="stat-chip">
+        <span class="stat-label">Days</span>
+        <span class="stat-value">${uniqueDays} <span style="font-size:11px;color:var(--text-muted);font-weight:400">avg ${fmtPrice(avgRev, cur)}/day</span></span>
       </div>
       <div class="stat-chip">
         <span class="stat-label">💵 Cash</span>
@@ -532,7 +591,7 @@
       ${splitCount ? `
       <div class="stat-chip">
         <span class="stat-label">Split</span>
-        <span class="stat-value">${splitCount} - ${fmtPrice(splitRev, cur)}</span>
+        <span class="stat-value">${splitCount} · ${fmtPrice(splitRev, cur)}</span>
       </div>` : ''}
       ${transactions.some(t => t.reverted) ? `
       <div class="stat-chip">
@@ -540,6 +599,7 @@
         <span class="stat-value amber">${transactions.filter(t => t.reverted).length}</span>
       </div>` : ''}
     `;
+    renderDailyChart(active);
     renderTimeChart(active);
     renderBestSellers(active);
     renderBestTypes(active);
@@ -591,46 +651,162 @@
     panel.style.display = '';
   }
 
+  // ── Helper: date key from timestamp ──────────────────────────────────────
+  function dateKey(ts) {
+    const d = new Date(ts);
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+  function prevDayKey(key) {
+    const d = new Date(key + 'T12:00:00');
+    d.setDate(d.getDate() - 1);
+    return dateKey(d.getTime());
+  }
+  function hourlyGroups(txList) {
+    const g = Array.from({ length: 24 }, (_, h) => ({
+      label: h === 0 ? '12am' : h < 12 ? `${h}am` : h === 12 ? '12pm' : `${h-12}pm`,
+      sales: 0, revenue: 0
+    }));
+    for (const tx of txList) {
+      const h = new Date(tx.timestamp).getHours();
+      g[h].sales++; g[h].revenue += tx.total || 0;
+    }
+    return g;
+  }
+
+  // ── Daily chart ───────────────────────────────────────────────────────────
+  function renderDailyChart(active) {
+    const panel = document.getElementById('daily-chart-panel');
+    if (!active.length) { panel.style.display = 'none'; return; }
+
+    const days = new Map();
+    for (const tx of active) {
+      const key   = dateKey(tx.timestamp);
+      const d     = new Date(tx.timestamp);
+      const label = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      if (!days.has(key)) days.set(key, { key, label, sales: 0, revenue: 0 });
+      const day = days.get(key);
+      day.sales++;
+      day.revenue += tx.total || 0;
+    }
+    const sorted = [...days.values()].sort((a, b) => a.key.localeCompare(b.key));
+    const isRev  = dayChartMode === 'revenue';
+    const maxVal = Math.max(...sorted.map(d => isRev ? d.revenue : d.sales), 1);
+    const BAR_MAX = 80;
+    const cur    = getCurrency();
+    const totalRev = active.reduce((s, t) => s + (t.total || 0), 0);
+    const avgRev   = sorted.length > 0 ? totalRev / sorted.length : 0;
+    const avgSales = sorted.length > 0 ? active.length / sorted.length : 0;
+
+    document.getElementById('day-chart-bars').innerHTML = sorted.map(d => {
+      const val = isRev ? d.revenue : d.sales;
+      const h   = Math.max(2, Math.round((val / maxVal) * BAR_MAX));
+      const sel = selectedDay === d.key;
+      return `<div class="day-bar-col${sel ? ' selected' : ''}" onclick="selectDay('${d.key}')">
+        <div class="day-bar-wrap">
+          <div class="day-bar-val">${val > 0 ? (isRev ? fmtPrice(val, cur) : val) : ''}</div>
+          <div class="day-bar" style="height:${h}px"></div>
+        </div>
+        <div class="day-bar-label">${d.label}</div>
+      </div>`;
+    }).join('');
+
+    document.getElementById('day-stats-row').innerHTML = `
+      <span class="day-stat"><strong>${sorted.length}</strong> days</span>
+      <span class="day-stat"><strong>${active.length}</strong> total sales</span>
+      <span class="day-stat"><strong>${fmtPrice(totalRev, cur)}</strong> total revenue</span>
+      <span class="day-stat"><strong>${Math.round(avgSales * 10) / 10}</strong> avg sales/day</span>
+      <span class="day-stat"><strong>${fmtPrice(avgRev, cur)}</strong> avg revenue/day</span>
+      ${selectedDay ? `<span class="day-stat" style="color:var(--accent)">
+        Showing: ${sorted.find(d => d.key === selectedDay)?.label || selectedDay}
+        — <a href="#" style="color:var(--accent)" onclick="selectDay(null);return false">show all</a>
+      </span>` : ''}
+    `;
+    panel.style.display = '';
+  }
+
+  function selectDay(key) {
+    selectedDay = (selectedDay === key) ? null : key; // toggle off if same day clicked
+    const active = (appState?.transactions || []).filter(t => !t.reverted);
+    renderDailyChart(active);
+    renderTimeChart(active);
+  }
+
+  // ── Hourly chart with optional compare overlay ────────────────────────────
   function renderTimeChart(active) {
     const panel = document.getElementById('time-chart-panel');
     if (!active.length) { panel.style.display = 'none'; return; }
 
-    // Group by hour of day (0–23)
-    const groups = Array.from({ length: 24 }, (_, h) => ({
-      label: h === 0 ? '12am' : h < 12 ? `${h}am` : h === 12 ? '12pm' : `${h - 12}pm`,
-      sales: 0, revenue: 0
-    }));
-    for (const tx of active) {
-      const h = new Date(tx.timestamp).getHours();
-      groups[h].sales += 1;
-      groups[h].revenue += tx.total || 0;
-    }
+    // Filter to selected day if one is chosen
+    const dayTx = selectedDay
+      ? active.filter(t => dateKey(t.timestamp) === selectedDay)
+      : active;
 
-    // Trim empty hours at the edges, leaving one on each side for context
+    // Previous-day data for comparison (only when a specific day is selected)
+    const showCompare = compareMode && !!selectedDay;
+    const prevKey = selectedDay ? prevDayKey(selectedDay) : null;
+    const prevTx  = showCompare ? active.filter(t => dateKey(t.timestamp) === prevKey) : [];
+
+    // Show/hide compare toggle (only makes sense when a day is selected)
+    document.getElementById('compare-toggle-wrap').style.display = selectedDay ? '' : 'none';
+    document.getElementById('compare-legend').style.display = showCompare ? '' : 'none';
+
+    const groups     = hourlyGroups(dayTx);
+    const prevGroups = hourlyGroups(prevTx);
+
+    // Trim empty hours from the edges
     let first = groups.findIndex(g => g.sales > 0);
     let last  = 23 - [...groups].reverse().findIndex(g => g.sales > 0);
-    if (first === -1) { panel.style.display = 'none'; return; }
+    if (first === -1 && !dayTx.length) { panel.style.display = 'none'; return; }
+    if (first === -1) { first = 0; last = 23; }
+    // Also expand to cover any prev-day data in compare mode
+    if (showCompare) {
+      const pf = prevGroups.findIndex(g => g.sales > 0);
+      const pl = 23 - [...prevGroups].reverse().findIndex(g => g.sales > 0);
+      if (pf !== -1) { first = Math.min(first, pf); last = Math.max(last, pl); }
+    }
     first = Math.max(0, first - 1);
     last  = Math.min(23, last + 1);
-    const visible = groups.slice(first, last + 1);
 
-    const isRev = timeChartMode === 'revenue';
-    const currency = getCurrency();
-    const maxVal = Math.max(...visible.map(g => isRev ? g.revenue : g.sales), 1);
+    const isRev  = timeChartMode === 'revenue';
+    const cur    = getCurrency();
     const BAR_MAX = 90;
-    document.getElementById('time-chart-title').textContent = isRev ? 'REVENUE BY HOUR' : 'SALES BY HOUR';
-    document.getElementById('time-chart-bars').innerHTML = visible.map(g => {
-      const val = isRev ? g.revenue : g.sales;
-      const h = Math.max(2, Math.round((val / maxVal) * BAR_MAX));
-      const displayVal = isRev ? fmtPrice(val, currency) : (val || '');
-      return `
-        <div class="time-bar-col">
-          <div class="time-bar-wrap">
-            <div class="time-bar-val">${val > 0 ? displayVal : ''}</div>
-            <div class="time-bar" style="height:${h}px;${val === 0 ? 'opacity:.2' : ''}"></div>
+
+    // Max across both datasets for consistent scaling
+    const allVals = groups.slice(first, last+1).map(g => isRev ? g.revenue : g.sales);
+    if (showCompare) allVals.push(...prevGroups.slice(first, last+1).map(g => isRev ? g.revenue : g.sales));
+    const maxVal = Math.max(...allVals, 1);
+
+    // Day label for title
+    if (selectedDay) {
+      const d = new Date(selectedDay + 'T12:00:00');
+      const lbl = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      document.getElementById('time-chart-title').textContent = (isRev ? 'REVENUE' : 'SALES') + ` — ${lbl}`;
+    } else {
+      document.getElementById('time-chart-title').textContent = isRev ? 'REVENUE BY HOUR' : 'SALES BY HOUR';
+    }
+
+    // Bar widths: narrower when two bars share the column
+    const bw  = showCompare ? '44%' : '70%';
+    const pbw = '38%';
+
+    document.getElementById('time-chart-bars').innerHTML = groups.slice(first, last+1).map((g, i) => {
+      const idx  = first + i;
+      const val  = isRev ? g.revenue : g.sales;
+      const h    = Math.max(2, Math.round((val / maxVal) * BAR_MAX));
+      const disp = val > 0 ? (isRev ? fmtPrice(val, cur) : val) : '';
+      const pg   = prevGroups[idx];
+      const pval = isRev ? pg.revenue : pg.sales;
+      const ph   = showCompare ? Math.max(2, Math.round((pval / maxVal) * BAR_MAX)) : 0;
+      return `<div class="time-bar-col">
+        <div class="time-bar-wrap">
+          <div class="time-bar-val">${disp}</div>
+          <div class="time-bar-pair">
+            <div class="time-bar" style="width:${bw};height:${h}px;${val===0?'opacity:.2':''}"></div>
+            ${showCompare ? `<div class="time-bar compare" style="width:${pbw};height:${ph}px;${pval===0?'opacity:.1':''}"></div>` : ''}
           </div>
-          <div class="time-bar-label">${g.label}</div>
-        </div>`;
+        </div>
+        <div class="time-bar-label">${g.label}</div>
+      </div>`;
     }).join('');
     panel.style.display = '';
   }
@@ -793,17 +969,42 @@
     render();
   }
 
+  function activeTransactions() {
+    return (appState?.transactions || []).filter(t => !t.reverted);
+  }
+
+  // Daily chart toggles
+  document.getElementById('day-sales-btn').addEventListener('click', () => {
+    dayChartMode = 'sales';
+    document.getElementById('day-sales-btn').classList.add('active');
+    document.getElementById('day-rev-btn').classList.remove('active');
+    renderDailyChart(activeTransactions());
+  });
+  document.getElementById('day-rev-btn').addEventListener('click', () => {
+    dayChartMode = 'revenue';
+    document.getElementById('day-rev-btn').classList.add('active');
+    document.getElementById('day-sales-btn').classList.remove('active');
+    renderDailyChart(activeTransactions());
+  });
+
+  // Hourly chart toggles
   document.getElementById('time-sales-btn').addEventListener('click', () => {
     timeChartMode = 'sales';
     document.getElementById('time-sales-btn').classList.add('active');
     document.getElementById('time-rev-btn').classList.remove('active');
-    renderTimeChart((appState?.transactions || []).filter(t => !t.reverted));
+    renderTimeChart(activeTransactions());
   });
   document.getElementById('time-rev-btn').addEventListener('click', () => {
     timeChartMode = 'revenue';
     document.getElementById('time-rev-btn').classList.add('active');
     document.getElementById('time-sales-btn').classList.remove('active');
-    renderTimeChart((appState?.transactions || []).filter(t => !t.reverted));
+    renderTimeChart(activeTransactions());
+  });
+
+  // Compare toggle
+  document.getElementById('compare-checkbox').addEventListener('change', e => {
+    compareMode = e.target.checked;
+    renderTimeChart(activeTransactions());
   });
 
   document.getElementById('filter-all').addEventListener('click', () => setMethodFilter('all'));
