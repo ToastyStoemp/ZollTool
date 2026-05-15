@@ -307,50 +307,93 @@ namespace ZollBridge
         static readonly SemaphoreSlim _sendLock = new SemaphoreSlim(1, 1);
 
         // ── Certificate ────────────────────────────────────────────────────────
+        // .NET Framework SslStream uses Windows Schannel which requires the cert to
+        // be in the CurrentUser\My (Personal) store — loading from bytes alone is
+        // not enough, even when HasPrivateKey is true.
+        const X509KeyStorageFlags CertFlags =
+            X509KeyStorageFlags.UserKeySet |
+            X509KeyStorageFlags.PersistKeySet |
+            X509KeyStorageFlags.Exportable;
+
         static X509Certificate2 LoadOrCreateCert()
         {
             const string PfxPath = "bridge-cert.pfx";
             const string PfxPass = "zollbridge";
 
-            if (File.Exists(PfxPath))
+            // ── 1. Check the Personal store first ─────────────────────────
+            using (var store = new X509Store(StoreName.My, StoreLocation.CurrentUser))
             {
-                try { return new X509Certificate2(PfxPath, PfxPass); }
-                catch { Console.WriteLine("[cert]     Existing cert unreadable — regenerating."); }
+                store.Open(OpenFlags.ReadOnly);
+                foreach (X509Certificate2 c in store.Certificates)
+                {
+                    if (c.Subject == "CN=ZollBridge" && c.HasPrivateKey
+                        && c.NotAfter > DateTime.UtcNow.AddDays(30))
+                    {
+                        Console.WriteLine($"[cert]     Loaded from store  Thumbprint={c.Thumbprint}");
+                        return c;
+                    }
+                }
             }
 
-            Console.WriteLine("[cert]     Generating self-signed TLS certificate...");
+            // ── 2. Try loading from PFX file on disk ──────────────────────
+            X509Certificate2? cert = null;
+            if (File.Exists(PfxPath))
+            {
+                try
+                {
+                    cert = new X509Certificate2(PfxPath, PfxPass, CertFlags);
+                    if (!cert.HasPrivateKey) { cert = null; Console.WriteLine("[cert]     PFX has no private key — regenerating."); }
+                }
+                catch (Exception ex) { Console.WriteLine($"[cert]     PFX unreadable ({ex.Message}) — regenerating."); }
+            }
 
-            using var rsa = RSA.Create(2048);
-            var req = new CertificateRequest(
-                "CN=ZollBridge", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            // ── 3. Generate a fresh cert if needed ────────────────────────
+            if (cert == null)
+            {
+                Console.WriteLine("[cert]     Generating self-signed TLS certificate...");
 
-            req.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
-            req.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, false));
-            req.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
-                new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, false)); // TLS server auth
+                using var rsa = RSA.Create(2048);
+                var req = new CertificateRequest(
+                    "CN=ZollBridge", rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+                req.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, false));
+                req.CertificateExtensions.Add(new X509KeyUsageExtension(X509KeyUsageFlags.DigitalSignature, false));
+                req.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(
+                    new OidCollection { new Oid("1.3.6.1.5.5.7.3.1") }, false));
+                var san = new SubjectAlternativeNameBuilder();
+                san.AddDnsName("localhost");
+                san.AddIpAddress(IPAddress.Loopback);
+                req.CertificateExtensions.Add(san.Build());
 
-            var san = new SubjectAlternativeNameBuilder();
-            san.AddDnsName("localhost");
-            san.AddIpAddress(IPAddress.Loopback);
-            req.CertificateExtensions.Add(san.Build());
+                // Round-trip through PFX — CreateSelfSigned() alone isn't enough
+                // for Schannel to find the private key.
+                var ephemeral = req.CreateSelfSigned(DateTimeOffset.Now.AddDays(-1), DateTimeOffset.Now.AddYears(10));
+                var pfxData   = ephemeral.Export(X509ContentType.Pfx, PfxPass);
 
-            var cert    = req.CreateSelfSigned(DateTimeOffset.Now.AddDays(-1), DateTimeOffset.Now.AddYears(10));
-            var pfxData = cert.Export(X509ContentType.Pfx, PfxPass);
-            File.WriteAllBytes(PfxPath, pfxData);
-            File.WriteAllBytes("bridge-cert.crt", cert.Export(X509ContentType.Cert));
+                File.WriteAllBytes(PfxPath, pfxData);
+                File.WriteAllBytes("bridge-cert.crt", ephemeral.Export(X509ContentType.Cert));
 
-            Console.WriteLine("[cert]     Created bridge-cert.pfx + bridge-cert.crt");
-            Console.WriteLine("[cert]");
-            Console.WriteLine("[cert]     *** ONE-TIME BROWSER TRUST STEP ***");
-            Console.WriteLine($"[cert]     1. Open Chrome and visit: https://localhost:{wsPort}");
-            Console.WriteLine("[cert]     2. Click 'Advanced' → 'Proceed to localhost (unsafe)'");
-            Console.WriteLine("[cert]     3. Done — the indicator in ZollTool will turn green.");
-            Console.WriteLine("[cert]");
-            Console.WriteLine("[cert]     OR install permanently: double-click bridge-cert.crt");
-            Console.WriteLine("[cert]     → Install Certificate → Local Machine → Trusted Root CAs");
-            Console.WriteLine("[cert]");
+                cert = new X509Certificate2(pfxData, PfxPass, CertFlags);
 
-            return new X509Certificate2(pfxData, PfxPass, X509KeyStorageFlags.MachineKeySet);
+                Console.WriteLine("[cert]");
+                Console.WriteLine("[cert]     *** ONE-TIME BROWSER TRUST STEP ***");
+                Console.WriteLine($"[cert]     1. Open Chrome and visit: https://localhost:{wsPort}");
+                Console.WriteLine("[cert]     2. Click 'Advanced' → 'Proceed to localhost (unsafe)'");
+                Console.WriteLine("[cert]     3. Done — the 💳 indicator in ZollTool will turn green.");
+                Console.WriteLine("[cert]");
+                Console.WriteLine("[cert]     OR install permanently: double-click bridge-cert.crt");
+                Console.WriteLine("[cert]     → Install Certificate → Local Machine → Trusted Root CAs");
+                Console.WriteLine("[cert]");
+            }
+
+            // ── 4. Add to Personal store — Schannel requires it here ──────
+            using (var store = new X509Store(StoreName.My, StoreLocation.CurrentUser))
+            {
+                store.Open(OpenFlags.ReadWrite);
+                store.Add(cert);
+            }
+
+            Console.WriteLine($"[cert]     Ready  HasPrivateKey={cert.HasPrivateKey}  Thumbprint={cert.Thumbprint}");
+            return cert;
         }
 
         // ── Entry point ────────────────────────────────────────────────────────
@@ -442,30 +485,61 @@ namespace ZollBridge
                 ssl = new SslStream(tcp.GetStream(), leaveInnerStreamOpen: false);
                 try
                 {
-                    // SslProtocols.None lets the OS pick TLS 1.2/1.3 automatically
                     await ssl.AuthenticateAsServerAsync(
                         cert, clientCertificateRequired: false,
-                        enabledSslProtocols: System.Security.Authentication.SslProtocols.None,
+                        enabledSslProtocols: System.Security.Authentication.SslProtocols.Tls12,
                         checkCertificateRevocation: false);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[bridge]   TLS handshake failed — browser may not trust the cert yet.");
-                    Console.WriteLine($"           Visit https://localhost:{wsPort} → Advanced → Proceed to trust it.");
-                    Console.WriteLine($"           Detail: {ex.Message}");
+                    var inner = ex.InnerException?.InnerException?.Message
+                             ?? ex.InnerException?.Message
+                             ?? ex.Message;
+                    // "remote party closed" = browser doesn't trust the cert yet — not an error worth logging loudly
+                    if (inner.Contains("remote party") || inner.Contains("closed the transport"))
+                    {
+                        Console.WriteLine($"[bridge]   Browser closed TLS (cert not yet trusted).");
+                        Console.WriteLine($"[bridge]   Visit https://localhost:{wsPort} → Advanced → Proceed.");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[bridge]   TLS handshake failed: {inner}");
+                        if (inner.Contains("SSPI") || inner.Contains("private key"))
+                            Console.WriteLine("[bridge]   Delete bridge-cert.pfx and restart ZollBridge to regenerate.");
+                    }
                     return;
                 }
 
-                // Read HTTP request line + headers
-                var headers = await ReadHttpHeaders(ssl);
-                if (headers == null) return;
+                // Parse HTTP request line + headers
+                var httpReq = await ReadHttpRequest(ssl);
+                if (httpReq == null) return;
+                var headers = httpReq.Value.Headers;
+                var method  = httpReq.Value.Method;
+
+                // ── Private Network Access preflight (Chrome PNA policy) ───────
+                // Chrome blocks public HTTPS sites from reaching localhost unless the
+                // server responds to an OPTIONS preflight with this header.
+                if (method == "OPTIONS")
+                {
+                    var origin = headers.TryGetValue("origin", out var o) ? o : "*";
+                    var pre    = $"HTTP/1.1 200 OK\r\n" +
+                                 $"Access-Control-Allow-Origin: {origin}\r\n" +
+                                 $"Access-Control-Allow-Methods: GET\r\n" +
+                                 $"Access-Control-Allow-Headers: *\r\n" +
+                                 $"Access-Control-Allow-Private-Network: true\r\n" +
+                                 $"Content-Length: 0\r\n\r\n";
+                    var pb = Encoding.ASCII.GetBytes(pre);
+                    await ssl.WriteAsync(pb, 0, pb.Length);
+                    Console.WriteLine($"[bridge]   PNA preflight answered for {origin}");
+                    return; // Chrome will now retry with the actual WebSocket upgrade
+                }
 
                 bool isWs = headers.TryGetValue("upgrade", out var upHdr)
                          && upHdr.Equals("websocket", StringComparison.OrdinalIgnoreCase);
 
                 if (!isWs)
                 {
-                    // Serve a plain JSON health page (useful for the one-time cert-trust visit)
+                    // Plain HTTP — serve JSON health page (used for one-time cert-trust visit)
                     var body  = Encoding.UTF8.GetBytes(
                         $"{{\"bridge\":\"ZollBridge\",\"provider\":\"{provider?.Name ?? "unknown"}\",\"status\":\"ready\"," +
                         $"\"note\":\"Certificate trusted — ZollTool will connect automatically.\"}}");
@@ -474,17 +548,20 @@ namespace ZollBridge
                     var rb    = Encoding.ASCII.GetBytes(resp);
                     await ssl.WriteAsync(rb, 0, rb.Length);
                     await ssl.WriteAsync(body, 0, body.Length);
-                    Console.WriteLine("[bridge]   Certificate trust page served — browser now trusts the cert.");
+                    Console.WriteLine("[bridge]   Certificate trust page served.");
                     return;
                 }
 
-                // WebSocket handshake (RFC 6455)
+                // ── WebSocket handshake (RFC 6455) ──────────────────────────────
                 if (!headers.TryGetValue("sec-websocket-key", out var wsKey)) return;
-                var accept = ComputeWsAccept(wsKey);
-                var shake  = $"HTTP/1.1 101 Switching Protocols\r\n" +
-                             $"Upgrade: websocket\r\nConnection: Upgrade\r\n" +
-                             $"Sec-WebSocket-Accept: {accept}\r\n\r\n";
-                var sb     = Encoding.ASCII.GetBytes(shake);
+                var wsOrigin = headers.TryGetValue("origin", out var orig) ? orig : "*";
+                var accept   = ComputeWsAccept(wsKey);
+                var shake    = $"HTTP/1.1 101 Switching Protocols\r\n" +
+                               $"Upgrade: websocket\r\nConnection: Upgrade\r\n" +
+                               $"Sec-WebSocket-Accept: {accept}\r\n" +
+                               $"Access-Control-Allow-Origin: {wsOrigin}\r\n" +
+                               $"Access-Control-Allow-Private-Network: true\r\n\r\n";
+                var sb       = Encoding.ASCII.GetBytes(shake);
                 await ssl.WriteAsync(sb, 0, sb.Length);
 
                 await HandleClient(ssl);
@@ -497,8 +574,14 @@ namespace ZollBridge
             }
         }
 
-        // ── Read HTTP request headers ──────────────────────────────────────────
-        static async Task<Dictionary<string, string>?> ReadHttpHeaders(Stream stream)
+        // ── Read HTTP request line + headers ───────────────────────────────────
+        struct HttpRequest
+        {
+            public string Method;
+            public Dictionary<string, string> Headers;
+        }
+
+        static async Task<HttpRequest?> ReadHttpRequest(Stream stream)
         {
             var sb  = new StringBuilder();
             var buf = new byte[1];
@@ -511,15 +594,17 @@ namespace ZollBridge
                 if (l >= 4
                     && sb[l - 4] == '\r' && sb[l - 3] == '\n'
                     && sb[l - 2] == '\r' && sb[l - 1] == '\n') break;
-                if (l > 8192) return null; // safety limit
+                if (l > 8192) return null;
             }
+            var lines   = sb.ToString().Split(new[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+            var method  = lines.Length > 0 ? lines[0].Split(' ')[0] : "GET";
             var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var line in sb.ToString().Split(new[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries).Skip(1))
+            foreach (var line in lines.Skip(1))
             {
                 int i = line.IndexOf(':');
                 if (i > 0) headers[line.Substring(0, i).Trim()] = line.Substring(i + 1).Trim();
             }
-            return headers;
+            return new HttpRequest { Method = method, Headers = headers };
         }
 
         // ── WebSocket accept key (RFC 6455 §4.2.2) ────────────────────────────
