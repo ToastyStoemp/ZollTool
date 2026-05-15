@@ -1686,6 +1686,10 @@
     const cur = getCurrency();
 
     // ── Card via myPOS bridge ──────────────────────────────────────────────
+    if (method === 'card' && myposBridge?.readyState === WebSocket.OPEN && !myposTerminalReady) {
+      showToast('Terminal unplugged — reconnecting automatically. Please plug in the USB cable.', 'error');
+      return;
+    }
     if (method === 'card' && myposBridge?.readyState === WebSocket.OPEN) {
       pendingPayment = { method: 'card', total };
       // Show overlay in "waiting" state so user can cancel if needed
@@ -1747,12 +1751,13 @@
 
   // ── MyPOS Carbon bridge (ZollBridge desktop app via WebSocket) ────────────
   let myposBridge        = null;   // active WebSocket
+  let myposTerminalReady = false;  // true when USB terminal is also connected
   let myposResolve       = null;   // pending payment Promise resolver
   let myposReject        = null;
   let myposReconnectTimer = null;
   let myposGiveUpTimer    = null;
   let myposGaveUp         = false;
-  const BRIDGE_WS         = 'ws://localhost:8765';
+  const BRIDGE_WS         = 'wss://localhost:8765';
   const BRIDGE_RECONNECT  = 5000;   // retry every 5 s
   const BRIDGE_GIVE_UP    = 300000; // stop after 5 min
 
@@ -1776,6 +1781,17 @@
           myposGaveUp = false;
           clearTimeout(myposGiveUpTimer);
           myposBridge = ws;
+          myposTerminalReady = true;
+          updateBridgeIndicator('connected', msg.provider || '');
+          return;
+        }
+        if (msg.status === 'terminal_disconnected') {
+          myposTerminalReady = false;
+          updateBridgeIndicator('offline', msg.provider || '');
+          return;
+        }
+        if (msg.status === 'terminal_reconnected') {
+          myposTerminalReady = true;
           updateBridgeIndicator('connected', msg.provider || '');
           return;
         }
@@ -1787,6 +1803,7 @@
       ws.onclose = () => {
         const wasConnected = myposBridge !== null;
         myposBridge = null;
+        myposTerminalReady = false;
         if (myposReject) {
           myposReject(new Error('Terminal disconnected'));
           myposResolve = myposReject = null;
@@ -1822,6 +1839,13 @@
       el.title       = `Card terminal connected${label}`;
       el.style.color = 'var(--green)';
       el.textContent = `💳 ●${providerName ? ' ' + providerName : ''}`;
+      el.style.cursor = 'default';
+      el.onclick = null;
+    } else if (state === 'offline') {
+      const label = providerName ? ` (${providerName})` : '';
+      el.title       = `Card terminal USB unplugged — reconnecting automatically…${label}`;
+      el.style.color = 'var(--amber)';
+      el.textContent = `💳 ⚠`;
       el.style.cursor = 'default';
       el.onclick = null;
     } else if (state === 'retrying') {
