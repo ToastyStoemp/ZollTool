@@ -40,4 +40,12 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Copy remote.html (repo root) next to the exe so the LAN server can serve it -->
+    <None Include="..\remote.html">
+      <Link>remote.html</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

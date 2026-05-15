@@ -1675,9 +1675,18 @@
   }
 
   function closeOverlay() {
+    // Send cancel to bridge if a card payment was in progress
+    if (pendingPayment?.method === 'card' && myposBridge?.readyState === WebSocket.OPEN) {
+      myposBridge.send(JSON.stringify({ action: 'cancel' }));
+    }
     document.getElementById('pay-overlay').classList.add('hidden');
     document.getElementById('confirm-ok').disabled = false;
     pendingPayment = null;
+    // Notify originating remote device that the order was cancelled
+    if (pendingRemoteOrder) {
+      sendOrderResult(pendingRemoteOrder.clientId, false, 'Payment cancelled');
+      pendingRemoteOrder = null;
+    }
   }
 
   function openPayment(method) {
@@ -1706,9 +1715,17 @@
       requestMyPOSPayment(total, cur)
         .then(result => {
           document.getElementById('confirm-ok').style.display = '';
+          if (!pendingPayment) return; // overlay was cancelled while waiting — ignore result
           if (result.approved) {
+            const remoteOrder = pendingRemoteOrder;
+            pendingRemoteOrder = null; // clear before confirmPayment so closeOverlay won't double-send
             confirmPayment();
             showToast(`Card approved${result.card_brand ? ' · ' + result.card_brand : ''}`, 'success');
+            if (remoteOrder) {
+              sendOrderResult(remoteOrder.clientId, true, null, {
+                total, currency: cur, authCode: result.auth_code, cardBrand: result.card_brand,
+              });
+            }
           } else {
             closeOverlay();
             showToast('Card payment declined', 'error');
@@ -1716,6 +1733,7 @@
         })
         .catch(err => {
           document.getElementById('confirm-ok').style.display = '';
+          if (!pendingPayment) return; // already cancelled
           closeOverlay();
           showToast('Terminal: ' + err.message, 'error');
         });
@@ -1761,7 +1779,7 @@
   const BRIDGE_RECONNECT  = 5000;   // retry every 5 s
   const BRIDGE_GIVE_UP    = 300000; // stop after 5 min
 
-  function connectMyPOSBridge(isManual = false) {
+  function connectMyPOSBridge(isManual = false, force = false) {
     clearTimeout(myposReconnectTimer);
     if (isManual) {
       // Manual reconnect: reset give-up state and restart the give-up timer
@@ -1773,16 +1791,30 @@
     if (myposGaveUp) return;
     try {
       const ws = new WebSocket(BRIDGE_WS);
-      ws.onopen = () => { /* wait for "connected" message */ };
+      ws.onopen = () => {
+        // Identify ourselves as the primary POS so the bridge can route correctly
+        const msg = { action: 'identify', role: 'primary' };
+        if (force) msg.force = true;
+        ws.send(JSON.stringify(msg));
+      };
       ws.onmessage = e => {
         let msg;
         try { msg = JSON.parse(e.data); } catch { return; }
+        if (msg.status === 'primary_taken') {
+          // Another tab already owns this bridge — stop retrying and show "Taken" state
+          myposGaveUp = true;
+          clearTimeout(myposReconnectTimer);
+          clearTimeout(myposGiveUpTimer);
+          updateBridgeIndicator('taken');
+          return;
+        }
         if (msg.status === 'connected') {
           myposGaveUp = false;
           clearTimeout(myposGiveUpTimer);
           myposBridge = ws;
           myposTerminalReady = true;
           updateBridgeIndicator('connected', msg.provider || '');
+          broadcastCatalog(); // send current catalog to any waiting remotes
           return;
         }
         if (msg.status === 'terminal_disconnected') {
@@ -1793,6 +1825,18 @@
         if (msg.status === 'terminal_reconnected') {
           myposTerminalReady = true;
           updateBridgeIndicator('connected', msg.provider || '');
+          return;
+        }
+        if (msg.action === 'remote_order') {
+          handleRemoteOrder(msg);
+          return;
+        }
+        if (msg.action === 'remote_count') {
+          updateRemoteIndicator(msg.count || 0);
+          return;
+        }
+        if (msg.action === 'cart_sync') {
+          handleCartSync(msg);
           return;
         }
         if (myposResolve) {
@@ -1814,7 +1858,10 @@
           myposGiveUpTimer = setTimeout(bridgeGiveUp, BRIDGE_GIVE_UP);
           updateBridgeIndicator('retrying');
         } else {
-          updateBridgeIndicator(myposGaveUp ? 'gaveup' : 'retrying');
+          // If we were in 'taken' state the indicator already shows that — don't overwrite
+          const currentText = document.getElementById('bridge-indicator')?.textContent || '';
+          if (!currentText.includes('Taken'))
+            updateBridgeIndicator(myposGaveUp ? 'gaveup' : 'retrying');
         }
         if (!myposGaveUp) myposReconnectTimer = setTimeout(() => connectMyPOSBridge(), BRIDGE_RECONNECT);
       };
@@ -1854,6 +1901,12 @@
       el.textContent = '💳 ○';
       el.style.cursor = 'default';
       el.onclick = null;
+    } else if (state === 'taken') {
+      el.title       = 'Another ZollTool tab owns the bridge — click to take over';
+      el.style.color = 'var(--amber)';
+      el.textContent = '💳 Taken';
+      el.style.cursor = 'pointer';
+      el.onclick = () => connectMyPOSBridge(true, true); // force takeover
     } else { // gaveup
       el.title       = 'Click to retry connecting to ZollBridge';
       el.style.color = 'var(--amber)';
@@ -1883,6 +1936,121 @@
         }
       }, 120000);
     });
+  }
+
+  // ── Remote POS support ───────────────────────────────────────────────────
+  let pendingRemoteOrder = null; // set while processing a remote device's order
+  let remoteCount        = 0;   // live count of connected remote devices
+
+  // Broadcast the current product catalog to the bridge (forwarded to remote devices)
+  function broadcastCatalog() {
+    if (!myposBridge || myposBridge.readyState !== WebSocket.OPEN || !appState) return;
+    const products = (appState.products || [])
+      .filter(p => p.forSale !== false)
+      .map(p => ({
+        id:       p.id,
+        title:    p.title,
+        type:     p.type  || null,
+        price:    p.price != null ? parseFloat(p.price) : null,
+        variants: (p.variants || []).map(v => ({
+          id:      v.id,
+          name:    v.name  || v.label || v.id,
+          price:   v.price != null ? parseFloat(v.price) : null,
+          soldQty: v.soldQty || 0,
+          amount:  v.amount  != null ? v.amount : null,
+        })),
+        forSale:  p.forSale !== false,
+        amount:   p.amount  != null ? p.amount : null,
+        soldQty:  p.soldQty || 0,
+      }));
+    myposBridge.send(JSON.stringify({
+      action:   'catalog',
+      products,
+      currency: getCurrency(),
+      meta:     { event: (appState.meta && appState.meta.event) || '' },
+    }));
+  }
+
+  // Send the result of a remote order back through the bridge
+  function sendOrderResult(clientId, approved, error, receipt) {
+    if (!myposBridge || myposBridge.readyState !== WebSocket.OPEN) return;
+    myposBridge.send(JSON.stringify({
+      action:   'order_result',
+      clientId,
+      approved,
+      error:    error   || null,
+      receipt:  receipt || null,
+    }));
+  }
+
+  // Process an order that arrived from a remote device
+  function handleRemoteOrder(data) {
+    if (!appState) {
+      sendOrderResult(data.clientId, false, 'POS has no data loaded');
+      return;
+    }
+    if (pendingPayment) {
+      sendOrderResult(data.clientId, false, 'POS is busy with another payment');
+      return;
+    }
+    const method = data.paymentMethod || 'card';
+    if (method === 'card' && !myposTerminalReady) {
+      sendOrderResult(data.clientId, false, 'Card terminal is not connected');
+      return;
+    }
+    // Load remote items into the local cart
+    cart = {};
+    for (const item of data.items || []) {
+      const key = item.variantId ? `${item.productId}:${item.variantId}` : item.productId;
+      if (item.qty > 0) cart[key] = item.qty;
+    }
+    if (cartItemCount() === 0) {
+      sendOrderResult(data.clientId, false, 'Order contained no valid items');
+      return;
+    }
+    renderProducts();
+    const name = data.remoteName || 'remote device';
+
+    if (method === 'cash') {
+      // Remote cashier already confirmed — silently record and reply
+      pendingPayment = { method: 'cash', total: data.total };
+      const remoteOrder = data;
+      pendingRemoteOrder = null; // prevent closeOverlay() from sending a "cancelled" result
+      confirmPayment();
+      showToast(`📱 Cash sale from ${name} recorded`, 'success');
+      sendOrderResult(remoteOrder.clientId, true, null, { total: data.total, currency: getCurrency() });
+      broadcastCatalog(); // update stock counts on all remotes
+    } else {
+      pendingRemoteOrder = data;
+      showToast(`📱 Card order from ${name} — processing…`, 'info');
+      openPayment('card');
+    }
+  }
+
+  // Show how many remote devices are connected (shown in the bridge indicator)
+  function updateRemoteIndicator(count) {
+    remoteCount = count;
+    // If remotes are waiting and we have catalog data, push it to them immediately.
+    // This covers the bridge-restart race: remote connects before pos.html has broadcast.
+    if (count > 0) broadcastCatalog();
+    const el = document.getElementById('bridge-indicator');
+    if (!el || !myposBridge) return;
+    if (count > 0) {
+      el.title = el.title.replace(/ · \d+ remote.*/,'') + ` · ${count} remote${count !== 1 ? 's' : ''} connected`;
+    }
+  }
+
+  // Mirror the remote cart on the primary when exactly 1 remote device is connected
+  function handleCartSync(data) {
+    // Only auto-sync when there's exactly 1 remote and no payment in progress
+    if (remoteCount !== 1 || pendingPayment || pendingRemoteOrder) return;
+    cart = {};
+    for (const item of data.items || []) {
+      const key = item.variantId ? `${item.productId}:${item.variantId}` : item.productId;
+      if (item.qty > 0) cart[key] = item.qty;
+    }
+    renderProducts();
+    renderCart();
   }
 
   // Start trying; give up after 5 minutes if no bridge found
@@ -2690,6 +2858,7 @@
         loadState();
         updateHeader();
         render();
+        broadcastCatalog(); // push new catalog to any connected remote devices
         document.getElementById('btn-save-json').style.display = '';
         showToast('Loaded: ' + file.name, 'success');
       } catch (err) {
