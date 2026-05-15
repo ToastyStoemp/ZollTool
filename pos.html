@@ -776,6 +776,7 @@
     </div>
     <div class="confirm-btns">
       <button class="btn btn-ghost" id="confirm-cancel">Cancel</button>
+      <button class="btn btn-amber" id="force-complete" style="display:none" title="Mark as paid without terminal confirmation">Force Complete</button>
       <button class="btn btn-green" id="confirm-ok">Confirm</button>
     </div>
   </div>
@@ -1669,6 +1670,15 @@
 
     saveState();
     showToast(`Payment confirmed — ${cartItemCount()} item${cartItemCount()!==1?'s':''} marked as sold`, 'success');
+    // Notify originating remote device of success before closeOverlay clears pendingRemoteOrder
+    if (pendingRemoteOrder) {
+      const remoteOrder = pendingRemoteOrder;
+      pendingRemoteOrder = null; // clear so closeOverlay won't send a "cancelled" result
+      sendOrderResult(remoteOrder.clientId, true, null, {
+        total: actualTotal, currency: getCurrency(),
+      });
+    }
+    broadcastCatalog(); // push updated stock counts to remotes
     clearCart();
     closeOverlay();
     renderProducts(); // refresh stock counts
@@ -1681,6 +1691,8 @@
     }
     document.getElementById('pay-overlay').classList.add('hidden');
     document.getElementById('confirm-ok').disabled = false;
+    document.getElementById('confirm-ok').style.display = '';
+    document.getElementById('force-complete').style.display = 'none';
     pendingPayment = null;
     // Notify originating remote device that the order was cancelled
     if (pendingRemoteOrder) {
@@ -1694,19 +1706,16 @@
     const total = cartGrandTotal();
     const cur = getCurrency();
 
-    // ── Card via myPOS bridge ──────────────────────────────────────────────
-    if (method === 'card' && myposBridge?.readyState === WebSocket.OPEN && !myposTerminalReady) {
-      showToast('Terminal unplugged — reconnecting automatically. Please plug in the USB cable.', 'error');
-      return;
-    }
-    if (method === 'card' && myposBridge?.readyState === WebSocket.OPEN) {
+    // ── Card via myPOS bridge (only when terminal is actually ready) ─────────
+    if (method === 'card' && myposBridge?.readyState === WebSocket.OPEN && myposTerminalReady) {
       pendingPayment = { method: 'card', total };
-      // Show overlay in "waiting" state so user can cancel if needed
+      // Show overlay in "waiting" state so user can cancel or force-complete if needed
       document.getElementById('confirm-icon').textContent    = '💳';
       document.getElementById('confirm-title').textContent   = 'Card Payment';
       document.getElementById('confirm-subtitle').textContent = 'Waiting for card on terminal…';
       document.getElementById('confirm-amount').textContent  = cur + ' ' + total.toFixed(2);
       document.getElementById('confirm-ok').style.display    = 'none';
+      document.getElementById('force-complete').style.display = '';
       document.getElementById('confirm-cancel').textContent  = 'Cancel';
       document.getElementById('cash-section').style.display  = 'none';
       document.getElementById('split-section').style.display = 'none';
@@ -1715,6 +1724,7 @@
       requestMyPOSPayment(total, cur)
         .then(result => {
           document.getElementById('confirm-ok').style.display = '';
+          document.getElementById('force-complete').style.display = 'none';
           if (!pendingPayment) return; // overlay was cancelled while waiting — ignore result
           if (result.approved) {
             const remoteOrder = pendingRemoteOrder;
@@ -1733,11 +1743,16 @@
         })
         .catch(err => {
           document.getElementById('confirm-ok').style.display = '';
+          document.getElementById('force-complete').style.display = 'none';
           if (!pendingPayment) return; // already cancelled
           closeOverlay();
           showToast('Terminal: ' + err.message, 'error');
         });
       return;
+    }
+    // Bridge connected but terminal not ready — warn and fall through to manual confirm
+    if (method === 'card' && myposBridge?.readyState === WebSocket.OPEN && !myposTerminalReady) {
+      showToast('Terminal not ready — confirming manually', 'info');
     }
     pendingPayment = { method, total };
     document.getElementById('confirm-icon').textContent = method === 'cash' ? 'Cash' : method === 'card' ? 'Card' : 'Split';
@@ -1994,10 +2009,6 @@
       return;
     }
     const method = data.paymentMethod || 'card';
-    if (method === 'card' && !myposTerminalReady) {
-      sendOrderResult(data.clientId, false, 'Card terminal is not connected');
-      return;
-    }
     // Load remote items into the local cart
     cart = {};
     for (const item of data.items || []) {
@@ -2472,6 +2483,20 @@
   });
   document.getElementById('confirm-cancel').addEventListener('click', closeOverlay);
   document.getElementById('confirm-ok').addEventListener('click', confirmPayment);
+  document.getElementById('force-complete').addEventListener('click', () => {
+    if (!pendingPayment) return;
+    document.getElementById('force-complete').style.display = 'none';
+    document.getElementById('confirm-ok').style.display = '';
+    const remoteOrder = pendingRemoteOrder;
+    const total = pendingPayment.total;
+    const cur = getCurrency();
+    pendingRemoteOrder = null;
+    confirmPayment();
+    showToast('Payment force-completed', 'success');
+    if (remoteOrder) {
+      sendOrderResult(remoteOrder.clientId, true, null, { total, currency: cur });
+    }
+  });
   document.getElementById('pay-overlay').addEventListener('click', e => {
     if (e.target === document.getElementById('pay-overlay')) closeOverlay();
   });
