@@ -1,4 +1,10 @@
 {
+  "provider": "mypos",
   "comPort": "COM3",
-  "wsPort": 8765
+  "wsPort": 8765,
+  "sumup": {
+    "apiKey": "YOUR_SUMUP_API_KEY",
+    "merchantCode": "YOUR_MERCHANT_CODE",
+    "readerId": "YOUR_READER_ID"
+  }
 }

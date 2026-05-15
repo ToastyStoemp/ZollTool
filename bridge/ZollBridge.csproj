@@ -13,6 +13,10 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
+
   <!--
     Place myPOSTerminal.dll (from the myPOS .NET SDK) in the sdk\ subfolder.
     Download from: https://github.com/developermypos/myPOS-SDK-DotNet
