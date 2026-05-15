@@ -99,14 +99,18 @@
     .filter-btn:not(.active):hover { background: var(--surface-2); color: var(--text); }
 
     .stats-bar {
-      display: flex; gap: 16px; margin-bottom: 20px; flex-wrap: wrap;
+      display: flex; flex-wrap: wrap; margin-bottom: 20px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); box-shadow: var(--shadow-sm);
+      overflow: hidden;
     }
     .stat-chip {
-      background: var(--surface); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 10px 16px;
+      flex: 1; min-width: 120px;
       display: flex; flex-direction: column; gap: 2px;
-      box-shadow: var(--shadow-sm); min-width: 120px;
+      padding: 12px 16px;
+      border-right: 1px solid var(--border);
     }
+    .stat-chip:last-child { border-right: none; }
     .stat-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); }
     .stat-value { font-size: 18px; font-weight: 700; }
     .stat-value.green  { color: var(--green); }
@@ -138,6 +142,14 @@
     .day-stat strong { color: var(--text); font-weight: 700; }
     .compare-toggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); cursor: pointer; user-select: none; }
     .compare-toggle input { cursor: pointer; accent-color: var(--accent); }
+    .day-selector { display: flex; align-items: center; gap: 6px; margin-bottom: 2px; }
+    .day-nav-btn { background: var(--surface-2); border: 1px solid var(--border-mid); border-radius: var(--radius);
+                   width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+                   cursor: pointer; font-size: 16px; line-height: 1; color: var(--text); flex-shrink: 0;
+                   transition: border-color .12s, color .12s; }
+    .day-nav-btn:hover:not([disabled]) { border-color: var(--accent); color: var(--accent); }
+    .day-nav-btn[disabled] { opacity: 0.35; cursor: default; }
+    .day-selector-label { font-size: 13px; font-weight: 700; min-width: 72px; text-align: center; }
 
     /* time chart */
     .time-chart-bars { display: flex; align-items: flex-end; gap: 5px; overflow-x: auto; padding-bottom: 2px; }
@@ -303,8 +315,10 @@
 
     @media (max-width: 640px) {
       .main { padding: 16px 12px; }
-      .stats-bar { gap: 8px; }
-      .stat-chip { min-width: 0; flex: 1 1 calc(50% - 4px); padding: 8px 12px; }
+      /* 2-per-row on tablet: chip takes ~50% minus the shared divider */
+      .stat-chip { min-width: calc(50% - 1px); flex: 1 1 calc(50% - 1px); padding: 10px 12px; }
+      /* Add bottom border between rows when chips wrap */
+      .stat-chip:nth-child(-n+2) { border-bottom: 1px solid var(--border); }
       .stat-value { font-size: 15px; }
       .toolbar { flex-direction: column; align-items: stretch; gap: 8px; }
       .toolbar-left { flex-wrap: wrap; }
@@ -317,7 +331,8 @@
     @media (max-width: 480px) {
       .pos-header { padding: 8px 12px; }
       .page-title { font-size: 17px; }
-      .stat-chip { flex: 1 1 100%; }
+      .stat-chip { flex: 1 1 100%; border-right: none; border-bottom: 1px solid var(--border); }
+      .stat-chip:last-child { border-bottom: none; }
       .tx-card-hdr { padding: 10px 12px; gap: 8px; }
       .tx-total { font-size: 14px; }
       .tx-datetime { font-size: 12px; }
@@ -371,8 +386,13 @@
   <!-- Hourly Breakdown -->
   <div class="chart-panel" id="time-chart-panel" style="display:none">
     <div class="chart-header">
-      <div style="display:flex;flex-direction:column;gap:4px">
+      <div style="display:flex;flex-direction:column;gap:6px">
         <div class="chart-title" id="time-chart-title">SALES BY HOUR</div>
+        <div class="day-selector">
+          <button class="day-nav-btn" id="day-prev-btn" title="Previous day">&#8249;</button>
+          <span class="day-selector-label" id="day-selector-label">—</span>
+          <button class="day-nav-btn" id="day-next-btn" title="Next day">&#8250;</button>
+        </div>
         <label class="compare-toggle" id="compare-toggle-wrap" style="display:none">
           <input type="checkbox" id="compare-checkbox"> Compare previous day
         </label>
@@ -391,7 +411,10 @@
 
   <!-- Best Sellers -->
   <div class="chart-panel" id="best-sellers-panel" style="display:none">
-    <div class="chart-title">Best Sellers</div>
+    <div class="chart-header">
+      <div class="chart-title">Best Sellers</div>
+      <button class="filter-btn" id="best-sellers-toggle" style="display:none"></button>
+    </div>
     <div id="best-sellers-chart"></div>
   </div>
 
@@ -478,8 +501,10 @@
   let pendingRevertId = null;
   let timeChartMode = 'sales';  // 'sales' | 'revenue'
   let dayChartMode  = 'sales';  // 'sales' | 'revenue'
-  let selectedDay   = null;     // 'YYYY-MM-DD' or null = all days
+  let selectedDay   = null;     // 'YYYY-MM-DD' — always a specific day for the hourly chart
   let compareMode   = false;    // show previous-day overlay on hourly chart
+  let sortedDays          = [];    // ordered list of day keys present in data
+  let bestSellersExpanded = false; // show all vs top 5
 
   function loadState() {
     try {
@@ -553,12 +578,21 @@
     // Stats (over all non-reverted transactions)
     const active = transactions.filter(t => !t.reverted);
     const totalRev = active.reduce((s, t) => s + (t.total || 0), 0);
-    const cashCount = active.filter(t => t.method === 'cash').length;
-    const cardCount = active.filter(t => t.method === 'card').length;
-    const splitCount = active.filter(t => t.method === 'split').length;
-    const cashRev = active.filter(t => t.method === 'cash').reduce((s,t) => s + (t.total||0), 0);
-    const cardRev = active.filter(t => t.method === 'card').reduce((s,t) => s + (t.total||0), 0);
-    const splitRev = active.filter(t => t.method === 'split').reduce((s,t) => s + (t.total||0), 0);
+    // Distribute split transaction portions into cash/card buckets
+    let cashCount = 0, cardCount = 0;
+    let cashRev   = 0, cardRev   = 0;
+    for (const t of active) {
+      if (t.method === 'split') {
+        for (const p of t.payments || []) {
+          if (p.method === 'cash')      { cashCount++; cashRev += p.amount || 0; }
+          else if (p.method === 'card') { cardCount++; cardRev += p.amount || 0; }
+        }
+      } else if (t.method === 'cash') {
+        cashCount++; cashRev += t.total || 0;
+      } else if (t.method === 'card') {
+        cardCount++; cardRev += t.total || 0;
+      }
+    }
 
     // Count unique days
     const uniqueDays = new Set(active.map(t => {
@@ -588,18 +622,16 @@
         <span class="stat-label">💳 Card</span>
         <span class="stat-value">${cardCount} · ${fmtPrice(cardRev, cur)}</span>
       </div>
-      ${splitCount ? `
-      <div class="stat-chip">
-        <span class="stat-label">Split</span>
-        <span class="stat-value">${splitCount} · ${fmtPrice(splitRev, cur)}</span>
-      </div>` : ''}
       ${transactions.some(t => t.reverted) ? `
       <div class="stat-chip">
         <span class="stat-label">Reverted</span>
         <span class="stat-value amber">${transactions.filter(t => t.reverted).length}</span>
       </div>` : ''}
     `;
-    renderDailyChart(active);
+    renderDailyChart(active);  // also populates sortedDays[]
+    // Default to latest day; keep selection if it's still valid
+    if (!selectedDay || !sortedDays.includes(selectedDay))
+      selectedDay = sortedDays[sortedDays.length - 1] || null;
     renderTimeChart(active);
     renderBestSellers(active);
     renderBestTypes(active);
@@ -635,19 +667,28 @@
         totals.set(key, current);
       }
     }
-    const top = [...totals.values()].sort((a, b) => b.qty - a.qty || b.revenue - a.revenue).slice(0, 5);
+    const all = [...totals.values()].filter(i => i.qty > 0).sort((a, b) => b.qty - a.qty || b.revenue - a.revenue);
     const panel = document.getElementById('best-sellers-panel');
     const chart = document.getElementById('best-sellers-chart');
-    if (!top.length) { panel.style.display = 'none'; chart.innerHTML = ''; return; }
+    const toggleBtn = document.getElementById('best-sellers-toggle');
+    if (!all.length) { panel.style.display = 'none'; chart.innerHTML = ''; toggleBtn.style.display = 'none'; return; }
     const cur = getCurrency();
-    const max = Math.max(...top.map(i => i.qty), 1);
-    chart.innerHTML = top.map(item => `
+    const shown = bestSellersExpanded ? all : all.slice(0, 5);
+    const max = Math.max(...shown.map(i => i.qty), 1);
+    chart.innerHTML = shown.map(item => `
       <div class="best-row">
         <div class="best-name" title="${escHtml(item.name)}">${escHtml(item.name)}</div>
         <div class="best-track"><div class="best-bar" style="width:${Math.max(4, (item.qty / max) * 100)}%"></div></div>
         <div class="best-value">${item.qty}×</div>
         <div class="best-rev">${fmtPrice(item.revenue, cur)}</div>
       </div>`).join('');
+    if (all.length > 5) {
+      toggleBtn.textContent = bestSellersExpanded ? 'Show less' : `Show all (${all.length})`;
+      toggleBtn.style.display = '';
+      toggleBtn.onclick = () => { bestSellersExpanded = !bestSellersExpanded; renderBestSellers(activeTransactions); };
+    } else {
+      toggleBtn.style.display = 'none';
+    }
     panel.style.display = '';
   }
 
@@ -688,7 +729,8 @@
       day.sales++;
       day.revenue += tx.total || 0;
     }
-    const sorted = [...days.values()].sort((a, b) => a.key.localeCompare(b.key));
+    const sorted  = [...days.values()].sort((a, b) => a.key.localeCompare(b.key));
+    sortedDays    = sorted.map(d => d.key);  // keep global in sync
     const isRev  = dayChartMode === 'revenue';
     const maxVal = Math.max(...sorted.map(d => isRev ? d.revenue : d.sales), 1);
     const BAR_MAX = 80;
@@ -703,7 +745,7 @@
       const sel = selectedDay === d.key;
       return `<div class="day-bar-col${sel ? ' selected' : ''}" onclick="selectDay('${d.key}')">
         <div class="day-bar-wrap">
-          <div class="day-bar-val">${val > 0 ? (isRev ? fmtPrice(val, cur) : val) : ''}</div>
+          <div class="day-bar-val">${val > 0 ? (isRev ? val.toFixed(2).replace(/\.00$/, '') : val) : ''}</div>
           <div class="day-bar" style="height:${h}px"></div>
         </div>
         <div class="day-bar-label">${d.label}</div>
@@ -725,7 +767,7 @@
   }
 
   function selectDay(key) {
-    selectedDay = (selectedDay === key) ? null : key; // toggle off if same day clicked
+    selectedDay = key;  // null = unset (will re-default to latest on next render)
     const active = (appState?.transactions || []).filter(t => !t.reverted);
     renderDailyChart(active);
     renderTimeChart(active);
@@ -745,6 +787,20 @@
     const showCompare = compareMode && !!selectedDay;
     const prevKey = selectedDay ? prevDayKey(selectedDay) : null;
     const prevTx  = showCompare ? active.filter(t => dateKey(t.timestamp) === prevKey) : [];
+
+    // Day selector nav
+    const dayIdx  = sortedDays.indexOf(selectedDay);
+    const labelEl = document.getElementById('day-selector-label');
+    const prevBtn = document.getElementById('day-prev-btn');
+    const nextBtn = document.getElementById('day-next-btn');
+    if (selectedDay && labelEl) {
+      const d = new Date(selectedDay + 'T12:00:00');
+      labelEl.textContent = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    } else if (labelEl) {
+      labelEl.textContent = '—';
+    }
+    if (prevBtn) prevBtn.disabled = dayIdx <= 0;
+    if (nextBtn) nextBtn.disabled = dayIdx < 0 || dayIdx >= sortedDays.length - 1;
 
     // Show/hide compare toggle (only makes sense when a day is selected)
     document.getElementById('compare-toggle-wrap').style.display = selectedDay ? '' : 'none';
@@ -776,14 +832,7 @@
     if (showCompare) allVals.push(...prevGroups.slice(first, last+1).map(g => isRev ? g.revenue : g.sales));
     const maxVal = Math.max(...allVals, 1);
 
-    // Day label for title
-    if (selectedDay) {
-      const d = new Date(selectedDay + 'T12:00:00');
-      const lbl = d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-      document.getElementById('time-chart-title').textContent = (isRev ? 'REVENUE' : 'SALES') + ` — ${lbl}`;
-    } else {
-      document.getElementById('time-chart-title').textContent = isRev ? 'REVENUE BY HOUR' : 'SALES BY HOUR';
-    }
+    document.getElementById('time-chart-title').textContent = isRev ? 'REVENUE BY HOUR' : 'SALES BY HOUR';
 
     // Bar widths: narrower when two bars share the column
     const bw  = showCompare ? '44%' : '70%';
@@ -793,13 +842,17 @@
       const idx  = first + i;
       const val  = isRev ? g.revenue : g.sales;
       const h    = Math.max(2, Math.round((val / maxVal) * BAR_MAX));
-      const disp = val > 0 ? (isRev ? fmtPrice(val, cur) : val) : '';
+      const disp = val > 0 ? (isRev ? val.toFixed(2).replace(/\.00$/, '') : val) : '';
       const pg   = prevGroups[idx];
       const pval = isRev ? pg.revenue : pg.sales;
       const ph   = showCompare ? Math.max(2, Math.round((pval / maxVal) * BAR_MAX)) : 0;
+      const pdisp = (showCompare && pval > 0) ? (isRev ? pval.toFixed(2).replace(/\.00$/, '') : pval) : '';
+      const valLabel = showCompare
+        ? `<span style="color:var(--blue)">${disp}</span>${pdisp ? `<span style="color:var(--text-muted);opacity:.7"> / ${pdisp}</span>` : ''}`
+        : disp;
       return `<div class="time-bar-col">
         <div class="time-bar-wrap">
-          <div class="time-bar-val">${disp}</div>
+          <div class="time-bar-val">${valLabel}</div>
           <div class="time-bar-pair">
             <div class="time-bar" style="width:${bw};height:${h}px;${val===0?'opacity:.2':''}"></div>
             ${showCompare ? `<div class="time-bar compare" style="width:${pbw};height:${ph}px;${pval===0?'opacity:.1':''}"></div>` : ''}
@@ -999,6 +1052,16 @@
     document.getElementById('time-rev-btn').classList.add('active');
     document.getElementById('time-sales-btn').classList.remove('active');
     renderTimeChart(activeTransactions());
+  });
+
+  // Day prev/next navigation
+  document.getElementById('day-prev-btn').addEventListener('click', () => {
+    const idx = sortedDays.indexOf(selectedDay);
+    if (idx > 0) selectDay(sortedDays[idx - 1]);
+  });
+  document.getElementById('day-next-btn').addEventListener('click', () => {
+    const idx = sortedDays.indexOf(selectedDay);
+    if (idx >= 0 && idx < sortedDays.length - 1) selectDay(sortedDays[idx + 1]);
   });
 
   // Compare toggle

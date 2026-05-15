@@ -2400,17 +2400,30 @@
     }
   });
 
+  function buildFilename() {
+    const event  = (appState.meta && appState.meta.event)  || 'ZollTool';
+    const artist = (appState.artist && (appState.artist.companyName || appState.artist.fullName)) || '';
+    const date   = new Date().toISOString().slice(0, 10);
+    const parts  = [event, artist, date].filter(Boolean).join('_');
+    return parts.replace(/[^a-zA-Z0-9_\-\.]/g, '_') + '.json';
+  }
+
   function saveJSON() {
     if (!appState) { showToast('No data to save.', 'error'); return; }
+    const filename = buildFilename();
     const json = JSON.stringify(appState, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    const name = (appState.meta && appState.meta.event) ? appState.meta.event.replace(/\s+/g, '_') : 'ZollTool';
-    a.download = name + '_pos.json';
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = filename;
+    document.body.appendChild(a);
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => {
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, 100);
+    showToast('JSON saved: ' + filename, 'success');
   }
 
   // ── Discount manager ──────────────────────────────────────────────────────
