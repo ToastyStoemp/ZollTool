@@ -371,8 +371,9 @@
       </div>
     </div>
     <div class="confirm-btns" id="confirm-btns">
-      <button class="btn btn-ghost" id="confirm-cancel" onclick="closeOverlay()">Cancel</button>
-      <button class="btn btn-green" id="confirm-ok"     onclick="confirmPayment()">Confirm</button>
+      <button class="btn btn-ghost" id="confirm-cancel"   onclick="cancelPayment()">Cancel</button>
+      <button class="btn btn-amber" id="force-complete"   onclick="remoteForceComplete()" style="display:none">Force Complete</button>
+      <button class="btn btn-green" id="confirm-ok"       onclick="confirmPayment()">Confirm</button>
     </div>
   </div>
 </div>
@@ -765,12 +766,18 @@ function openPayment(method) {
     el('cash-section').style.display = '';
     buildCashShortcuts(total, cur);
     setCashReceived(total); // pre-fill exact
+    el('pay-overlay').classList.remove('hidden');
   } else {
-    el('cash-section').style.display = 'none';
-    el('confirm-ok').disabled = false;
+    // Card: skip confirm dialog — send immediately and show waiting spinner.
+    // The terminal itself is the confirmation step; no need for a double-tap on the phone.
+    payState = 'waiting';
+    showWaiting('Waiting for Card Reader…', 'Present the card to the terminal');
+    ws.send(JSON.stringify({
+      action: 'order', paymentMethod: 'card',
+      items: cartLineItems(), total, currency: cur,
+    }));
+    el('pay-overlay').classList.remove('hidden');
   }
-
-  el('pay-overlay').classList.remove('hidden');
 }
 
 function confirmPayment() {
@@ -798,15 +805,17 @@ function confirmPayment() {
 }
 
 function showWaiting(title, sub) {
-  el('confirm-icon').style.display    = 'none';
-  el('confirm-spinner').style.display = '';
-  el('confirm-title').textContent     = title;
-  el('confirm-subtitle').textContent  = sub;
-  el('confirm-amount').textContent    = '';
-  el('cash-section').style.display    = 'none';
-  el('confirm-ok').style.display      = 'none';
-  el('confirm-cancel').style.display  = 'none';
-  el('confirm-btns').style.display    = 'none';
+  el('confirm-icon').style.display      = 'none';
+  el('confirm-spinner').style.display   = '';
+  el('confirm-title').textContent       = title;
+  el('confirm-subtitle').textContent    = sub;
+  el('confirm-amount').textContent      = '';
+  el('cash-section').style.display      = 'none';
+  el('confirm-ok').style.display        = 'none';
+  el('force-complete').style.display    = '';
+  el('confirm-cancel').style.display    = '';
+  el('confirm-cancel').textContent      = 'Cancel';
+  el('confirm-btns').style.display      = '';
 }
 
 function failPayment(reason) {
@@ -828,6 +837,13 @@ function failPayment(reason) {
 }
 
 function onOrderResult(msg) {
+  if (payState !== 'waiting') return; // stale result — payment already cancelled on phone side
+  if (msg.cancelled) {
+    // PC operator cancelled — quietly reset to cart
+    closeOverlay();
+    showToast('Payment cancelled by POS', 'info');
+    return;
+  }
   if (msg.approved) {
     cart = {};
     scheduleCartSync();
@@ -843,8 +859,26 @@ function onOrderResult(msg) {
   }
 }
 
+function cancelPayment() {
+  // If an order was already sent to the bridge, tell the PC to cancel it
+  if (payState === 'waiting' && ws && ws.readyState === 1 /*OPEN*/) {
+    ws.send(JSON.stringify({ action: 'cancel_order' }));
+  }
+  closeOverlay();
+}
+
+function remoteForceComplete() {
+  if (payState !== 'waiting' || !ws || ws.readyState !== 1) return;
+  // Hide buttons so it can't be double-tapped
+  el('force-complete').style.display = 'none';
+  el('confirm-cancel').style.display = 'none';
+  el('confirm-subtitle').textContent = 'Completing…';
+  ws.send(JSON.stringify({ action: 'force_complete_order' }));
+}
+
 function closeOverlay() {
   el('pay-overlay').classList.add('hidden');
+  el('force-complete').style.display = 'none';
   payState  = 'idle';
   payMethod = null;
   updatePayBtns();

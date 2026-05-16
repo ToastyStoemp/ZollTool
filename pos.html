@@ -1696,7 +1696,7 @@
     pendingPayment = null;
     // Notify originating remote device that the order was cancelled
     if (pendingRemoteOrder) {
-      sendOrderResult(pendingRemoteOrder.clientId, false, 'Payment cancelled');
+      sendOrderResult(pendingRemoteOrder.clientId, false, 'Payment cancelled', null, true /*cancelled*/);
       pendingRemoteOrder = null;
     }
   }
@@ -1846,6 +1846,14 @@
           handleRemoteOrder(msg);
           return;
         }
+        if (msg.action === 'remote_cancel') {
+          handleRemoteCancel(msg);
+          return;
+        }
+        if (msg.action === 'remote_force_complete') {
+          handleRemoteForceComplete(msg);
+          return;
+        }
         if (msg.action === 'remote_count') {
           updateRemoteIndicator(msg.count || 0);
           return;
@@ -1987,14 +1995,15 @@
   }
 
   // Send the result of a remote order back through the bridge
-  function sendOrderResult(clientId, approved, error, receipt) {
+  function sendOrderResult(clientId, approved, error, receipt, cancelled) {
     if (!myposBridge || myposBridge.readyState !== WebSocket.OPEN) return;
     myposBridge.send(JSON.stringify({
-      action:   'order_result',
+      action:    'order_result',
       clientId,
       approved,
-      error:    error   || null,
-      receipt:  receipt || null,
+      error:     error     || null,
+      receipt:   receipt   || null,
+      cancelled: cancelled || false,
     }));
   }
 
@@ -2032,10 +2041,84 @@
       sendOrderResult(remoteOrder.clientId, true, null, { total: data.total, currency: getCurrency() });
       broadcastCatalog(); // update stock counts on all remotes
     } else {
+      // Card payment from remote device
+      const total = cartGrandTotal();
+      const cur   = getCurrency();
       pendingRemoteOrder = data;
-      showToast(`📱 Card order from ${name} — processing…`, 'info');
-      openPayment('card');
+
+      const bridgeOpen  = myposBridge != null && myposBridge.readyState === 1 /*OPEN*/;
+      const termReady   = myposTerminalReady === true;
+
+      if (bridgeOpen && termReady) {
+        // ── Terminal path: trigger myPOS payment directly ──────────────────
+        pendingPayment = { method: 'card', total };
+        document.getElementById('confirm-icon').textContent     = '💳';
+        document.getElementById('confirm-title').textContent    = 'Card Payment';
+        document.getElementById('confirm-subtitle').textContent = `From ${name} — tap card on terminal`;
+        document.getElementById('confirm-amount').textContent   = cur + ' ' + total.toFixed(2);
+        document.getElementById('confirm-ok').style.display     = 'none';
+        document.getElementById('force-complete').style.display = '';
+        document.getElementById('confirm-cancel').textContent   = 'Cancel';
+        document.getElementById('cash-section').style.display   = 'none';
+        document.getElementById('split-section').style.display  = 'none';
+        document.getElementById('pay-overlay').classList.remove('hidden');
+
+        requestMyPOSPayment(total, cur)
+          .then(result => {
+            document.getElementById('confirm-ok').style.display     = '';
+            document.getElementById('force-complete').style.display = 'none';
+            if (!pendingPayment) return; // cancelled while waiting
+            if (result.approved) {
+              const remoteOrder = pendingRemoteOrder;
+              pendingRemoteOrder = null;
+              confirmPayment();
+              showToast(`Card approved${result.card_brand ? ' · ' + result.card_brand : ''}`, 'success');
+              if (remoteOrder) {
+                sendOrderResult(remoteOrder.clientId, true, null, {
+                  total, currency: cur, authCode: result.auth_code, cardBrand: result.card_brand,
+                });
+              }
+            } else {
+              closeOverlay();
+              showToast('Card payment declined', 'error');
+              sendOrderResult(data.clientId, false, 'Card payment declined');
+            }
+          })
+          .catch(err => {
+            document.getElementById('confirm-ok').style.display     = '';
+            document.getElementById('force-complete').style.display = 'none';
+            if (!pendingPayment) return; // already cancelled
+            closeOverlay();
+            showToast('Terminal: ' + err.message, 'error');
+            sendOrderResult(data.clientId, false, err.message);
+          });
+      } else {
+        // ── Fallback: manual confirm on the POS ────────────────────────────
+        openPayment('card');
+      }
     }
+  }
+
+  // Handle a cancel request that originated on the remote device
+  function handleRemoteCancel(data) {
+    if (!pendingRemoteOrder || pendingRemoteOrder.clientId !== data.clientId) return;
+    const name = data.remoteName || 'remote device';
+    pendingRemoteOrder = null; // clear BEFORE closeOverlay so it won't double-send order_result
+    closeOverlay();            // cancels terminal + closes overlay on PC
+    showToast(`📱 ${name} cancelled the payment`, 'info');
+  }
+
+  // Handle a force-complete request that originated on the remote device
+  function handleRemoteForceComplete(data) {
+    if (!pendingPayment || !pendingRemoteOrder || pendingRemoteOrder.clientId !== data.clientId) return;
+    const remoteOrder = pendingRemoteOrder;
+    const total       = pendingPayment.total;
+    const cur         = getCurrency();
+    document.getElementById('force-complete').style.display = 'none';
+    pendingRemoteOrder = null; // clear so confirmPayment won't double-send
+    confirmPayment();
+    showToast(`📱 ${data.remoteName || 'Remote'} force-completed payment`, 'success');
+    sendOrderResult(remoteOrder.clientId, true, null, { total, currency: cur });
   }
 
   // Show how many remote devices are connected (shown in the bridge indicator)

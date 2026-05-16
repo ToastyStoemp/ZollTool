@@ -920,6 +920,34 @@ namespace ZollBridge
                         }
                     }
 
+                    // ── Cancel order: forward to primary ─────────────────────
+                    else if (action == "cancel_order")
+                    {
+                        var primary = _primary;
+                        if (primary != null)
+                        {
+                            msg["clientId"]   = JToken.FromObject(conn.Id);
+                            msg["remoteName"] = JToken.FromObject(conn.Name);
+                            msg["action"]     = JToken.FromObject("remote_cancel");
+                            _ = primary.SendTextAsync(msg.ToString(Formatting.None));
+                            Console.WriteLine($"[bridge]   Cancel from '{conn.Name}' forwarded to primary");
+                        }
+                    }
+
+                    // ── Force-complete order: forward to primary ──────────────
+                    else if (action == "force_complete_order")
+                    {
+                        var primary = _primary;
+                        if (primary != null)
+                        {
+                            msg["clientId"]   = JToken.FromObject(conn.Id);
+                            msg["remoteName"] = JToken.FromObject(conn.Name);
+                            msg["action"]     = JToken.FromObject("remote_force_complete");
+                            _ = primary.SendTextAsync(msg.ToString(Formatting.None));
+                            Console.WriteLine($"[bridge]   Force-complete from '{conn.Name}' forwarded to primary");
+                        }
+                    }
+
                     // ── Catalog re-request ────────────────────────────────────
                     else if (action == "get_catalog")
                     {
