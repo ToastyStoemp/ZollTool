@@ -1543,6 +1543,167 @@ select:focus {
   background: var(--gray-100, #f3f4f6);
 }
 
+/* ---- E-dec Import Modal ---- */
+.edec-import-filename {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gray-600);
+  padding: 8px 12px;
+  background: var(--gray-100);
+  border-radius: 6px;
+  margin-bottom: 16px;
+  word-break: break-all;
+}
+
+.edec-import-section {
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+
+.edec-import-section-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--gray-100);
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+  user-select: none;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.edec-import-section-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.edec-import-count {
+  font-weight: 400;
+  color: var(--gray-400);
+  font-size: 12px;
+}
+
+.edec-import-details {
+  padding: 10px 14px;
+  transition: opacity 0.15s;
+}
+
+.edec-import-row {
+  display: flex;
+  gap: 10px;
+  font-size: 13px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.edec-import-row:last-child {
+  border-bottom: none;
+}
+
+.edec-import-key {
+  width: 130px;
+  flex-shrink: 0;
+  color: var(--gray-400);
+  font-size: 12px;
+}
+
+.edec-import-val {
+  color: var(--gray-800);
+  font-weight: 500;
+}
+
+.edec-import-product-mode {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 10px;
+  font-size: 13px;
+}
+
+.edec-import-product-list {
+  border: 1px solid var(--gray-200);
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 12px;
+}
+
+.edec-import-product-header,
+.edec-import-product-row {
+  display: grid;
+  grid-template-columns: 20px 1fr 100px 60px 80px 40px;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 10px;
+}
+
+.edec-import-product-header {
+  background: var(--gray-100);
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--gray-400);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--gray-200);
+}
+
+.edec-import-product-row {
+  border-bottom: 1px solid var(--gray-100);
+}
+
+.edec-import-product-row:last-child {
+  border-bottom: none;
+}
+
+.edec-import-product-row:hover {
+  background: var(--gray-100);
+}
+
+.edec-import-product-title {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.edec-import-product-hs {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--gray-400);
+}
+
+.edec-import-product-qty,
+.edec-import-product-val {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.edec-import-product-permit {
+  text-align: center;
+  font-weight: 700;
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 11px;
+}
+
+.permit-chip-0 { background: #e8f5e9; color: #2d6a4f; }
+.permit-chip-2 { background: #fff3e0; color: #c97b00; }
+.permit-chip-1 { background: #fce4ec; color: #b71c1c; }
+
+[data-theme="dark"] .permit-chip-0 { background: #1b3a28; color: #81c784; }
+[data-theme="dark"] .permit-chip-2 { background: #3e2900; color: #ffb74d; }
+[data-theme="dark"] .permit-chip-1 { background: #3e0a14; color: #ef9a9a; }
+
+.edec-import-note {
+  font-size: 12px;
+  color: var(--gray-400);
+  margin-top: 10px;
+  line-height: 1.5;
+}
+
 /* ---- Flatpickr theme overrides ---- */
 .flatpickr-calendar {
   font-family: var(--font);

@@ -4385,6 +4385,412 @@ function generateEdecXML() {
 }
 
 /* =========================================================
+   IMPORT E-DEC XML
+   ========================================================= */
+
+/** "4911.9100" → "4911.91.00" */
+function fromEdecHsCode(code) {
+  if (!code) return '';
+  // Remove any trailing spaces
+  code = code.trim();
+  // Already in ZollTool format "NNNN.NN.NN"?
+  if (/^\d{4}\.\d{2}\.\d{2}$/.test(code)) return code;
+  // E-dec format "NNNN.NNNN"
+  const m = code.match(/^(\d{4})\.(\d{2})(\d{2})$/);
+  if (m) return `${m[1]}.${m[2]}.${m[3]}`;
+  return code;
+}
+
+/** vatCode 1 → 8.1, 2 → 2.6 */
+function vatCodeToRate(code) {
+  const n = parseInt(code, 10);
+  if (n === 2) return 2.6;
+  return 8.1;
+}
+
+/** Get text content of first matching tag within a parent element */
+function xmlText(parent, tag) {
+  const el = parent.querySelector(tag);
+  return el ? el.textContent.trim() : '';
+}
+
+/** Parse "104 Printed Works" → { qty: 104, title: "Printed Works" } */
+function parseEdecDescription(desc) {
+  if (!desc) return { qty: 0, title: '' };
+  const m = desc.match(/^(\d+)\s+(.+)$/);
+  if (m) return { qty: parseInt(m[1], 10), title: m[2].trim() };
+  return { qty: 0, title: desc.trim() };
+}
+
+/** Stored parsed data while the import modal is open */
+let _edecImportData = null;
+
+function openEdecImportModal(xmlString, filename) {
+  const parser = new DOMParser();
+  let doc;
+  try {
+    doc = parser.parseFromString(xmlString, 'application/xml');
+  } catch (e) {
+    showToast('Could not parse XML file.', 'error');
+    return;
+  }
+  // Check for parse error
+  if (doc.querySelector('parsererror')) {
+    showToast('XML parse error — please check the file.', 'error');
+    return;
+  }
+
+  const gdt = doc.querySelector('goodsDeclarationType');
+  if (!gdt) {
+    showToast('Not a valid E-dec XML (missing goodsDeclarationType).', 'error');
+    return;
+  }
+
+  // ── Transport ──────────────────────────────────────────
+  const tm = gdt.querySelector('transportMeans');
+  const transport = tm ? {
+    transportMode:          xmlText(tm, 'transportMode'),
+    transportationCountry:  xmlText(tm, 'transportationCountry'),
+    transportationNumber:   xmlText(tm, 'transportationNumber'),
+    transportationType:     xmlText(tm, 'transportationType'),
+  } : null;
+
+  // ── Importer → Venue ───────────────────────────────────
+  const imp = gdt.querySelector('importer');
+  let venue = null;
+  if (imp) {
+    const supp1 = xmlText(imp, 'addressSupplement1'); // "c/o EventName"
+    const eventName = supp1.startsWith('c/o ') ? supp1.slice(4) : supp1;
+    venue = {
+      venueName:    xmlText(imp, 'name'),
+      venueStreet:  xmlText(imp, 'addressSupplement2'),
+      venuePostcode: xmlText(imp, 'postalCode'),
+      venueCity:    xmlText(imp, 'city'),
+      venueCountry: xmlText(imp, 'country'),
+      venueTIN:     xmlText(imp, 'traderIdentificationNumber'),
+      eventName,
+    };
+  }
+
+  // ── Declarant → Artist ────────────────────────────────
+  const decl = gdt.querySelector('declarant');
+  let artist = null;
+  if (decl) {
+    const postCode = xmlText(decl, 'postalCode');
+    const city     = xmlText(decl, 'city');
+    artist = {
+      fullName:        xmlText(decl, 'name'),
+      street:          xmlText(decl, 'street'),
+      postCodeCity:    [postCode, city].filter(Boolean).join(' '),
+      countryOfOrigin: xmlText(decl, 'country'),
+    };
+  }
+
+  // ── Products (GoodsItemType) ───────────────────────────
+  const goodsItems = Array.from(gdt.querySelectorAll('GoodsItemType'));
+  const products = goodsItems.map(gi => {
+    const { qty, title } = parseEdecDescription(xmlText(gi, 'description'));
+    const hsCode   = fromEdecHsCode(xmlText(gi, 'commodityCode'));
+    const grossMass = parseFloat(xmlText(gi, 'grossMass')) || 0;  // kg
+    const vatCode  = xmlText(gi, 'vatCode');
+    const statVal  = parseInt(xmlText(gi, 'statisticalValue'), 10) || 0;
+    const permit   = parseInt(xmlText(gi, 'permitObligation'), 10);
+    const origin   = xmlText(gi, 'originCountry');
+    const pkgType  = xmlText(gi, 'packagingType') || 'CT';
+    const vatRate  = vatCodeToRate(vatCode);
+
+    // Weight per item in grams
+    const weightG = qty > 0 ? Math.round((grossMass * 1000) / qty) : 0;
+
+    // Unit price estimate
+    const price = qty > 0 ? Math.round((statVal / qty) * 100) / 100 : 0;
+
+    // Permit override: only set if it differs from the HS-code default
+    const defaultPermit = getPermitObligation(hsCode);
+    const permitOverride = (Number.isFinite(permit) && permit !== defaultPermit) ? permit : null;
+
+    return {
+      title,
+      tariffNo:      hsCode,
+      amount:        qty,
+      soldQty:       qty,
+      soldValue:     statVal,
+      weightG,
+      price,
+      totalValueCHF: statVal,
+      vatRate,
+      originCountry: origin,
+      packagingType: pkgType,
+      permitOverride,
+      _permit:       permit, // raw value for display
+    };
+  }).filter(p => p.title);
+
+  _edecImportData = { filename, transport, venue, artist, products };
+  renderEdecImportModal(_edecImportData);
+  document.getElementById('edec-import-overlay').style.display = 'flex';
+}
+
+function renderEdecImportModal(data) {
+  const body = document.getElementById('edec-import-body');
+
+  const modeLabels = { '1':'Sea','2':'Rail','3':'Road','4':'Air','5':'Post','9':'Own propulsion' };
+
+  let html = `<div class="edec-import-filename">📄 ${escapeXml(data.filename)}</div>`;
+
+  // ── Artist / Declarant ────────────────────────────────
+  if (data.artist) {
+    const a = data.artist;
+    html += `
+    <div class="edec-import-section">
+      <label class="edec-import-section-label">
+        <input type="checkbox" id="edec-imp-artist" checked />
+        <span>Artist / Declarant Info</span>
+      </label>
+      <div class="edec-import-details" id="edec-imp-artist-details">
+        <div class="edec-import-row"><span class="edec-import-key">Name</span><span class="edec-import-val">${escapeXml(a.fullName || '—')}</span></div>
+        <div class="edec-import-row"><span class="edec-import-key">Street</span><span class="edec-import-val">${escapeXml(a.street || '—')}</span></div>
+        <div class="edec-import-row"><span class="edec-import-key">Postcode &amp; City</span><span class="edec-import-val">${escapeXml(a.postCodeCity || '—')}</span></div>
+        <div class="edec-import-row"><span class="edec-import-key">Country</span><span class="edec-import-val">${escapeXml(a.countryOfOrigin || '—')}</span></div>
+      </div>
+    </div>`;
+  }
+
+  // ── Venue / Importer ──────────────────────────────────
+  if (data.venue) {
+    const v = data.venue;
+    html += `
+    <div class="edec-import-section">
+      <label class="edec-import-section-label">
+        <input type="checkbox" id="edec-imp-venue" checked />
+        <span>Venue / Importer Info</span>
+      </label>
+      <div class="edec-import-details" id="edec-imp-venue-details">
+        ${v.eventName ? `<div class="edec-import-row"><span class="edec-import-key">Event Name</span><span class="edec-import-val">${escapeXml(v.eventName)}</span></div>` : ''}
+        <div class="edec-import-row"><span class="edec-import-key">Contact Name</span><span class="edec-import-val">${escapeXml(v.venueName || '—')}</span></div>
+        <div class="edec-import-row"><span class="edec-import-key">Street</span><span class="edec-import-val">${escapeXml(v.venueStreet || '—')}</span></div>
+        <div class="edec-import-row"><span class="edec-import-key">Postcode</span><span class="edec-import-val">${escapeXml(v.venuePostcode || '—')}</span></div>
+        <div class="edec-import-row"><span class="edec-import-key">City</span><span class="edec-import-val">${escapeXml(v.venueCity || '—')}</span></div>
+        <div class="edec-import-row"><span class="edec-import-key">Country</span><span class="edec-import-val">${escapeXml(v.venueCountry || '—')}</span></div>
+        ${v.venueTIN ? `<div class="edec-import-row"><span class="edec-import-key">UID / TIN</span><span class="edec-import-val">${escapeXml(v.venueTIN)}</span></div>` : ''}
+      </div>
+    </div>`;
+  }
+
+  // ── Transport ─────────────────────────────────────────
+  if (data.transport) {
+    const t = data.transport;
+    const modeLabel = modeLabels[t.transportMode] || t.transportMode;
+    html += `
+    <div class="edec-import-section">
+      <label class="edec-import-section-label">
+        <input type="checkbox" id="edec-imp-transport" checked />
+        <span>Transport</span>
+      </label>
+      <div class="edec-import-details" id="edec-imp-transport-details">
+        <div class="edec-import-row"><span class="edec-import-key">Mode</span><span class="edec-import-val">${escapeXml(modeLabel)}</span></div>
+        <div class="edec-import-row"><span class="edec-import-key">Vehicle Country</span><span class="edec-import-val">${escapeXml(t.transportationCountry || '—')}</span></div>
+        <div class="edec-import-row"><span class="edec-import-key">Plate / Number</span><span class="edec-import-val">${escapeXml(t.transportationNumber || '—')}</span></div>
+      </div>
+    </div>`;
+  }
+
+  // ── Products ──────────────────────────────────────────
+  if (data.products.length > 0) {
+    const cur = (state.meta && state.meta.currency) || 'CHF';
+    html += `
+    <div class="edec-import-section">
+      <label class="edec-import-section-label">
+        <input type="checkbox" id="edec-imp-products" checked />
+        <span>Products <span class="edec-import-count">${data.products.length} item${data.products.length !== 1 ? 's' : ''}</span></span>
+      </label>
+      <div class="edec-import-details" id="edec-imp-products-details">
+        <div class="edec-import-product-mode">
+          <label class="radio-label"><input type="radio" name="edec-imp-mode" value="add" checked /> Add to existing products</label>
+          <label class="radio-label"><input type="radio" name="edec-imp-mode" value="replace" /> Replace all products</label>
+        </div>
+        <div class="edec-import-product-list">
+          <div class="edec-import-product-header">
+            <span></span>
+            <span>Title</span>
+            <span>HS Code</span>
+            <span>Qty / Sold</span>
+            <span>Value (${escapeXml(cur)})</span>
+            <span>Permit</span>
+          </div>`;
+
+    data.products.forEach((p, i) => {
+      const hsEntry = HS_CODES.find(h => h.code === p.tariffNo);
+      const hsDesc = hsEntry ? hsEntry.desc : (p.tariffNo || '—');
+      html += `
+          <div class="edec-import-product-row">
+            <input type="checkbox" class="edec-imp-product-cb" data-idx="${i}" checked />
+            <span class="edec-import-product-title" title="${escapeXml(hsDesc)}">${escapeXml(p.title)}</span>
+            <span class="edec-import-product-hs">${escapeXml(p.tariffNo || '—')}</span>
+            <span class="edec-import-product-qty">${p.amount}</span>
+            <span class="edec-import-product-val">${p.soldValue.toLocaleString()}</span>
+            <span class="edec-import-product-permit permit-chip-${p._permit}">${p._permit}</span>
+          </div>`;
+    });
+
+    html += `
+        </div>
+        <p class="edec-import-note">Quantities will be set as both <strong>Amount</strong> and <strong>Sold Qty</strong>. Weight per item is estimated from gross mass.</p>
+      </div>
+    </div>`;
+  } else {
+    html += `<p class="edec-import-note" style="margin-top:12px">⚠ No product lines (GoodsItemType) found in this file.</p>`;
+  }
+
+  body.innerHTML = html;
+
+  // Toggle details visibility when section checkbox changes
+  ['artist', 'venue', 'transport', 'products'].forEach(key => {
+    const cb = document.getElementById(`edec-imp-${key}`);
+    if (!cb) return;
+    cb.addEventListener('change', () => {
+      const det = document.getElementById(`edec-imp-${key}-details`);
+      if (det) det.style.opacity = cb.checked ? '1' : '0.4';
+    });
+  });
+}
+
+function applyEdecImport() {
+  const data = _edecImportData;
+  if (!data) return;
+
+  const importArtist    = document.getElementById('edec-imp-artist')?.checked;
+  const importVenue     = document.getElementById('edec-imp-venue')?.checked;
+  const importTransport = document.getElementById('edec-imp-transport')?.checked;
+  const importProducts  = document.getElementById('edec-imp-products')?.checked;
+  const replaceProducts = document.querySelector('input[name="edec-imp-mode"][value="replace"]')?.checked;
+
+  let changes = 0;
+
+  // ── Artist ────────────────────────────────────────────
+  if (importArtist && data.artist) {
+    const a = data.artist;
+    if (a.fullName)        { state.artist.fullName        = a.fullName;        changes++; }
+    if (a.street)          { state.artist.street          = a.street;          changes++; }
+    if (a.postCodeCity)    { state.artist.postCodeCity    = a.postCodeCity;    changes++; }
+    if (a.countryOfOrigin) { state.artist.countryOfOrigin = a.countryOfOrigin; changes++; }
+    // Sync inputs
+    ['fullName','street','postCodeCity','countryOfOrigin'].forEach(k => {
+      const el = document.querySelector(`[data-key="artist.${k}"]`);
+      if (el && state.artist[k]) el.value = state.artist[k];
+    });
+  }
+
+  // ── Venue ─────────────────────────────────────────────
+  if (importVenue && data.venue) {
+    const v = data.venue;
+    if (v.eventName)    { state.meta.event        = v.eventName;    changes++; }
+    if (v.venueName)    { state.meta.venueName    = v.venueName;    changes++; }
+    if (v.venueStreet)  { state.meta.venueStreet  = v.venueStreet;  changes++; }
+    if (v.venuePostcode){ state.meta.venuePostcode = v.venuePostcode; changes++; }
+    if (v.venueCity)    { state.meta.venueCity    = v.venueCity;    changes++; }
+    if (v.venueCountry) { state.meta.venueCountry = v.venueCountry; changes++; }
+    if (v.venueTIN)     { state.meta.venueTIN     = v.venueTIN;     changes++; }
+    // Sync inputs
+    const metaMap = {
+      'event': 'meta.event', 'venueName': 'meta.venueName', 'venueStreet': 'meta.venueStreet',
+      'venuePostcode': 'meta.venuePostcode', 'venueCity': 'meta.venueCity',
+      'venueCountry': 'meta.venueCountry', 'venueTIN': 'meta.venueTIN',
+    };
+    Object.entries(metaMap).forEach(([stateKey, dataKey]) => {
+      const el = document.querySelector(`[data-key="${dataKey}"]`);
+      if (el && state.meta[stateKey]) el.value = state.meta[stateKey];
+    });
+  }
+
+  // ── Transport ─────────────────────────────────────────
+  if (importTransport && data.transport) {
+    const t = data.transport;
+    if (t.transportMode)         { state.edec.transportMode         = t.transportMode;         changes++; }
+    if (t.transportationCountry) { state.edec.transportationCountry = t.transportationCountry; changes++; }
+    if (t.transportationNumber)  { state.edec.transportationNumber  = t.transportationNumber;  changes++; }
+    if (t.transportationType)    { state.edec.transportationType    = t.transportationType;    changes++; }
+    // Sync inputs
+    const modeEl = document.getElementById('edec-mode');
+    if (modeEl && t.transportMode) modeEl.value = t.transportMode;
+    const countryEl = document.getElementById('edec-transport-country');
+    if (countryEl && t.transportationCountry) countryEl.value = t.transportationCountry;
+    const numEl = document.getElementById('edec-transport-number');
+    if (numEl && t.transportationNumber) numEl.value = t.transportationNumber;
+  }
+
+  // ── Products ──────────────────────────────────────────
+  if (importProducts && data.products.length > 0) {
+    const selectedIdxs = Array.from(
+      document.querySelectorAll('.edec-imp-product-cb:checked')
+    ).map(cb => parseInt(cb.dataset.idx, 10));
+
+    const selectedProducts = selectedIdxs
+      .map(i => data.products[i])
+      .filter(Boolean);
+
+    if (selectedProducts.length > 0) {
+      if (replaceProducts) {
+        state.products = [];
+      }
+      // Batch-insert: push directly to avoid N×renderTable calls
+      selectedProducts.forEach(p => {
+        state.products.push(Object.assign({
+          id:            uuid(),
+          title:         '',
+          sku:           '',
+          forSale:       true,
+          type:          '',
+          amount:        0,
+          weightG:       0,
+          price:         null,
+          priceNote:     '',
+          totalValueCHF: null,
+          tariffNo:      '',
+          tariffRate:    null,
+          vatRate:       null,
+          packagingType: 'CT',
+          soldQty:       0,
+          soldValue:     0,
+          soldVAT:       0,
+        }, {
+          title:          p.title,
+          tariffNo:       p.tariffNo,
+          amount:         p.amount,
+          soldQty:        p.soldQty,
+          soldValue:      p.soldValue,
+          weightG:        p.weightG,
+          price:          p.price || null,
+          totalValueCHF:  p.totalValueCHF || null,
+          vatRate:        p.vatRate,
+          originCountry:  p.originCountry,
+          packagingType:  p.packagingType || 'CT',
+          permitOverride: p.permitOverride,
+          forSale:        true,
+        }));
+      });
+      changes += selectedProducts.length;
+    }
+  }
+
+  closeEdecImportModal();
+  saveToStorage();
+  updateSectionSummaries();
+  renderTable();
+
+  if (changes > 0) {
+    showToast(`Imported successfully (${changes} item${changes !== 1 ? 's' : ''} updated)`, 'success');
+  } else {
+    showToast('Nothing was imported — no sections were selected.', 'info');
+  }
+}
+
+function closeEdecImportModal() {
+  document.getElementById('edec-import-overlay').style.display = 'none';
+  _edecImportData = null;
+}
+
+/* =========================================================
    TOAST NOTIFICATIONS
    ========================================================= */
 let toastTimer = null;
@@ -4800,6 +5206,25 @@ function init() {
 
   // E-dec XML generation
   document.getElementById('btn-generate-edec').addEventListener('click', generateEdecXML);
+
+  // E-dec XML import
+  document.getElementById('btn-import-edec').addEventListener('click', () => {
+    document.getElementById('edec-import-file').value = '';
+    document.getElementById('edec-import-file').click();
+  });
+  document.getElementById('edec-import-file').addEventListener('change', function () {
+    const file = this.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = e => openEdecImportModal(e.target.result, file.name);
+    reader.readAsText(file, 'UTF-8');
+  });
+  document.getElementById('edec-import-close').addEventListener('click', closeEdecImportModal);
+  document.getElementById('edec-import-cancel').addEventListener('click', closeEdecImportModal);
+  document.getElementById('edec-import-confirm').addEventListener('click', applyEdecImport);
+  document.getElementById('edec-import-overlay').addEventListener('click', function (e) {
+    if (e.target === this) closeEdecImportModal();
+  });
 
   // Modal controls
   document.getElementById('modal-close').addEventListener('click', hideModal);

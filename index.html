@@ -445,12 +445,17 @@
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
           Generate E-dec XML
         </button>
+        <button class="btn btn-secondary btn-lg" id="btn-import-edec">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 6 22 12 16 18"/><polyline points="8 18 2 12 8 6"/></svg>
+          Import E-dec XML
+        </button>
         <a class="btn btn-secondary btn-lg" href="https://e-dec-web.ezv.admin.ch/webdec/main.xhtml" target="_blank" rel="noopener">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
           Open E-dec Portal
         </a>
-        <p class="edec-actions-hint">Generate the XML first, then upload it on the E-dec portal. Only products with <strong>Sold Qty &gt; 0</strong> will be included.</p>
+        <p class="edec-actions-hint">Generate the XML first, then upload it on the E-dec portal. Only products with <strong>Sold Qty &gt; 0</strong> will be included. Use <em>Import</em> to pre-fill from a previous submission.</p>
       </div>
+      <input type="file" id="edec-import-file" accept=".xml,application/xml,text/xml" style="display:none" />
 
     </div>
   </section>
@@ -716,6 +721,23 @@
     <div class="modal-footer">
       <button class="btn btn-ghost" id="bulk-cancel">Cancel</button>
       <button class="btn btn-primary" id="bulk-save">Apply Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- E-DEC IMPORT MODAL -->
+<div class="modal-overlay" id="edec-import-overlay" style="display:none">
+  <div class="modal modal-wide" role="dialog" aria-modal="true" aria-labelledby="edec-import-title">
+    <div class="modal-header">
+      <h3 class="modal-title" id="edec-import-title">Import from E-dec XML</h3>
+      <button class="modal-close" id="edec-import-close" aria-label="Close">&times;</button>
+    </div>
+    <div class="modal-body" id="edec-import-body">
+      <!-- populated by JS -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-ghost" id="edec-import-cancel">Cancel</button>
+      <button class="btn btn-primary" id="edec-import-confirm">Import Selected</button>
     </div>
   </div>
 </div>
