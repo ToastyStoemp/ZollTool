@@ -209,12 +209,13 @@ body {
   border-color: var(--gray-600);
 }
 [data-theme="dark"] .btn-secondary {
-  background: var(--gray-700);
-  color: var(--gray-100);
-  border-color: var(--gray-500);
+  background: var(--gray-300);
+  color: var(--gray-800);
+  border-color: var(--gray-400);
 }
 [data-theme="dark"] .btn-secondary:hover {
-  background: var(--gray-600);
+  background: var(--gray-400);
+  color: var(--gray-800);
 }
 
 .btn-ghost {
