@@ -420,12 +420,36 @@
         The declarant info is filled automatically from the Artist section.
       </div>
 
+      <div class="info-banner info-banner-warning">
+        <strong>⚠ Permit &amp; Non-Customs Law Obligation (Bewilligungspflichtcode)</strong><br>
+        Each product line requires a <code>permitObligation</code> and <code>nonCustomsLawObligation</code> value:
+        <ul style="margin:6px 0 4px 18px; line-height:1.8">
+          <li><strong>0</strong> — bewilligungsfrei gemäss Deklarant <em>(permit-free, as stated by the declarant)</em></li>
+          <li><strong>1</strong> — bewilligungspflichtig <em>(permit required — not used for standard artist goods)</em></li>
+          <li><strong>2</strong> — nicht bewilligungspflichtig <em>(not subject to permit obligation)</em></li>
+        </ul>
+        Since e-dec does <em>not</em> validate before submission, you may only discover a mismatch after uploading.
+        Defaults below come from each product's HS code. If you receive a rejection, toggle the affected line and regenerate.
+      </div>
+
+      <div class="edec-subsection" id="permit-section" style="display:none">
+        <div class="edec-subsection-title">
+          Permit Obligation per Product
+          <span class="edec-subsection-hint" id="permit-overrides-hint"></span>
+        </div>
+        <div class="permit-list" id="permit-list"></div>
+      </div>
+
       <div class="edec-actions">
         <button class="btn btn-primary btn-lg" id="btn-generate-edec">
           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
           Generate E-dec XML
         </button>
-        <p class="edec-actions-hint">Only products with <strong>Sold Qty &gt; 0</strong> will be included in the XML.</p>
+        <a class="btn btn-secondary btn-lg" href="https://e-dec-web.ezv.admin.ch/webdec/main.xhtml" target="_blank" rel="noopener">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+          Open E-dec Portal
+        </a>
+        <p class="edec-actions-hint">Generate the XML first, then upload it on the E-dec portal. Only products with <strong>Sold Qty &gt; 0</strong> will be included.</p>
       </div>
 
     </div>

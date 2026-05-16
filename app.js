@@ -29,7 +29,7 @@ const HS_CODES = [
   { code: '4016.92.00', desc: 'Floor coverings and mats of rubber, desk mats',   rate: 8.1, vatRate: 8.1, permit: 0 },
   { code: '6109.10.00', desc: 'T-shirts, singlets of cotton',                    rate: 8.1, vatRate: 8.1, permit: 0 },
   { code: '6109.90.00', desc: 'T-shirts, singlets of other textile',             rate: 8.1, vatRate: 8.1, permit: 0 },
-  { code: '9503.00.00', desc: 'Toys, puzzles, games',                            rate: 8.1, vatRate: 8.1, permit: 0 },
+  { code: '9503.00.00', desc: 'Toys, puzzles, games',                            rate: 8.1, vatRate: 8.1, permit: 2 },
   { code: '6301.40.00', desc: 'Blankets and throws',                             rate: 8.1, vatRate: 8.1, permit: 0 },
   { code: '6912.00.00', desc: 'Ceramic tableware, mugs',                         rate: 8.1, vatRate: 8.1, permit: 0 },
   { code: '6913.90.00', desc: 'Ceramic statuettes and ornaments',                rate: 8.1, vatRate: 8.1, permit: 0 },
@@ -564,6 +564,8 @@ function updateSectionSummaries() {
       ? artistParts.join(' · ')
       : 'Click to expand';
   }
+
+  renderPermitOverrides();
 
   // E-dec summary
   const edecSummary = document.getElementById('edec-summary');
@@ -4088,6 +4090,70 @@ function esc(str) {
 }
 
 /* =========================================================
+   PERMIT OBLIGATION OVERRIDES
+   ========================================================= */
+function renderPermitOverrides() {
+  const soldProducts = state.products.filter(p => {
+    if (p.unlisted) return false;
+    if (p.variants && p.variants.length > 0)
+      return p.variants.some(v => !v.unlisted && (v.soldQty || 0) > 0);
+    return (p.soldQty || 0) > 0;
+  });
+  const section  = document.getElementById('permit-section');
+  const list     = document.getElementById('permit-list');
+  const hint     = document.getElementById('permit-overrides-hint');
+  if (!section || !list) return;
+
+  if (soldProducts.length === 0) { section.style.display = 'none'; return; }
+  section.style.display = '';
+
+  const overrideCount = soldProducts.filter(p => p.permitOverride != null).length;
+  if (hint) {
+    hint.textContent = overrideCount > 0
+      ? `${overrideCount} override${overrideCount !== 1 ? 's' : ''} from HS-code default`
+      : 'defaults from HS code — click a value to override';
+  }
+
+  list.innerHTML = soldProducts.map(p => {
+    const listedSoldQty = (p.variants && p.variants.length > 0)
+      ? p.variants.filter(v => !v.unlisted).reduce((s, v) => s + (v.soldQty || 0), 0)
+      : (p.soldQty || 0);
+    const defaultVal   = getPermitObligation(p.tariffNo);
+    const currentVal   = p.permitOverride != null ? p.permitOverride : defaultVal;
+    const isOverridden = p.permitOverride != null && p.permitOverride !== defaultVal;
+    const overrideBadge = isOverridden
+      ? `<span class="permit-overridden-badge">overridden</span>` : '';
+    const cls0 = currentVal === 0 ? 'seg-active-0' : '';
+    const cls2 = currentVal === 2 ? 'seg-active-2' : '';
+    return `<div class="permit-row">
+      <div class="permit-row-info">
+        <div class="permit-row-name">${escHtml(p.title || '(untitled)')}</div>
+        <div class="permit-row-meta">${listedSoldQty}× sold · HS ${escHtml(p.tariffNo || '—')} · default: ${defaultVal}</div>
+      </div>
+      ${overrideBadge}
+      <div class="permit-seg">
+        <button class="permit-seg-btn ${cls0}" onclick="setPermitOverride('${escHtml(p.id)}',0)" title="0 — bewilligungsfrei gemäss Deklarant (permit-free, as stated by declarant)">0</button>
+        <button class="permit-seg-btn ${cls2}" onclick="setPermitOverride('${escHtml(p.id)}',2)" title="2 — nicht bewilligungspflichtig (not subject to permit obligation)">2</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function setPermitOverride(pid, val) {
+  const p = state.products.find(pr => pr.id === pid);
+  if (!p) return;
+  const defaultVal = getPermitObligation(p.tariffNo);
+  // Clicking the already-active value resets to default (clears override)
+  if (p.permitOverride != null ? p.permitOverride === val : defaultVal === val) {
+    p.permitOverride = null;
+  } else {
+    p.permitOverride = val;
+  }
+  saveToStorage();
+  renderPermitOverrides();
+}
+
+/* =========================================================
    HELPER FUNCTIONS FOR E-DEC
    ========================================================= */
 function countryToCode(name) {
@@ -4138,7 +4204,12 @@ function escapeXml(str) {
    GENERATE E-DEC XML
    ========================================================= */
 function generateEdecXML() {
-  const soldProducts = state.products.filter(p => (p.soldQty || 0) > 0);
+  const soldProducts = state.products.filter(p => {
+    if (p.unlisted) return false;
+    if (p.variants && p.variants.length > 0)
+      return p.variants.some(v => !v.unlisted && (v.soldQty || 0) > 0);
+    return (p.soldQty || 0) > 0;
+  });
 
   if (soldProducts.length === 0) {
     showToast('No products have sold quantities > 0. Enter sold quantities first.', 'error');
@@ -4217,9 +4288,19 @@ function generateEdecXML() {
   lines.push(`    <goodsItem>`);
 
   soldProducts.forEach((p, idx) => {
-    const soldQty   = p.soldQty || 0;
+    // For variant products, aggregate only non-unlisted variants
+    const listedVariants = (p.variants && p.variants.length > 0)
+      ? p.variants.filter(v => !v.unlisted)
+      : null;
+    const soldQty  = listedVariants
+      ? listedVariants.reduce((s, v) => s + (v.soldQty || 0), 0)
+      : (p.soldQty || 0);
+    const soldVal  = listedVariants
+      ? listedVariants.reduce((s, v) => s + (v.soldValue || 0), 0)
+      : (p.soldValue || 0);
+
     const weightKg  = parseFloat((soldQty * (p.weightG || 0) / 1000).toFixed(3));
-    const permit    = getPermitObligation(p.tariffNo);
+    const permit    = p.permitOverride != null ? p.permitOverride : getPermitObligation(p.tariffNo);
     const vatCode   = getVatCode(p.vatRate);
     const hsCode    = toEdecHsCode(p.tariffNo);
     const originCc  = (p.originCountry && p.originCountry.trim())
@@ -4228,8 +4309,8 @@ function generateEdecXML() {
 
     // Statistical value: prefer soldValue if entered, else qty × unit price, else proportional from totalValue
     let statValue = 0;
-    if (p.soldValue && p.soldValue > 0) {
-      statValue = Math.floor(p.soldValue);
+    if (soldVal > 0) {
+      statValue = Math.floor(soldVal);
     } else if (p.price != null && p.price !== '') {
       statValue = Math.floor(soldQty * parseFloat(p.price));
     } else if (p.totalValueCHF != null && p.amount) {

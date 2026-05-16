@@ -1449,6 +1449,99 @@ select:focus {
   transition: color 0.2s;
 }
 
+/* ---- Permit override list ---- */
+.permit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin-top: 8px;
+}
+
+.permit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface);
+  border: 1px solid var(--gray-200, #e5e7eb);
+  border-radius: var(--radius-sm, 4px);
+  font-size: 13px;
+}
+
+.permit-row-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.permit-row-name {
+  font-weight: 600;
+  color: var(--gray-800);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.permit-row-meta {
+  font-size: 11px;
+  color: var(--gray-400);
+  margin-top: 1px;
+}
+
+.permit-overridden-badge {
+  font-size: 10px;
+  background: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffc107;
+  border-radius: 4px;
+  padding: 1px 6px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .permit-overridden-badge {
+  background: #3d2e00;
+  color: #ffd55a;
+  border-color: #8a6500;
+}
+
+.permit-seg {
+  display: flex;
+  border: 1px solid var(--gray-300, #d1d5db);
+  border-radius: 6px;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.permit-seg-btn {
+  padding: 5px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  border: none;
+  background: var(--surface);
+  color: var(--gray-500, #6b7280);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  line-height: 1;
+}
+
+.permit-seg-btn:first-child {
+  border-right: 1px solid var(--gray-300, #d1d5db);
+}
+
+.permit-seg-btn.seg-active-0 {
+  background: #2d6a4f;
+  color: #fff;
+}
+
+.permit-seg-btn.seg-active-2 {
+  background: #c97b00;
+  color: #fff;
+}
+
+.permit-seg-btn:not(.seg-active-0):not(.seg-active-2):hover {
+  background: var(--gray-100, #f3f4f6);
+}
+
 /* ---- Flatpickr theme overrides ---- */
 .flatpickr-calendar {
   font-family: var(--font);
