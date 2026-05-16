@@ -4234,9 +4234,13 @@ function generateEdecXML() {
   lines.push(`    <declarationType>1</declarationType>`);
   lines.push(`    <language>de</language>`);
   lines.push(`    <dispatchCountry>${escapeXml(dispatchCountry)}</dispatchCountry>`);
+  const tMode = e.transportMode || '3';
   lines.push(`    <transportMeans>`);
-  lines.push(`      <transportMode>${escapeXml(e.transportMode || '3')}</transportMode>`);
-  lines.push(`      <transportationType>${escapeXml(e.transportationType || '1')}</transportationType>`);
+  lines.push(`      <transportMode>${escapeXml(tMode)}</transportMode>`);
+  // transportationType (road subtype) is only valid for road transport (mode 3)
+  if (tMode === '3') {
+    lines.push(`      <transportationType>${escapeXml(e.transportationType || '1')}</transportationType>`);
+  }
   lines.push(`      <transportationCountry>${escapeXml((e.transportationCountry || '').toUpperCase())}</transportationCountry>`);
   lines.push(`      <transportationNumber>${escapeXml(e.transportationNumber || '')}</transportationNumber>`);
   lines.push(`    </transportMeans>`);
@@ -4299,7 +4303,8 @@ function generateEdecXML() {
       ? listedVariants.reduce((s, v) => s + (v.soldValue || 0), 0)
       : (p.soldValue || 0);
 
-    const weightKg  = parseFloat((soldQty * (p.weightG || 0) / 1000).toFixed(3));
+    // Round to nearest 100 g (0.1 kg), minimum 0.1 kg
+    const weightKg  = Math.max(0.1, Math.round(soldQty * (p.weightG || 0) / 100) / 10);
     const permit    = p.permitOverride != null ? p.permitOverride : getPermitObligation(p.tariffNo);
     const vatCode   = getVatCode(p.vatRate);
     const hsCode    = toEdecHsCode(p.tariffNo);
