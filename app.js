@@ -496,6 +496,32 @@ function calcProduct(p, skipUnlistedVariants = false) {
   };
 }
 
+// Returns { retQty, retWkg, retVal } for the unsold/return portion of a product.
+// For variant products, sums per-variant (exact); for plain products, uses calcProduct totals.
+// Unlisted variants are excluded from both qty and value.
+function calcReturnStats(p) {
+  if (hasVariants(p)) {
+    let retQty = 0, retWkg = 0, retVal = 0, hasVal = false;
+    for (const v of p.variants) {
+      if (v.unlisted) continue;
+      const vRet = (v.amount || 0) - (v.soldQty || 0);
+      if (vRet <= 0) continue;
+      const wg    = variantWeight(p, v);
+      const price = variantPrice(p, v);
+      retQty += vRet;
+      retWkg += Math.round(vRet * wg) / 1000;
+      if (price != null) { retVal += Math.round(price * vRet); hasVal = true; }
+    }
+    return { retQty, retWkg: Math.round(retWkg * 1000) / 1000, retVal: hasVal ? retVal : null };
+  }
+  const c = calcProduct(p);
+  const retQty = (c.amount || 0) - (c.soldQty || 0);
+  if (retQty <= 0) return { retQty: 0, retWkg: 0, retVal: null };
+  const retWkg = Math.round(retQty * (p.weightG || 0)) / 1000;
+  const retVal = c.effectiveUnitPrice != null ? Math.round(c.effectiveUnitPrice * retQty) : null;
+  return { retQty, retWkg, retVal };
+}
+
 function calcTotals() {
   function aggregate(products, customsMode = false) {
     let totalAmount = 0, totalWeightKg = 0, totalValue = 0;
@@ -2142,11 +2168,13 @@ function printAllVersions(onlyDocNum = null) {
               const i=rowNum++; const varWg=v.weightG!=null?v.weightG:p.weightG; const varPrice=v.price!=null?v.price:p.price;
               const varAmt=v.amount||0; const varTWkg=Math.round(varAmt*(varWg||0))/1000; const varTV=varPrice!=null?Math.round(varPrice*varAmt):null;
               totAmt+=varAmt; totWkg+=varTWkg; if(varTV!=null)totVal+=varTV;
-              rows.push(`<tr><td class="c">${i+1}</td><td>${esc(p.title||'')} - ${esc(v.name||'')}</td><td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td><td class="r">${varAmt}</td><td class="r">${varWg!=null?varWg+' g':''}</td><td class="r">${fmtWeightKg(varTWkg)}</td><td class="r">${p.priceNote||(varPrice!=null?formatNum(floorN(varPrice,2),2):'—')}</td><td class="r">${varTV!=null?varTV:'—'}</td><td class="r">${esc(p.tariffNo||'')}</td><td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td><td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td><td class="c">${esc(pOrig)}</td></tr>`);
+              const vSku = (v.sku||p.sku) ? `<span class="mono">${esc(v.sku||p.sku)}</span> ` : '';
+              rows.push(`<tr><td class="c">${i+1}</td><td>${vSku}${esc(p.title||'')} - ${esc(v.name||'')}</td><td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td><td class="r">${varAmt}</td><td class="r">${varWg!=null?varWg+' g':''}</td><td class="r">${fmtWeightKg(varTWkg)}</td><td class="r">${p.priceNote||(varPrice!=null?formatNum(floorN(varPrice,2),2):'—')}</td><td class="r">${varTV!=null?varTV:'—'}</td><td class="r">${esc(p.tariffNo||'')}</td><td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td><td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td><td class="c">${esc(pOrig)}</td></tr>`);
             });
           } else {
             const i=rowNum++; totAmt+=(c.amount||0); totWkg+=c.totalWeightKg; if(c.totalValue!=null)totVal+=c.totalValue;
-            const td=hasVariants(p)?`${esc(p.title||'')} (${p.variants.length} variants)`:esc(p.title||'');
+            const pSku = p.sku ? `<span class="mono">${esc(p.sku)}</span> ` : '';
+            const td=hasVariants(p)?`${pSku}${esc(p.title||'')} (${p.variants.length} variants)`:`${pSku}${esc(p.title||'')}`;
             rows.push(`<tr><td class="c">${i+1}</td><td>${td}</td><td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td><td class="r">${c.amount??''}</td><td class="r">${c.effectiveUnitWeightG!=null?Math.round(c.effectiveUnitWeightG)+' g':''}</td><td class="r">${fmtWeightKg(c.totalWeightKg)}</td><td class="r">${p.priceNote||(c.effectiveUnitPrice!=null?formatNum(floorN(c.effectiveUnitPrice,2),2):'—')}</td><td class="r">${c.totalValue!=null?c.totalValue:'—'}</td><td class="r">${esc(p.tariffNo||'')}</td><td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td><td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td><td class="c">${esc(pOrig)}</td></tr>`);
           }
         });
@@ -2209,13 +2237,12 @@ function printAllVersions(onlyDocNum = null) {
       if(format==='bytype'){
         const groups={};
         state.products.forEach(p=>{
-          if(!hasCustomsInfo(p))return; const c=calcProduct(p);
-          const retQty=(c.amount||0)-(c.soldQty||0); if(retQty<=0)return;
+          if(!hasCustomsInfo(p))return;
+          const rs=calcReturnStats(p); if(rs.retQty<=0)return;
+          const {retQty,retWkg,retVal}=rs;
           const key=`${p.type||'Other'}\x00${p.tariffNo||''}`;
           if(!groups[key])groups[key]={type:p.type||'Other',tariffNo:p.tariffNo||'',tariffRate:p.tariffRate,vatRate:p.vatRate,retQty:0,retWkg:0,retVal:0,hasVal:false};
           const g=groups[key];
-          const retWkg=Math.round(retQty*(c.effectiveUnitWeightG||0))/1000;
-          const retVal=c.effectiveUnitPrice!=null?Math.round(c.effectiveUnitPrice*retQty):null;
           g.retQty+=retQty; g.retWkg+=retWkg;
           if(retVal!=null){g.retVal+=retVal; g.hasVal=true;}
           totRQ+=retQty; totRWkg+=retWkg; if(retVal!=null)totRVal+=retVal;
@@ -2240,11 +2267,11 @@ function printAllVersions(onlyDocNum = null) {
               rows.push(`<tr><td class="c">${rowNum}</td><td>${esc(p.title||'')} - ${esc(v.name||'')}</td><td>${esc(p.type||'')}</td><td class="r">${v.amount||0}</td><td class="r">${v.soldQty||0}</td><td class="r"><strong>${varRetQty}</strong></td><td class="r">${varWg!=null?varWg+' g':''}</td><td class="r">${fmtWeightKg(varRWkg)}</td><td class="r">${p.priceNote||(varPrice!=null?formatNum(floorN(varPrice,2),2):'—')}</td><td class="r">${varRVal!=null?varRVal:'—'}</td><td class="r">${esc(p.tariffNo||'')}</td><td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td><td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td><td class="c">${esc(pOrig)}</td></tr>`);
             });
           } else {
-            const retQty=(c.amount||0)-(c.soldQty||0); if(retQty<=0)return; rowNum++;
-            const retWkg=Math.round(retQty*(c.effectiveUnitWeightG||0))/1000;
-            const retVal=c.effectiveUnitPrice!=null?Math.round(c.effectiveUnitPrice*retQty):null;
+            const rs=calcReturnStats(p); if(rs.retQty<=0)return; rowNum++;
+            const {retQty,retWkg,retVal}=rs;
+            const c=calcProduct(p);
             totRQ+=retQty; totRWkg+=retWkg; if(retVal!=null)totRVal+=retVal;
-            const td=hasVariants(p)?`${esc(p.title||'')} (${p.variants.length} variants)`:esc(p.title||'');
+            const td=hasVariants(p)?`${esc(p.title||'')} (${p.variants.filter(v=>!v.unlisted).length} variants)`:esc(p.title||'');
             rows.push(`<tr><td class="c">${rowNum}</td><td>${td}</td><td>${esc(p.type||'')}</td><td class="r">${c.amount??''}</td><td class="r">${c.soldQty||0}</td><td class="r"><strong>${retQty}</strong></td><td class="r">${c.effectiveUnitWeightG!=null?Math.round(c.effectiveUnitWeightG)+' g':''}</td><td class="r">${fmtWeightKg(retWkg)}</td><td class="r">${p.priceNote||(c.effectiveUnitPrice!=null?formatNum(floorN(c.effectiveUnitPrice,2),2):'—')}</td><td class="r">${retVal!=null?retVal:'—'}</td><td class="r">${esc(p.tariffNo||'')}</td><td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td><td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td><td class="c">${esc(pOrig)}</td></tr>`);
           }
         });
@@ -2472,7 +2499,8 @@ function printGoodsList(docNum, format = 'detailed') {
             const tv = varTotalVal != null ? varTotalVal : '—';
             totAmt += varAmt; totWkg += varTotalWkg;
             if (varTotalVal != null) totVal += varTotalVal;
-            detailedRows.push(`<tr><td class="c">${i+1}</td><td>${esc(p.title||'')} - ${esc(v.name||'')}</td>
+            const vSku = (v.sku||p.sku) ? `<span class="mono">${esc(v.sku||p.sku)}</span> ` : '';
+            detailedRows.push(`<tr><td class="c">${i+1}</td><td>${vSku}${esc(p.title||'')} - ${esc(v.name||'')}</td>
               <td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td>
               <td class="r">${varAmt}</td><td class="r">${varWg!=null?varWg+' g':''}</td>
               <td class="r">${fmtWeightKg(varTotalWkg)}</td><td class="r">${esc(pd)}</td>
@@ -2488,7 +2516,8 @@ function printGoodsList(docNum, format = 'detailed') {
           const tv = c.totalValue != null ? c.totalValue : '—';
           totAmt += (c.amount || 0); totWkg += c.totalWeightKg;
           if (c.totalValue != null) totVal += c.totalValue;
-          const titleDisplay = hasVariants(p) ? `${esc(p.title||'')} (${p.variants.filter(v=>!v.unlisted).length} variants)` : esc(p.title||'');
+          const pSku = p.sku ? `<span class="mono">${esc(p.sku)}</span> ` : '';
+          const titleDisplay = hasVariants(p) ? `${pSku}${esc(p.title||'')} (${p.variants.filter(v=>!v.unlisted).length} variants)` : `${pSku}${esc(p.title||'')}`;
           detailedRows.push(`<tr><td class="c">${i+1}</td><td>${titleDisplay}</td>
             <td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td>
             <td class="r">${c.amount??''}</td><td class="r">${c.effectiveUnitWeightG!=null?Math.round(c.effectiveUnitWeightG)+' g':''}</td>
@@ -2630,9 +2659,9 @@ function printGoodsList(docNum, format = 'detailed') {
       const groups = {};
       state.products.forEach(p => {
         if (!hasCustomsInfo(p)) return;
-        const c = calcProduct(p);
-        const retQty = (c.amount||0) - (c.soldQty||0);
-        if (retQty <= 0) return;
+        const rs = calcReturnStats(p);
+        if (rs.retQty <= 0) return;
+        const { retQty, retWkg, retVal } = rs;
         const key = `${p.type || 'Other'}\x00${p.tariffNo || ''}`;
         if (!groups[key]) groups[key] = {
           type: p.type || 'Other', tariffNo: p.tariffNo || '',
@@ -2640,8 +2669,6 @@ function printGoodsList(docNum, format = 'detailed') {
           retQty: 0, retWkg: 0, retVal: 0, hasVal: false,
         };
         const g = groups[key];
-        const retWkg = Math.round(retQty * (c.effectiveUnitWeightG||0)) / 1000;
-        const retVal = c.effectiveUnitPrice != null ? Math.round(c.effectiveUnitPrice * retQty) : null;
         g.retQty += retQty; g.retWkg += retWkg;
         if (retVal != null) { g.retVal += retVal; g.hasVal = true; }
         totRetQty += retQty; totRetWkg += retWkg;
@@ -2705,11 +2732,10 @@ function printGoodsList(docNum, format = 'detailed') {
           });
         } else {
           // Compressed or non-variant
-          const retQty = (c.amount||0) - (c.soldQty||0);
-          if (retQty <= 0) return;
+          const rs = calcReturnStats(p);
+          if (rs.retQty <= 0) return;
           rowNum++;
-          const retWkg = Math.round(retQty * (c.effectiveUnitWeightG||0)) / 1000;
-          const retVal = c.effectiveUnitPrice != null ? Math.round(c.effectiveUnitPrice * retQty) : null;
+          const { retQty, retWkg, retVal } = rs;
           totRetQty += retQty; totRetWkg += retWkg;
           if (retVal != null) totRetVal += retVal;
           const pd = p.priceNote || (c.effectiveUnitPrice != null ? formatNum(floorN(c.effectiveUnitPrice, 2), 2) : '—');
