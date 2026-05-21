@@ -85,11 +85,70 @@
     .view-toggle-btn:not(.active):hover { background: var(--surface-2); color: var(--text); }
 
     /* ── Theme icon button ── */
+    /* ── Setup overlay (Android / Capacitor) ── */
+    .setup-overlay { position: fixed; inset: 0; background: var(--bg); z-index: 200;
+                     display: flex; align-items: center; justify-content: center; padding: 20px; }
+    .setup-overlay.hidden { display: none; }
+    .setup-card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px;
+                  padding: 28px 24px; width: 100%; max-width: 380px; box-shadow: var(--shadow-md); }
+    .setup-logo { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+    .setup-logo-cross { width: 44px; height: 44px; background: var(--red); color: #fff;
+                        border-radius: 12px; display: flex; align-items: center; justify-content: center;
+                        font-size: 22px; font-weight: 700; flex-shrink: 0; }
+    .setup-logo-name { font-size: 20px; font-weight: 800; letter-spacing: -.5px; }
+    .setup-logo-sub  { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+    .setup-title { font-size: 15px; font-weight: 700; margin-bottom: 16px; }
+    .setup-field { margin-bottom: 14px; }
+    .setup-field label { display: block; font-size: 12px; color: var(--text-muted); font-weight: 600;
+                         text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+    .setup-field input { width: 100%; padding: 11px 13px; border: 1.5px solid var(--border-mid);
+                         border-radius: 8px; background: var(--bg); color: var(--text);
+                         font-size: 15px; font-family: inherit; outline: none; }
+    .setup-field input:focus { border-color: var(--accent); }
+    .setup-hint { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+    .setup-actions { display: flex; gap: 8px; margin-top: 20px; }
+    .setup-actions .btn { flex: 1; justify-content: center; padding: 12px; font-size: 14px; font-weight: 600; }
+    .setup-terminal-status { display: flex; align-items: center; gap: 8px; padding: 10px 13px;
+                             border: 1px solid var(--border); border-radius: 8px; margin-top: 14px;
+                             font-size: 13px; color: var(--text-muted); background: var(--bg); }
+    .setup-terminal-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); flex-shrink: 0; }
+    .setup-terminal-dot.ok { background: var(--green); }
+    .setup-terminal-dot.scanning { background: var(--amber); animation: pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
     .theme-icon-btn { background: var(--surface-2); border: 1px solid var(--border); color: var(--text-muted);
                       width: 32px; height: 32px; border-radius: 8px; font-size: 14px; cursor: pointer;
                       display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
 
+    /* ── Burger / collapsible header menu ── */
+    .hdr-burger { display: none; }
+    .hdr-collapsible { display: flex; align-items: center; gap: 6px; }
+    @media (max-width: 540px) {
+      .hdr-burger { display: flex; }
+      .hdr-collapsible {
+        display: none;
+        position: absolute;
+        top: 57px; right: 0;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: 0 0 var(--radius) var(--radius);
+        box-shadow: var(--shadow-md);
+        padding: 10px 12px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+        z-index: 60;
+        min-width: 160px;
+      }
+      .hdr-collapsible.open { display: flex; }
+      .hdr-collapsible .view-toggle { width: 100%; }
+      .hdr-collapsible .view-toggle-btn { flex: 1; padding: 7px 8px; }
+      .hdr-collapsible .theme-icon-btn,
+      .hdr-collapsible .theme-icon-btn#settings-btn { width: 100%; height: 36px; font-size: 15px; }
+    }
+
     /* ── Layout ── */
+    .pos-header { position: relative; }
     .pos-body { display: flex; flex: 1; overflow: hidden; }
 
     /* ── Offline banner ── */
@@ -289,11 +348,19 @@
   </div>
   <div class="pos-header-right">
     <div class="hdr-dot" id="hdr-dot" title="Connecting…"></div>
-    <div class="view-toggle">
-      <button class="view-toggle-btn active" id="btn-all"     onclick="setGrouping(false)">All</button>
-      <button class="view-toggle-btn"        id="btn-grouped" onclick="setGrouping(true)">By Type</button>
+    <div class="hdr-collapsible" id="hdr-collapsible">
+      <div class="view-toggle">
+        <button class="view-toggle-btn active" id="btn-all"     onclick="setGrouping(false)">All</button>
+        <button class="view-toggle-btn"        id="btn-grouped" onclick="setGrouping(true)">By Type</button>
+      </div>
+      <button class="theme-icon-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle dark mode">🌙</button>
+      <button class="theme-icon-btn" id="settings-btn" onclick="showSetup(true)" title="Connection settings" style="display:none">⚙</button>
     </div>
-    <button class="theme-icon-btn" id="theme-btn" onclick="toggleTheme()" title="Toggle dark mode">🌙</button>
+    <button class="theme-icon-btn hdr-burger" id="hdr-burger" onclick="toggleHeaderMenu()" title="Menu">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="14" y2="12"/>
+      </svg>
+    </button>
   </div>
 </header>
 
@@ -391,6 +458,43 @@
 
 <div class="toast" id="toast"></div>
 
+<!-- Setup overlay — shown on first launch in Capacitor or when settings button tapped -->
+<div class="setup-overlay hidden" id="setup-overlay">
+  <div class="setup-card">
+    <div class="setup-logo">
+      <div class="setup-logo-cross">&#10010;</div>
+      <div>
+        <div class="setup-logo-name">ZollTool</div>
+        <div class="setup-logo-sub">Remote POS</div>
+      </div>
+    </div>
+    <div class="setup-title">Connect to ZollBridge</div>
+    <div class="setup-field">
+      <label>Bridge IP Address</label>
+      <input type="text" id="setup-ip" inputmode="decimal" placeholder="192.168.1.100" autocomplete="off" />
+      <div class="setup-hint">IP of the PC running ZollBridge (port 8766 is used automatically)</div>
+    </div>
+    <div class="setup-field">
+      <label>Device Name</label>
+      <input type="text" id="setup-name" placeholder="Cashier 1" autocomplete="off" />
+      <div class="setup-hint">Shown on the main POS when this device sends orders</div>
+    </div>
+    <div id="setup-terminal-row" style="display:none">
+      <div class="setup-terminal-status" style="justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="setup-terminal-dot" id="setup-term-dot"></div>
+          <span id="setup-term-label">myPOS GO2: not connected</span>
+        </div>
+        <button class="btn btn-ghost" id="setup-term-connect" onclick="pairTerminal()" style="padding:4px 10px;font-size:12px">Connect</button>
+      </div>
+    </div>
+    <div class="setup-actions">
+      <button class="btn btn-ghost" id="setup-cancel-btn" onclick="hideSetup()" style="display:none">Cancel</button>
+      <button class="btn btn-primary" onclick="saveSetup()" style="background:var(--red);color:#fff;border-color:var(--red)">Save</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── State ──────────────────────────────────────────────────────────────────
 let ws            = null;
@@ -406,12 +510,31 @@ let groupByType   = localStorage.getItem('remote_group') === '1';
 let cartSyncTimer = null;
 let toastTimer    = null;
 
+// ── Capacitor / Android bridge config ─────────────────────────────────────
+const IS_CAPACITOR = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+let myposPluginReady = false;  // true once native GO2 plugin has connected a terminal
+
 const CURRENCY_BILLS = {
   CHF: [0.5, 1, 2, 5, 10, 20, 50, 100, 200],
   EUR: [0.5, 1, 2, 5, 10, 20, 50, 100, 200],
   USD: [1, 5, 10, 20, 50, 100],
   GBP: [1, 2, 5, 10, 20, 50],
 };
+
+// ── Header burger menu ─────────────────────────────────────────────────────
+function toggleHeaderMenu() {
+  el('hdr-collapsible').classList.toggle('open');
+}
+function closeHeaderMenu() {
+  el('hdr-collapsible').classList.remove('open');
+}
+document.addEventListener('click', e => {
+  const collapsible = el('hdr-collapsible');
+  const burger      = el('hdr-burger');
+  if (!collapsible || !burger) return;
+  if (!collapsible.contains(e.target) && e.target !== burger)
+    collapsible.classList.remove('open');
+});
 
 // ── Theme ──────────────────────────────────────────────────────────────────
 function applyTheme() {
@@ -423,13 +546,24 @@ function toggleTheme() {
   const dark = localStorage.getItem('zolltool_theme') !== 'light';
   localStorage.setItem('zolltool_theme', dark ? 'light' : 'dark');
   applyTheme();
+  closeHeaderMenu();
 }
 window.addEventListener('storage', e => { if (e.key === 'zolltool_theme') applyTheme(); });
 
 // ── WebSocket ──────────────────────────────────────────────────────────────
+function getBridgeWsUrl() {
+  if (IS_CAPACITOR) {
+    const ip = localStorage.getItem('bridge_ip');
+    return ip ? `ws://${ip}:8766` : null;
+  }
+  return `ws://${location.host}`;
+}
+
 function connect() {
+  const url = getBridgeWsUrl();
+  if (!url) { showSetup(false); return; }
   try {
-    ws = new WebSocket(`ws://${location.host}`);
+    ws = new WebSocket(url);
     ws.onopen    = () => ws.send(JSON.stringify({ action: 'identify', role: 'remote', name: deviceName() }));
     ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch {} };
     ws.onclose   = () => {
@@ -443,11 +577,72 @@ function connect() {
 }
 
 function deviceName() {
+  const saved = localStorage.getItem('bridge_device_name');
+  if (saved) return saved;
   const ua = navigator.userAgent;
   if (/iPhone/i.test(ua)) return 'iPhone';
   if (/iPad/i.test(ua))   return 'iPad';
   if (/Android/i.test(ua)) return 'Android';
   return 'Remote';
+}
+
+// ── Setup screen ───────────────────────────────────────────────────────────
+function showSetup(isEdit) {
+  el('setup-ip').value   = localStorage.getItem('bridge_ip')          || '';
+  el('setup-name').value = localStorage.getItem('bridge_device_name') || '';
+  el('setup-cancel-btn').style.display = isEdit ? '' : 'none';
+  if (IS_CAPACITOR) {
+    el('setup-terminal-row').style.display = '';
+    refreshTerminalStatus();
+  }
+  el('setup-overlay').classList.remove('hidden');
+}
+
+function hideSetup() {
+  el('setup-overlay').classList.add('hidden');
+}
+
+function saveSetup() {
+  const ip   = el('setup-ip').value.trim();
+  const name = el('setup-name').value.trim();
+  if (!ip) { el('setup-ip').focus(); return; }
+  localStorage.setItem('bridge_ip', ip);
+  if (name) localStorage.setItem('bridge_device_name', name);
+  hideSetup();
+  // Reconnect with new config
+  if (ws) { ws.onclose = null; ws.close(); ws = null; }
+  wsConnected = false; primaryOnline = false;
+  setDot('off'); updateBanner(); updatePayBtns();
+  connect();
+}
+
+function refreshTerminalStatus() {
+  if (!IS_CAPACITOR) return;
+  const plugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MyPos;
+  if (!plugin) { updateTerminalDot(false, 'myPOS plugin not available'); return; }
+  plugin.getStatus()
+    .then(s => updateTerminalDot(s.connected, s.connected ? 'GO2 connected' : 'GO2 not connected'))
+    .catch(() => updateTerminalDot(false, 'GO2 not connected'));
+}
+
+function pairTerminal() {
+  const plugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MyPos;
+  if (!plugin) return;
+  const btn = el('setup-term-connect');
+  btn.disabled = true;
+  btn.textContent = 'Connecting…';
+  updateTerminalDot(false, 'Connecting…', true);
+  plugin.connectTerminal()
+    .catch(() => {})
+    .finally(() => { btn.disabled = false; btn.textContent = 'Connect'; });
+}
+
+function updateTerminalDot(ok, label, scanning) {
+  const dot = el('setup-term-dot');
+  dot.className = 'setup-terminal-dot' + (ok ? ' ok' : scanning ? ' scanning' : '');
+  el('setup-term-label').textContent = label || (ok ? 'GO2 connected' : 'GO2 not connected');
+  myposPluginReady = ok;
+  updatePayBtns();
 }
 
 // ── Messages ───────────────────────────────────────────────────────────────
@@ -493,9 +688,11 @@ function updateBanner() {
 }
 
 function updatePayBtns() {
-  const ok = wsConnected && primaryOnline && cartQty() > 0 && payState === 'idle';
-  document.getElementById('btn-cash').disabled  = !ok;
-  document.getElementById('btn-card').disabled  = !ok;
+  const wsOk     = wsConnected && primaryOnline;
+  const cartOk   = cartQty() > 0 && payState === 'idle';
+  const nativeOk = IS_CAPACITOR && myposPluginReady; // standalone: native terminal, no bridge needed
+  document.getElementById('btn-cash').disabled  = !(wsOk && cartOk);
+  document.getElementById('btn-card').disabled  = !((wsOk || nativeOk) && cartOk);
   document.getElementById('btn-clear').disabled = cartQty() === 0;
 }
 
@@ -514,6 +711,7 @@ function setGrouping(grouped) {
   document.getElementById('btn-all').classList.toggle('active', !grouped);
   document.getElementById('btn-grouped').classList.toggle('active', grouped);
   renderProducts();
+  closeHeaderMenu();
 }
 
 // ── Products ───────────────────────────────────────────────────────────────
@@ -736,7 +934,10 @@ function closeVariants() {
 
 // ── Payment ────────────────────────────────────────────────────────────────
 function openPayment(method) {
-  if (cartQty() === 0 || !wsConnected || !primaryOnline || payState !== 'idle') return;
+  const wsOk     = wsConnected && primaryOnline;
+  const nativeOk = IS_CAPACITOR && myposPluginReady;
+  if (cartQty() === 0 || payState !== 'idle') return;
+  if (method === 'card' ? !(wsOk || nativeOk) : !wsOk) return;
   closeMobileCart();
   payMethod = method;
 
@@ -771,12 +972,17 @@ function openPayment(method) {
     // Card: skip confirm dialog — send immediately and show waiting spinner.
     // The terminal itself is the confirmation step; no need for a double-tap on the phone.
     payState = 'waiting';
-    showWaiting('Waiting for Card Reader…', 'Present the card to the terminal');
-    ws.send(JSON.stringify({
-      action: 'order', paymentMethod: 'card',
-      items: cartLineItems(), total, currency: cur,
-    }));
     el('pay-overlay').classList.remove('hidden');
+    if (IS_CAPACITOR && myposPluginReady) {
+      showWaiting('Processing card…', 'Present card to the GO2 terminal');
+      localCardPayment(total, cur);
+    } else {
+      showWaiting('Waiting for Card Reader…', 'Tap the card on the POS terminal');
+      ws.send(JSON.stringify({
+        action: 'order', paymentMethod: 'card',
+        items: cartLineItems(), total, currency: cur,
+      }));
+    }
   }
 }
 
@@ -876,6 +1082,40 @@ function remoteForceComplete() {
   ws.send(JSON.stringify({ action: 'force_complete_order' }));
 }
 
+async function localCardPayment(amount, currency) {
+  const plugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MyPos;
+  if (!plugin) { failPayment('myPOS plugin not available'); return; }
+  try {
+    const result = await plugin.startPayment({ amount, currency });
+    if (result.approved) {
+      if (ws && ws.readyState === 1) {
+        // Bridge connected — let pos.html confirm and sync inventory
+        ws.send(JSON.stringify({
+          action: 'order_self_paid',
+          items: cartLineItems(), total: amount, currency,
+          transactionId: result.transactionId || '',
+          cardBrand:     result.cardBrand     || '',
+          authCode:      result.authCode      || '',
+        }));
+        // payState stays 'waiting' — onOrderResult handles success/clear when bridge echoes back
+      } else {
+        // Standalone mode — no bridge, clear cart locally
+        const cur    = (catalog && catalog.currency) || currency;
+        const brand  = result.cardBrand ? ` · ${result.cardBrand}` : '';
+        cart = {};
+        scheduleCartSync();
+        render();
+        closeOverlay();
+        showToast(`✓ Payment approved · ${cur} ${parseFloat(amount).toFixed(2)}${brand}`, 'success');
+      }
+    } else {
+      failPayment(result.error || 'Card payment declined');
+    }
+  } catch (err) {
+    failPayment(err.message || 'Terminal error');
+  }
+}
+
 function closeOverlay() {
   el('pay-overlay').classList.add('hidden');
   el('force-complete').style.display = 'none';
@@ -953,6 +1193,19 @@ function escAttr(s)  { return String(s||'').replace(/&/g,'&amp;').replace(/"/g,'
 applyTheme();
 el('btn-all').classList.toggle('active', !groupByType);
 el('btn-grouped').classList.toggle('active', groupByType);
+if (IS_CAPACITOR) {
+  el('settings-btn').style.display = '';
+  const plugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MyPos;
+  if (plugin) {
+    window.Capacitor.Plugins.MyPos.addListener('terminalStatus', s => {
+      myposPluginReady = !!s.connected;
+      updatePayBtns();
+      // Keep the setup dot in sync if the screen is open
+      if (!el('setup-overlay').classList.contains('hidden'))
+        updateTerminalDot(s.connected, s.connected ? 'GO2 connected' : 'GO2 disconnected');
+    });
+  }
+}
 connect();
 </script>
 </body>

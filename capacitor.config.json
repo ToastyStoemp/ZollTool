@@ -1,0 +1,20 @@
+{
+  "appId": "com.getupgames.zolltool",
+  "appName": "ZollTool",
+  "webDir": "www",
+  "android": {
+    "buildOptions": {
+      "keystorePath": "zolltool.keystore",
+      "keystorePassword": "",
+      "keystoreAlias": "zolltool",
+      "keystoreAliasPassword": "",
+      "releaseType": "APK"
+    }
+  },
+  "server": {
+    "androidScheme": "http"
+  },
+  "plugins": {
+    "MyPos": {}
+  }
+}

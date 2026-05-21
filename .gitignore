@@ -1,6 +1,11 @@
-WorkingData.json
+**/WorkingData.json
 *.pdf
 *.xml
+node_modules/
+android/local.properties
+android/.gradle/
+android/app/build/
+android/build/
 .DS_Store
 Thumbs.db
 .claude/settings.local.json

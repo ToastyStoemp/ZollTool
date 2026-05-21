@@ -125,7 +125,7 @@
                                       border-color: var(--text); color: var(--text); }
     .btn-red, .btn-primary { background: var(--red); color: #fff; border-color: var(--red); }
     .btn-red:hover, .btn-primary:hover { background: var(--red-dark); border-color: var(--red-dark);
-                                         box-shadow: 0 2px 8px rgba(212,0,0,0.25); }
+                                     box-shadow: 0 2px 8px rgba(212,0,0,0.25); }
     .btn-red:active, .btn-primary:active { background: var(--red-dark); box-shadow: none; }
     .btn-green { background: var(--green); color: #fff; }
     .btn-blue  { background: var(--blue);  color: #fff; }
@@ -536,6 +536,34 @@
       .shortcuts-help-desktop { display: inline-flex; }
     }
 
+    /* ── Header burger menu (phones) ── */
+    .hdr-burger { display: none; }
+    .hdr-collapsible { display: flex; align-items: center; gap: 4px; }
+
+    @media (max-width: 540px) {
+      .pos-header { position: relative; }
+      .hdr-burger { display: flex; }
+      .hdr-collapsible {
+        display: none;
+        position: absolute;
+        top: 100%;
+        right: 0;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow-md);
+        flex-direction: column;
+        align-items: stretch;
+        padding: 6px;
+        gap: 4px;
+        z-index: 200;
+        min-width: 170px;
+      }
+      .hdr-collapsible.open { display: flex; }
+      .hdr-collapsible .btn,
+      .hdr-collapsible .theme-toggle-wrap { width: 100%; justify-content: flex-start; padding: 8px 10px; }
+    }
+
     @media (max-width: 480px) {
       /* Header: tighter padding on phones */
       .pos-header { padding: 8px 12px; gap: 8px; }
@@ -576,39 +604,46 @@
   </div>
   <div class="pos-header-right">
     <input type="file" id="pos-file-input" accept=".json" style="display:none" />
-    <label class="theme-toggle" title="Toggle dark mode">
-      <span class="toggle-icon" aria-hidden="true">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-      </span>
-      <input type="checkbox" id="theme-toggle-cb" aria-label="Toggle dark mode" />
-      <span class="toggle-track"><span class="toggle-thumb"></span></span>
-    </label>
-    <button class="btn btn-ghost" id="btn-load-json" title="Load ZollTool JSON file">
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-      <span class="btn-label">Load JSON</span>
-    </button>
-    <button class="btn btn-primary" id="btn-save-json" title="Save updated data for ZollTool" style="display:none">
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      <span class="btn-label">Save JSON</span>
-    </button>
-    <button class="btn btn-ghost" id="btn-discounts">
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-      <span class="btn-label">Discounts</span>
-    </button>
     <span id="bridge-indicator" title="Card terminal not connected"
       style="font-size:11px;font-weight:700;letter-spacing:.03em;padding:0 4px;cursor:default;user-select:none;color:var(--text-muted)">💳 ○</span>
-    <a href="history.html" class="btn btn-ghost" id="btn-history">
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      <span class="btn-label">History</span>
-    </a>
-    <a href="index.html" class="btn btn-ghost">
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
-      <span class="btn-label">ZollTool</span>
-    </a>
-    <button class="btn btn-ghost shortcuts-help-desktop" id="btn-shortcuts-help" title="POS keyboard shortcuts">
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 1 1 5.82 1c0 2-3 2-3 4"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <span class="btn-label">Shortcuts</span>
+    <button class="btn btn-ghost hdr-burger" id="hdr-burger" onclick="togglePosMenu()" title="Menu">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="14" y2="12"/>
+      </svg>
     </button>
+    <div class="hdr-collapsible" id="hdr-collapsible">
+      <label class="theme-toggle" title="Toggle dark mode">
+        <span class="toggle-icon" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </span>
+        <input type="checkbox" id="theme-toggle-cb" aria-label="Toggle dark mode" />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+      <button class="btn btn-ghost" id="btn-load-json" title="Load ZollTool JSON file">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span class="btn-label">Load JSON</span>
+      </button>
+      <button class="btn btn-primary" id="btn-save-json" title="Save updated data for ZollTool" style="display:none">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span class="btn-label">Save JSON</span>
+      </button>
+      <button class="btn btn-ghost" id="btn-discounts">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+        <span class="btn-label">Discounts</span>
+      </button>
+      <a href="history.html" class="btn btn-ghost" id="btn-history">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span class="btn-label">History</span>
+      </a>
+      <a href="index.html" class="btn btn-ghost">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+        <span class="btn-label">ZollTool</span>
+      </a>
+      <button class="btn btn-ghost shortcuts-help-desktop" id="btn-shortcuts-help" title="POS keyboard shortcuts">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 1 1 5.82 1c0 2-3 2-3 4"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span class="btn-label">Shortcuts</span>
+      </button>
+    </div>
   </div>
 </div>
 
@@ -1706,6 +1741,23 @@
     const total = cartGrandTotal();
     const cur = getCurrency();
 
+    // ── Card via native Capacitor plugin (standalone Android APK) ───────────
+    if (method === 'card' && IS_CAPACITOR && myposNativeReady) {
+      pendingPayment = { method: 'card', total };
+      document.getElementById('confirm-icon').textContent     = '💳';
+      document.getElementById('confirm-title').textContent    = 'Card Payment';
+      document.getElementById('confirm-subtitle').textContent = 'Present card to terminal…';
+      document.getElementById('confirm-amount').textContent   = cur + ' ' + total.toFixed(2);
+      document.getElementById('confirm-ok').style.display     = 'none';
+      document.getElementById('force-complete').style.display = '';
+      document.getElementById('confirm-cancel').textContent   = 'Cancel';
+      document.getElementById('cash-section').style.display   = 'none';
+      document.getElementById('split-section').style.display  = 'none';
+      document.getElementById('pay-overlay').classList.remove('hidden');
+      nativeCardPayment(total, cur);
+      return;
+    }
+
     // ── Card via myPOS bridge (only when terminal is actually ready) ─────────
     if (method === 'card' && myposBridge?.readyState === WebSocket.OPEN && myposTerminalReady) {
       pendingPayment = { method: 'card', total };
@@ -1782,6 +1834,10 @@
     document.getElementById('pay-overlay').classList.remove('hidden');
   }
 
+  // ── Native Capacitor terminal (Android APK, standalone) ──────────────────
+  const IS_CAPACITOR    = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  let myposNativeReady  = false;
+
   // ── MyPOS Carbon bridge (ZollBridge desktop app via WebSocket) ────────────
   let myposBridge        = null;   // active WebSocket
   let myposTerminalReady = false;  // true when USB terminal is also connected
@@ -1852,6 +1908,10 @@
         }
         if (msg.action === 'remote_force_complete') {
           handleRemoteForceComplete(msg);
+          return;
+        }
+        if (msg.action === 'remote_self_paid') {
+          handleRemoteSelfPaid(msg);
           return;
         }
         if (msg.action === 'remote_count') {
@@ -1959,6 +2019,43 @@
         }
       }, 120000);
     });
+  }
+
+  async function nativeCardPayment(amount, currency) {
+    const plugin = window.Capacitor?.Plugins?.MyPos;
+    if (!plugin) {
+      document.getElementById('confirm-ok').style.display     = '';
+      document.getElementById('force-complete').style.display = 'none';
+      closeOverlay();
+      showToast('Terminal plugin not available', 'error');
+      return;
+    }
+    try {
+      const result = await plugin.startPayment({ amount, currency });
+      document.getElementById('confirm-ok').style.display     = '';
+      document.getElementById('force-complete').style.display = 'none';
+      if (!pendingPayment) return; // cancelled while waiting
+      if (result.approved) {
+        const remoteOrder = pendingRemoteOrder;
+        pendingRemoteOrder = null;
+        confirmPayment();
+        showToast(`Card approved${result.cardBrand ? ' · ' + result.cardBrand : ''}`, 'success');
+        if (remoteOrder) {
+          sendOrderResult(remoteOrder.clientId, true, null, {
+            total: amount, currency, authCode: result.authCode || '', cardBrand: result.cardBrand || '',
+          });
+        }
+      } else {
+        closeOverlay();
+        showToast('Card payment declined', 'error');
+      }
+    } catch (err) {
+      document.getElementById('confirm-ok').style.display     = '';
+      document.getElementById('force-complete').style.display = 'none';
+      if (!pendingPayment) return;
+      closeOverlay();
+      showToast('Terminal: ' + err.message, 'error');
+    }
   }
 
   // ── Remote POS support ───────────────────────────────────────────────────
@@ -2121,6 +2218,40 @@
     sendOrderResult(remoteOrder.clientId, true, null, { total, currency: cur });
   }
 
+  // Android remote processed payment locally — just record inventory + acknowledge
+  function handleRemoteSelfPaid(data) {
+    if (!appState) {
+      sendOrderResult(data.clientId, false, 'POS has no data loaded');
+      return;
+    }
+    if (pendingPayment) {
+      sendOrderResult(data.clientId, false, 'POS is busy with another payment');
+      return;
+    }
+    cart = {};
+    for (const item of data.items || []) {
+      const key = item.variantId ? `${item.productId}:${item.variantId}` : item.productId;
+      if (item.qty > 0) cart[key] = item.qty;
+    }
+    if (cartItemCount() === 0) {
+      sendOrderResult(data.clientId, false, 'Order contained no valid items');
+      return;
+    }
+    renderProducts();
+    const name = data.remoteName || 'remote device';
+    pendingPayment     = { method: 'card', total: data.total };
+    pendingRemoteOrder = null; // prevent closeOverlay from sending a "cancelled" result
+    confirmPayment();
+    const brand = data.cardBrand ? ` · ${data.cardBrand}` : '';
+    showToast(`📱 Card sale from ${name} recorded${brand}`, 'success');
+    sendOrderResult(data.clientId, true, null, {
+      total: data.total, currency: data.currency || getCurrency(),
+      authCode: data.authCode || '', cardBrand: data.cardBrand || '',
+      transactionId: data.transactionId || '',
+    });
+    broadcastCatalog();
+  }
+
   // Show how many remote devices are connected (shown in the bridge indicator)
   function updateRemoteIndicator(count) {
     remoteCount = count;
@@ -2150,6 +2281,23 @@
   // Start trying; give up after 5 minutes if no bridge found
   myposGiveUpTimer = setTimeout(bridgeGiveUp, BRIDGE_GIVE_UP);
   connectMyPOSBridge();
+
+  // ── Native terminal init (Capacitor APK only) ─────────────────────────────
+  if (IS_CAPACITOR) {
+    const nativePlugin = window.Capacitor?.Plugins?.MyPos;
+    if (nativePlugin) {
+      nativePlugin.getStatus()
+        .then(s => {
+          myposNativeReady = !!s.connected;
+          if (myposNativeReady) updateBridgeIndicator('connected', 'Terminal');
+        })
+        .catch(() => {});
+      nativePlugin.addListener('terminalStatus', s => {
+        myposNativeReady = !!s.connected;
+        updateBridgeIndicator(myposNativeReady ? 'connected' : 'offline', 'Terminal');
+      });
+    }
+  }
 
   // ── Type colour ───────────────────────────────────────────────────────────
   function typeColor(type) {
@@ -2592,6 +2740,17 @@
   });
   document.querySelectorAll('input[name="cart-disc-type"]').forEach(r => {
     r.addEventListener('change', updateCartDiscountUnit);
+  });
+
+  function togglePosMenu() {
+    document.getElementById('hdr-collapsible').classList.toggle('open');
+  }
+  document.addEventListener('click', e => {
+    const burger = document.getElementById('hdr-burger');
+    const menu   = document.getElementById('hdr-collapsible');
+    if (menu && !menu.contains(e.target) && e.target !== burger && !burger.contains(e.target)) {
+      menu.classList.remove('open');
+    }
   });
 
   function openShortcutsHelp() {

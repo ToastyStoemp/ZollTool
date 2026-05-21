@@ -784,6 +784,10 @@ namespace ZollBridge
                     }
 
                     // ── Card payment ──────────────────────────────────────────
+                    else if (action == "pay" && _provider == null)
+                    {
+                        await conn.SendAsync(new { approved = false, error = "No payment terminal configured" }).ConfigureAwait(false);
+                    }
                     else if (action == "pay" && _provider != null)
                     {
                         var amountStr = msg["amount"]?.Value<string>()    ?? "0";
@@ -945,6 +949,30 @@ namespace ZollBridge
                             msg["action"]     = JToken.FromObject("remote_force_complete");
                             _ = primary.SendTextAsync(msg.ToString(Formatting.None));
                             Console.WriteLine($"[bridge]   Force-complete from '{conn.Name}' forwarded to primary");
+                        }
+                    }
+
+                    // ── Self-paid (Android remote processed payment locally) ──
+                    else if (action == "order_self_paid")
+                    {
+                        var primary = _primary;
+                        if (primary == null)
+                        {
+                            await conn.SendAsync(new
+                            {
+                                action   = "order_result",
+                                clientId = conn.Id,
+                                approved = false,
+                                error    = "POS is not connected",
+                            }).ConfigureAwait(false);
+                        }
+                        else
+                        {
+                            msg["clientId"]   = JToken.FromObject(conn.Id);
+                            msg["remoteName"] = JToken.FromObject(conn.Name);
+                            msg["action"]     = JToken.FromObject("remote_self_paid");
+                            _ = primary.SendTextAsync(msg.ToString(Formatting.None));
+                            Console.WriteLine($"[bridge]   Self-paid order from '{conn.Name}' forwarded to primary");
                         }
                     }
 
