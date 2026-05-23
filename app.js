@@ -310,14 +310,72 @@ function deepClone(obj) {
 /* =========================================================
    PERSISTENCE
    ========================================================= */
-const STORAGE_KEY = 'zolltool_state_v1';
+const STORAGE_KEY        = 'zolltool_state_v1';
+const STORAGE_BACKUP_KEY = 'zolltool_state_v1_bak';
+
+/* =========================================================
+   STORAGE AVAILABILITY CHECK
+   ========================================================= */
+let _storageAvailable = null; // cached result
+
+function checkStorageAvailable() {
+  if (_storageAvailable !== null) return _storageAvailable;
+  try {
+    const k = '__zolltool_probe__';
+    localStorage.setItem(k, '1');
+    const ok = localStorage.getItem(k) === '1';
+    localStorage.removeItem(k);
+    _storageAvailable = ok;
+  } catch (e) {
+    _storageAvailable = false;
+  }
+  return _storageAvailable;
+}
+
+function showStorageWarning() {
+  // Only add the banner once
+  if (document.getElementById('storage-warning-banner')) return;
+  const banner = document.createElement('div');
+  banner.id = 'storage-warning-banner';
+  banner.className = 'storage-warning-banner';
+  banner.innerHTML =
+    '<strong>⚠ Auto-save unavailable</strong> — ' +
+    'Your browser is blocking local storage (common when the page is loaded inside an iframe or with strict privacy settings). ' +
+    '<strong>Data will be lost on reload.</strong> ' +
+    'Use <strong>Save JSON</strong> regularly to keep a backup, or open ZollTool in its own browser tab.';
+  // Insert at the very top of <main>
+  const main = document.querySelector('main.main-content');
+  if (main) main.prepend(banner);
+}
 
 function saveToStorage() {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    const json = JSON.stringify(state);
+    localStorage.setItem(STORAGE_KEY, json);
+    // Mirror to backup whenever there is meaningful sales data (crash recovery)
+    const hasSales = (state.transactions && state.transactions.length > 0)
+      || state.products.some(p => (p.soldQty || 0) > 0
+          || (p.variants || []).some(v => (v.soldQty || 0) > 0));
+    if (hasSales) localStorage.setItem(STORAGE_BACKUP_KEY, json);
+    markUnsaved(false); // storage worked — clear the unsaved indicator
   } catch (e) {
-    // Storage might not be available on some file:// contexts
+    // Storage might not be available (cross-origin iframe, strict privacy mode…)
     console.warn('LocalStorage not available:', e);
+    markUnsaved(true);
+    showStorageWarning();
+  }
+}
+
+// Visual indicator on Save JSON button when data can't be auto-saved
+function markUnsaved(unsaved) {
+  const btn = document.getElementById('btn-save-json');
+  if (!btn) return;
+  if (unsaved) {
+    btn.classList.add('btn-unsaved');
+    btn.title = 'Unsaved changes — localStorage is unavailable. Click to download a backup.';
+  } else {
+    btn.classList.remove('btn-unsaved');
+    btn.title = 'Save as JSON file';
   }
 }
 
@@ -363,32 +421,62 @@ function resetSalesData() {
   });
 
   saveToStorage();
+  // Clear backup too so a crash after reset doesn't restore the old sales data
+  try { localStorage.removeItem(STORAGE_BACKUP_KEY); } catch(e) {}
   renderTable();
   updateSectionSummaries();
   showToast(`Sales data reset — ${txCount} transaction${txCount !== 1 ? 's' : ''} cleared.`, 'success');
 }
 
+function mergeStateFromParsed(parsed) {
+  state = {
+    meta:         Object.assign({}, DEFAULT_STATE.meta,     parsed.meta     || {}),
+    artist:       Object.assign({}, DEFAULT_STATE.artist,   parsed.artist   || {}),
+    edec:         Object.assign({}, DEFAULT_STATE.edec,     parsed.edec     || {}),
+    products:     Array.isArray(parsed.products)     ? parsed.products     : [],
+    form1174:     Object.assign({}, DEFAULT_STATE.form1174, parsed.form1174 || {}),
+    discounts:    Array.isArray(parsed.discounts)    ? parsed.discounts    : [],
+    transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
+  };
+  if (!Array.isArray(state.form1174.assignments)) state.form1174.assignments = [];
+  // Ensure fields added in later schema versions are never left empty
+  if (!state.meta.venueTIN) state.meta.venueTIN = DEFAULT_STATE.meta.venueTIN;
+}
+
 function loadFromStorage() {
+  // Try primary key first
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // Merge carefully to handle schema changes
-      state = {
-        meta:         Object.assign({}, DEFAULT_STATE.meta,     parsed.meta     || {}),
-        artist:       Object.assign({}, DEFAULT_STATE.artist,   parsed.artist   || {}),
-        edec:         Object.assign({}, DEFAULT_STATE.edec,     parsed.edec     || {}),
-        products:     Array.isArray(parsed.products)     ? parsed.products     : [],
-        form1174:     Object.assign({}, DEFAULT_STATE.form1174, parsed.form1174 || {}),
-        discounts:    Array.isArray(parsed.discounts)    ? parsed.discounts    : [],
-        transactions: Array.isArray(parsed.transactions) ? parsed.transactions : [],
-      };
-      if (!Array.isArray(state.form1174.assignments)) state.form1174.assignments = [];
-      // Ensure fields added in later schema versions are never left empty
-      if (!state.meta.venueTIN) state.meta.venueTIN = DEFAULT_STATE.meta.venueTIN;
+      // Only accept if it looks like real state
+      if (parsed && (parsed.products || parsed.meta)) {
+        mergeStateFromParsed(parsed);
+        return;
+      }
     }
   } catch (e) {
-    console.warn('Could not restore from localStorage:', e);
+    console.warn('Could not restore from primary localStorage key:', e);
+  }
+
+  // Primary missing or corrupt — try backup
+  try {
+    const bak = localStorage.getItem(STORAGE_BACKUP_KEY);
+    if (bak) {
+      const parsed = JSON.parse(bak);
+      if (parsed && (parsed.products || parsed.meta)) {
+        mergeStateFromParsed(parsed);
+        // Promote backup to primary
+        localStorage.setItem(STORAGE_KEY, bak);
+        // Show recovery toast after page finishes loading
+        window.addEventListener('load', () => {
+          const txCount = (state.transactions || []).length;
+          showToast(`⚠ Data recovered from backup — ${txCount} transaction${txCount !== 1 ? 's' : ''} restored`, 'error');
+        }, { once: true });
+      }
+    }
+  } catch (e) {
+    console.warn('Could not restore from backup localStorage key:', e);
   }
 }
 
@@ -1894,6 +1982,7 @@ function saveJSON() {
   a.download = filename;
   document.body.appendChild(a);
   a.click();
+  markUnsaved(false); // file download counts as a safe backup
   setTimeout(() => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
@@ -5148,6 +5237,11 @@ function saveBulkInventory() {
    ========================================================= */
 function init() {
   loadFromStorage();
+
+  // Check if localStorage is actually working (blocked in cross-origin iframes)
+  if (!checkStorageAvailable()) {
+    showStorageWarning();
+  }
 
   initCollapsibles();
   bindFormFields();

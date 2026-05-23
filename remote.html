@@ -434,6 +434,10 @@ function connect() {
     ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch {} };
     ws.onclose   = () => {
       ws = null; wsConnected = false; primaryOnline = false;
+      // If a payment was in progress, reset it — don't leave the device locked
+      if (payState === 'waiting') {
+        failPayment('Connection lost — please try again.');
+      }
       setDot('off'); updateBanner(); updatePayBtns();
       setStatus('Reconnecting…');
       setTimeout(connect, 3000);

@@ -109,6 +109,8 @@
     .pos-event { font-size: 13px; color: var(--text-muted);
                  padding-left: 12px; border-left: 1px solid var(--border-mid); }
     .pos-header-right { display: flex; align-items: center; gap: 6px; }
+    .btn-auto-backup-on { background: #dcfce7 !important; color: #166534 !important; border-color: #86efac !important; }
+    [data-theme="dark"] .btn-auto-backup-on { background: #14532d !important; color: #86efac !important; border-color: #166534 !important; }
     .shortcuts-help-desktop { display: inline-flex; }
 
     /* ── Buttons ── */
@@ -591,6 +593,10 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       <span class="btn-label">Save JSON</span>
     </button>
+    <button class="btn btn-ghost" id="btn-auto-backup" title="Auto-backup: download a JSON file after every sale">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v14a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      <span class="btn-label" id="auto-backup-label">Auto-backup</span>
+    </button>
     <button class="btn btn-ghost" id="btn-discounts">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
       <span class="btn-label">Discounts</span>
@@ -902,6 +908,7 @@
 
 <script>
   const STORAGE_KEY        = 'zolltool_state_v1';
+  const STORAGE_BACKUP_KEY = 'zolltool_state_v1_bak';  // crash-recovery backup
   const DISCOUNTS_KEY_OLD  = 'zolltool_pos_discounts'; // legacy — migrate on first load
 
   function uuid() {
@@ -920,13 +927,39 @@
   function loadState() {
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
-      appState = raw ? JSON.parse(raw) : null;
-    } catch (e) { appState = null; }
+      const parsed = raw ? JSON.parse(raw) : null;
+      // Only accept the primary if it looks like real state (has products or meta)
+      if (parsed && (parsed.products || parsed.meta)) {
+        appState = parsed;
+        return;
+      }
+    } catch (e) { /* fall through to backup */ }
+
+    // Primary is missing or corrupt — try the backup
+    try {
+      const bak = localStorage.getItem(STORAGE_BACKUP_KEY);
+      const parsed = bak ? JSON.parse(bak) : null;
+      if (parsed && (parsed.products || parsed.meta)) {
+        appState = parsed;
+        // Promote backup to primary so next load is clean
+        localStorage.setItem(STORAGE_KEY, bak);
+        window._restoredFromBackup = true;
+        return;
+      }
+    } catch (e) { /* nothing to recover */ }
+
+    appState = null;
   }
 
   function saveState() {
+    if (!appState) return; // never overwrite good data with null
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+      const json = JSON.stringify(appState);
+      localStorage.setItem(STORAGE_KEY, json);
+      // Mirror to backup whenever there is meaningful sales data
+      const hasSales = (appState.transactions && appState.transactions.length > 0)
+        || (appState.products && appState.products.some(p => (p.soldQty || 0) > 0));
+      if (hasSales) localStorage.setItem(STORAGE_BACKUP_KEY, json);
     } catch(e) {}
   }
 
@@ -1669,6 +1702,7 @@
     });
 
     saveState();
+    checkAndAutoBackupAfterSale();
     showToast(`Payment confirmed — ${cartItemCount()} item${cartItemCount()!==1?'s':''} marked as sold`, 'success');
     // Notify originating remote device of success before closeOverlay clears pendingRemoteOrder
     if (pendingRemoteOrder) {
@@ -1874,6 +1908,12 @@
         if (myposReject) {
           myposReject(new Error('Terminal disconnected'));
           myposResolve = myposReject = null;
+        }
+        // Auto-close any stuck payment overlay so the user never needs to reload
+        if (pendingPayment || pendingRemoteOrder) {
+          pendingRemoteOrder = null; // null before closeOverlay so it won't try to send via dead bridge
+          closeOverlay();
+          showToast('Bridge disconnected — payment cleared. Reconnecting…', 'error');
         }
         if (wasConnected) {
           // Was connected — lost connection, restart give-up timer and retry
@@ -2536,6 +2576,43 @@
     if (e.key === STORAGE_KEY) { loadState(); render(); }
   });
 
+  // ── Auto-backup (download JSON after each sale) ────────────────────────────
+  const AUTO_BACKUP_KEY = 'zolltool_pos_autobackup';
+
+  function isAutoBackupOn() {
+    return sessionStorage.getItem(AUTO_BACKUP_KEY) === '1';
+  }
+
+  function setAutoBackup(on) {
+    if (on) sessionStorage.setItem(AUTO_BACKUP_KEY, '1');
+    else     sessionStorage.removeItem(AUTO_BACKUP_KEY);
+    const btn = document.getElementById('btn-auto-backup');
+    const lbl = document.getElementById('auto-backup-label');
+    btn.classList.toggle('btn-auto-backup-on', on);
+    btn.title = on
+      ? 'Auto-backup ON — a JSON file is downloaded after every sale. Click to disable.'
+      : 'Auto-backup OFF — click to download a JSON file automatically after each sale.';
+    if (lbl) lbl.textContent = on ? 'Auto-backup ON' : 'Auto-backup';
+  }
+
+  function triggerAutoBackup() {
+    if (!appState) return;
+    try {
+      const filename = buildFilename();
+      const blob = new Blob([JSON.stringify(appState)], { type: 'application/json' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url; a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+    } catch(e) { /* download not available in this context */ }
+  }
+
+  function checkAndAutoBackupAfterSale() {
+    if (isAutoBackupOn()) triggerAutoBackup();
+  }
+
   // ── Init ───────────────────────────────────────────────────────────────────
   applyTheme();
   loadState();
@@ -2546,6 +2623,28 @@
       (appState && appState.meta && appState.meta.event) ? appState.meta.event : '';
   }
   updateHeader();
+
+  // Auto-enable auto-backup if localStorage is not working
+  (function probeStorage() {
+    try {
+      const k = '__zt_probe__';
+      localStorage.setItem(k, '1');
+      if (localStorage.getItem(k) !== '1') throw new Error();
+      localStorage.removeItem(k);
+      // Storage works — restore saved preference
+      setAutoBackup(isAutoBackupOn());
+    } catch(e) {
+      // Storage blocked — force auto-backup on and warn
+      setAutoBackup(true);
+      showToast('⚠ Storage unavailable — auto-backup enabled. Files will download after each sale.', 'error');
+    }
+  })();
+
+  // Notify user if we silently recovered from a backup
+  if (window._restoredFromBackup) {
+    const txCount = (appState && appState.transactions) ? appState.transactions.length : 0;
+    showToast(`⚠ Data recovered from backup — ${txCount} transaction${txCount !== 1 ? 's' : ''} restored`, 'error');
+  }
 
   // Reload when tab regains focus so changes from the main ZollTool tab are picked up
   window.addEventListener('focus', () => { loadState(); updateHeader(); render(); });
@@ -2955,6 +3054,7 @@
     document.getElementById('pos-file-input').click();
   });
   document.getElementById('btn-save-json').addEventListener('click', saveJSON);
+  document.getElementById('btn-auto-backup').addEventListener('click', () => setAutoBackup(!isAutoBackupOn()));
   document.getElementById('pos-file-input').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;

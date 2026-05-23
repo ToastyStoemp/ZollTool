@@ -160,6 +160,36 @@ body {
   flex-shrink: 0;
 }
 
+/* Unsaved-changes pulse on Save JSON button */
+.btn-unsaved {
+  animation: btn-pulse 2s ease-in-out infinite;
+  border-color: var(--amber) !important;
+  color: var(--amber) !important;
+}
+@keyframes btn-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(234, 179, 8, 0); }
+  50%       { box-shadow: 0 0 0 4px rgba(234, 179, 8, 0.35); }
+}
+
+/* Storage warning banner — shown at top of main content when localStorage is blocked */
+.storage-warning-banner {
+  background: #fff3cd;
+  border: 1px solid #ffc107;
+  border-left: 4px solid #e65c00;
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  font-size: 12px;
+  color: #4a2800;
+  line-height: 1.7;
+  margin-bottom: 20px;
+}
+[data-theme="dark"] .storage-warning-banner {
+  background: #3a2000;
+  border-color: #a06000;
+  border-left-color: #ff8c00;
+  color: #ffd080;
+}
+
 /* ---- Buttons ---- */
 .btn {
   display: inline-flex;
