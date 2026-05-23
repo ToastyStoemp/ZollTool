@@ -109,9 +109,57 @@
     .pos-event { font-size: 13px; color: var(--text-muted);
                  padding-left: 12px; border-left: 1px solid var(--border-mid); }
     .pos-header-right { display: flex; align-items: center; gap: 6px; }
+
+    /* ── Settings drawer ── */
+    .settings-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.35);
+                         z-index: 300; }
+    .settings-backdrop.open { display: block; }
+    .settings-drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(340px, 92vw);
+                       background: var(--surface); border-left: 1px solid var(--border);
+                       box-shadow: -6px 0 32px rgba(0,0,0,.2); z-index: 301;
+                       display: flex; flex-direction: column;
+                       transform: translateX(100%);
+                       transition: transform .22s cubic-bezier(.4,0,.2,1); }
+    .settings-drawer.open { transform: translateX(0); }
+    .settings-drawer-hdr { display: flex; align-items: center; justify-content: space-between;
+                           padding: 16px 18px; border-bottom: 1px solid var(--border);
+                           flex-shrink: 0; }
+    .settings-drawer-title { font-size: 16px; font-weight: 700; color: var(--text); }
+    .settings-drawer-body { flex: 1; overflow-y: auto; padding: 8px 0 24px; }
+    .settings-section { padding: 16px 18px 8px; }
+    .settings-section + .settings-section { border-top: 1px solid var(--border); }
+    .settings-section-title { font-size: 10px; font-weight: 700; text-transform: uppercase;
+                               letter-spacing: .07em; color: var(--text-muted); margin-bottom: 12px; }
+    .settings-row { display: flex; align-items: center; justify-content: space-between;
+                    gap: 12px; padding: 6px 0; }
+    .settings-row-label { font-size: 13px; font-weight: 500; color: var(--text); }
+    .settings-row-hint { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+    .settings-row-left { display: flex; flex-direction: column; }
+    /* Segmented control used inside the drawer */
+    .seg-ctrl { display: flex; border: 1.5px solid var(--border-mid); border-radius: 6px;
+                overflow: hidden; flex-shrink: 0; }
+    .seg-ctrl-btn { padding: 5px 11px; font-size: 12px; font-weight: 600; cursor: pointer;
+                    background: transparent; border: none; color: var(--text-muted);
+                    font-family: inherit; transition: background .12s, color .12s; white-space: nowrap; }
+    .seg-ctrl-btn + .seg-ctrl-btn { border-left: 1.5px solid var(--border-mid); }
+    .seg-ctrl-btn.active { background: var(--accent); color: #fff; }
+    /* Full-width action button inside settings */
+    .settings-action-btn { width: 100%; margin-top: 8px; justify-content: center;
+                           font-size: 13px; padding: 9px 14px; }
+    /* Auto-backup active state */
     .btn-auto-backup-on { background: #dcfce7 !important; color: #166534 !important; border-color: #86efac !important; }
     [data-theme="dark"] .btn-auto-backup-on { background: #14532d !important; color: #86efac !important; border-color: #166534 !important; }
-    .shortcuts-help-desktop { display: inline-flex; }
+    /* Shortcut list inside drawer */
+    .shortcut-list-inline { display: grid; gap: 2px; margin-top: 4px; }
+    .shortcut-row-inline { display: grid; grid-template-columns: 100px 1fr; gap: 10px;
+                           align-items: baseline; padding: 5px 0;
+                           border-bottom: 1px solid var(--border); font-size: 12px; }
+    .shortcut-row-inline:last-child { border-bottom: none; }
+    .shortcut-key-inline { font-family: ui-monospace, monospace; font-size: 11px; font-weight: 700;
+                           background: var(--surface-2); border: 1px solid var(--border-mid);
+                           border-radius: 4px; padding: 2px 6px; color: var(--text);
+                           display: inline-block; white-space: nowrap; }
+    .shortcut-desc-inline { color: var(--text-muted); }
 
     /* ── Buttons ── */
     .btn { display: inline-flex; align-items: center; justify-content: center;
@@ -526,16 +574,11 @@
       .pos-event { display: none; }
       .pos-header-right .btn-label { display: none; }
       .pos-header-right .btn { padding: 6px 9px; }
-      .shortcuts-help-desktop { display: none; }
 
       /* Modals: narrower on tablets */
       .disc-modal { width: min(440px, 94vw); }
       .disc-form-modal { width: min(460px, 94vw); }
       .confirm-modal { width: min(380px, 92vw); }
-    }
-
-    @media (min-width: 768px) {
-      .shortcuts-help-desktop { display: inline-flex; }
     }
 
     @media (max-width: 480px) {
@@ -578,13 +621,6 @@
   </div>
   <div class="pos-header-right">
     <input type="file" id="pos-file-input" accept=".json" style="display:none" />
-    <label class="theme-toggle" title="Toggle dark mode">
-      <span class="toggle-icon" aria-hidden="true">
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-      </span>
-      <input type="checkbox" id="theme-toggle-cb" aria-label="Toggle dark mode" />
-      <span class="toggle-track"><span class="toggle-thumb"></span></span>
-    </label>
     <button class="btn btn-ghost" id="btn-load-json" title="Load ZollTool JSON file">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
       <span class="btn-label">Load JSON</span>
@@ -592,10 +628,6 @@
     <button class="btn btn-primary" id="btn-save-json" title="Save updated data for ZollTool" style="display:none">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
       <span class="btn-label">Save JSON</span>
-    </button>
-    <button class="btn btn-ghost" id="btn-auto-backup" title="Auto-backup: download a JSON file after every sale">
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v14a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
-      <span class="btn-label" id="auto-backup-label">Auto-backup</span>
     </button>
     <button class="btn btn-ghost" id="btn-discounts">
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
@@ -611,10 +643,89 @@
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
       <span class="btn-label">ZollTool</span>
     </a>
-    <button class="btn btn-ghost shortcuts-help-desktop" id="btn-shortcuts-help" title="POS keyboard shortcuts">
-      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 1 1 5.82 1c0 2-3 2-3 4"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-      <span class="btn-label">Shortcuts</span>
+    <button class="btn btn-ghost" id="btn-settings" title="Settings">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span class="btn-label">Settings</span>
     </button>
+  </div>
+</div>
+
+<!-- Settings drawer -->
+<div class="settings-backdrop" id="settings-backdrop"></div>
+<div class="settings-drawer" id="settings-drawer" role="dialog" aria-label="POS Settings">
+  <div class="settings-drawer-hdr">
+    <span class="settings-drawer-title">Settings</span>
+    <button class="btn btn-ghost" id="settings-close" style="padding:4px 9px" aria-label="Close settings">✕</button>
+  </div>
+  <div class="settings-drawer-body">
+
+    <!-- Display -->
+    <div class="settings-section">
+      <div class="settings-section-title">Display</div>
+      <div class="settings-row">
+        <div class="settings-row-left">
+          <span class="settings-row-label">Theme</span>
+        </div>
+        <div class="seg-ctrl">
+          <button class="seg-ctrl-btn" id="seg-theme-light" onclick="setThemeFromDrawer('light')">Light</button>
+          <button class="seg-ctrl-btn" id="seg-theme-dark"  onclick="setThemeFromDrawer('dark')">Dark</button>
+        </div>
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-left">
+          <span class="settings-row-label">Product layout</span>
+        </div>
+        <div class="seg-ctrl">
+          <button class="seg-ctrl-btn" id="seg-view-flat"    onclick="setView('flat')">All</button>
+          <button class="seg-ctrl-btn" id="seg-view-grouped" onclick="setView('grouped')">By Type</button>
+        </div>
+      </div>
+      <div class="settings-row">
+        <div class="settings-row-left">
+          <span class="settings-row-label">Sort order</span>
+        </div>
+        <div class="seg-ctrl">
+          <button class="seg-ctrl-btn" id="seg-sort-default" onclick="setSort('default')">Default</button>
+          <button class="seg-ctrl-btn" id="seg-sort-az"      onclick="setSort('az')">A → Z</button>
+          <button class="seg-ctrl-btn" id="seg-sort-za"      onclick="setSort('za')">Z → A</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Backup & Storage -->
+    <div class="settings-section">
+      <div class="settings-section-title">Backup &amp; Storage</div>
+      <div class="settings-row">
+        <div class="settings-row-left">
+          <span class="settings-row-label">Auto-backup after each sale</span>
+          <span class="settings-row-hint">Downloads a JSON file automatically</span>
+        </div>
+        <div class="seg-ctrl">
+          <button class="seg-ctrl-btn" id="seg-backup-on"  onclick="setAutoBackup(true)">On</button>
+          <button class="seg-ctrl-btn" id="seg-backup-off" onclick="setAutoBackup(false)">Off</button>
+        </div>
+      </div>
+      <button class="btn btn-ghost settings-action-btn" id="settings-save-json" style="display:none">
+        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download JSON backup now
+      </button>
+    </div>
+
+    <!-- Keyboard Shortcuts -->
+    <div class="settings-section">
+      <div class="settings-section-title">Keyboard Shortcuts</div>
+      <div class="shortcut-list-inline">
+        <div class="shortcut-row-inline"><span class="shortcut-key-inline">/</span><span class="shortcut-desc-inline">Focus scanner / search</span></div>
+        <div class="shortcut-row-inline"><span class="shortcut-key-inline">1 – 9</span><span class="shortcut-desc-inline">Quick-add visible product or variant</span></div>
+        <div class="shortcut-row-inline"><span class="shortcut-key-inline">Enter</span><span class="shortcut-desc-inline">Confirm scanned barcode / confirm payment</span></div>
+        <div class="shortcut-row-inline"><span class="shortcut-key-inline">Esc</span><span class="shortcut-desc-inline">Close payment, variant picker, or settings</span></div>
+        <div class="shortcut-row-inline"><span class="shortcut-key-inline">Alt + C</span><span class="shortcut-desc-inline">Cash payment</span></div>
+        <div class="shortcut-row-inline"><span class="shortcut-key-inline">Alt + V</span><span class="shortcut-desc-inline">Card payment</span></div>
+        <div class="shortcut-row-inline"><span class="shortcut-key-inline">Alt + S</span><span class="shortcut-desc-inline">Split payment</span></div>
+        <div class="shortcut-row-inline"><span class="shortcut-key-inline">Alt + X</span><span class="shortcut-desc-inline">Clear the cart</span></div>
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -627,15 +738,6 @@
       <div class="product-tools">
         <input class="scanner-input" id="barcode-input" type="text" inputmode="text"
                placeholder="Scan barcode, SKU, or product name" autocomplete="off" title="Scan barcode/SKU or search product name (press / to focus)" />
-        <div class="view-toggle">
-          <button class="view-toggle-btn active" id="btn-sort-default">Default</button>
-          <button class="view-toggle-btn" id="btn-sort-az">A → Z</button>
-          <button class="view-toggle-btn" id="btn-sort-za">Z → A</button>
-        </div>
-        <div class="view-toggle">
-          <button class="view-toggle-btn active" id="btn-view-flat">All</button>
-          <button class="view-toggle-btn" id="btn-view-grouped">By Type</button>
-        </div>
       </div>
     </div>
     <div class="products-grid" id="products-grid"></div>
@@ -722,27 +824,6 @@
   </div>
 </div>
 
-<!-- Shortcuts help overlay -->
-<div class="overlay hidden" id="shortcuts-overlay">
-  <div class="shortcuts-modal">
-    <div class="shortcuts-modal-hdr">
-      <span class="shortcuts-modal-title">POS Shortcuts</span>
-      <button class="btn btn-ghost" id="shortcuts-close" style="padding:4px 9px">x</button>
-    </div>
-    <div class="shortcuts-modal-body">
-      <div class="shortcut-list">
-        <div class="shortcut-row"><span class="shortcut-key">/</span><span class="shortcut-desc">Focus barcode or SKU scanner</span></div>
-        <div class="shortcut-row"><span class="shortcut-key">1-9</span><span class="shortcut-desc">Add the matching visible product, type, or variant</span></div>
-        <div class="shortcut-row"><span class="shortcut-key">Enter</span><span class="shortcut-desc">Add scanned barcode/SKU or confirm an open payment</span></div>
-        <div class="shortcut-row"><span class="shortcut-key">Esc</span><span class="shortcut-desc">Close payment, product, or help dialogs</span></div>
-        <div class="shortcut-row"><span class="shortcut-key">Alt + C</span><span class="shortcut-desc">Open cash payment</span></div>
-        <div class="shortcut-row"><span class="shortcut-key">Alt + V</span><span class="shortcut-desc">Open card payment</span></div>
-        <div class="shortcut-row"><span class="shortcut-key">Alt + S</span><span class="shortcut-desc">Open split payment</span></div>
-        <div class="shortcut-row"><span class="shortcut-key">Alt + X</span><span class="shortcut-desc">Clear the current cart</span></div>
-      </div>
-    </div>
-  </div>
-</div>
 
 <!-- Payment confirm overlay -->
 <div class="overlay hidden" id="pay-overlay">
@@ -2208,17 +2289,17 @@
   function setView(mode) {
     posView = mode;
     localStorage.setItem(POS_VIEW_KEY, mode);
-    document.getElementById('btn-view-flat').classList.toggle('active', mode === 'flat');
-    document.getElementById('btn-view-grouped').classList.toggle('active', mode === 'grouped');
+    document.getElementById('seg-view-flat').classList.toggle('active', mode === 'flat');
+    document.getElementById('seg-view-grouped').classList.toggle('active', mode === 'grouped');
     renderProducts();
   }
 
   function setSort(mode) {
     posSort = mode;
     localStorage.setItem(POS_SORT_KEY, mode);
-    document.getElementById('btn-sort-default').classList.toggle('active', mode === 'default');
-    document.getElementById('btn-sort-az').classList.toggle('active', mode === 'az');
-    document.getElementById('btn-sort-za').classList.toggle('active', mode === 'za');
+    document.getElementById('seg-sort-default').classList.toggle('active', mode === 'default');
+    document.getElementById('seg-sort-az').classList.toggle('active', mode === 'az');
+    document.getElementById('seg-sort-za').classList.toggle('active', mode === 'za');
     renderProducts();
   }
 
@@ -2235,18 +2316,12 @@
     });
   }
 
-  document.getElementById('btn-view-flat').addEventListener('click', () => setView('flat'));
-  document.getElementById('btn-view-grouped').addEventListener('click', () => setView('grouped'));
-  document.getElementById('btn-sort-default').addEventListener('click', () => setSort('default'));
-  document.getElementById('btn-sort-az').addEventListener('click', () => setSort('az'));
-  document.getElementById('btn-sort-za').addEventListener('click', () => setSort('za'));
-
-  // Apply persisted button states on load
-  document.getElementById('btn-view-flat').classList.toggle('active', posView === 'flat');
-  document.getElementById('btn-view-grouped').classList.toggle('active', posView === 'grouped');
-  document.getElementById('btn-sort-default').classList.toggle('active', posSort === 'default');
-  document.getElementById('btn-sort-az').classList.toggle('active', posSort === 'az');
-  document.getElementById('btn-sort-za').classList.toggle('active', posSort === 'za');
+  // Apply persisted segment states on load
+  document.getElementById('seg-view-flat').classList.toggle('active', posView === 'flat');
+  document.getElementById('seg-view-grouped').classList.toggle('active', posView === 'grouped');
+  document.getElementById('seg-sort-default').classList.toggle('active', posSort === 'default');
+  document.getElementById('seg-sort-az').classList.toggle('active', posSort === 'az');
+  document.getElementById('seg-sort-za').classList.toggle('active', posSort === 'za');
 
   // ── Type drill-down overlay ────────────────────────────────────────────────
   function openTypeView(type) {
@@ -2586,13 +2661,10 @@
   function setAutoBackup(on) {
     if (on) sessionStorage.setItem(AUTO_BACKUP_KEY, '1');
     else     sessionStorage.removeItem(AUTO_BACKUP_KEY);
-    const btn = document.getElementById('btn-auto-backup');
-    const lbl = document.getElementById('auto-backup-label');
-    btn.classList.toggle('btn-auto-backup-on', on);
-    btn.title = on
-      ? 'Auto-backup ON — a JSON file is downloaded after every sale. Click to disable.'
-      : 'Auto-backup OFF — click to download a JSON file automatically after each sale.';
-    if (lbl) lbl.textContent = on ? 'Auto-backup ON' : 'Auto-backup';
+    const segOn  = document.getElementById('seg-backup-on');
+    const segOff = document.getElementById('seg-backup-off');
+    if (segOn)  segOn.classList.toggle('active', on);
+    if (segOff) segOff.classList.toggle('active', !on);
   }
 
   function triggerAutoBackup() {
@@ -2693,32 +2765,50 @@
     r.addEventListener('change', updateCartDiscountUnit);
   });
 
-  function openShortcutsHelp() {
-    document.getElementById('shortcuts-overlay').classList.remove('hidden');
+  // ── Settings drawer ────────────────────────────────────────────────────────
+  function openSettings() {
+    document.getElementById('settings-drawer').classList.add('open');
+    document.getElementById('settings-backdrop').classList.add('open');
+    // Sync save JSON button visibility inside drawer
+    document.getElementById('settings-save-json').style.display = appState ? '' : 'none';
   }
 
-  function closeShortcutsHelp() {
-    document.getElementById('shortcuts-overlay').classList.add('hidden');
+  function closeSettings() {
+    document.getElementById('settings-drawer').classList.remove('open');
+    document.getElementById('settings-backdrop').classList.remove('open');
   }
 
-  document.getElementById('btn-shortcuts-help').addEventListener('click', openShortcutsHelp);
-  document.getElementById('shortcuts-close').addEventListener('click', closeShortcutsHelp);
-  document.getElementById('shortcuts-overlay').addEventListener('click', e => {
-    if (e.target === document.getElementById('shortcuts-overlay')) closeShortcutsHelp();
-  });
+  function setThemeFromDrawer(mode) {
+    const isDark = mode === 'dark';
+    document.getElementById('theme-toggle-cb') && (document.getElementById('theme-toggle-cb').checked = isDark);
+    document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
+    localStorage.setItem('zolltool_theme', isDark ? 'dark' : 'light');
+    document.getElementById('seg-theme-light').classList.toggle('active', !isDark);
+    document.getElementById('seg-theme-dark').classList.toggle('active', isDark);
+  }
+
+  // Sync theme seg on load
+  const _isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+  document.getElementById('seg-theme-light').classList.toggle('active', !_isDark);
+  document.getElementById('seg-theme-dark').classList.toggle('active', _isDark);
+
+  document.getElementById('btn-settings').addEventListener('click', openSettings);
+  document.getElementById('settings-close').addEventListener('click', closeSettings);
+  document.getElementById('settings-backdrop').addEventListener('click', closeSettings);
+  document.getElementById('settings-save-json').addEventListener('click', () => { saveJSON(); closeSettings(); });
 
   document.addEventListener('keydown', e => {
     const tag = (e.target && e.target.tagName || '').toLowerCase();
     const typing = ['input', 'textarea', 'select'].includes(tag);
     const payOpen = !document.getElementById('pay-overlay').classList.contains('hidden');
-    const helpOpen = !document.getElementById('shortcuts-overlay').classList.contains('hidden');
+    const settingsOpen = document.getElementById('settings-drawer').classList.contains('open');
     const discountOpen = !document.getElementById('disc-overlay').classList.contains('hidden')
       || !document.getElementById('disc-form-overlay').classList.contains('hidden');
     const cartDiscountOpen = !document.getElementById('cart-discount-overlay').classList.contains('hidden');
 
     if (e.key === 'Escape') {
       if (payOpen) closeOverlay();
-      else if (helpOpen) closeShortcutsHelp();
+      else if (settingsOpen) closeSettings();
       else if (cartDiscountOpen) closeCartDiscountForm();
       else if (!document.getElementById('variant-overlay').classList.contains('hidden')) closeVariantPicker();
       else if (!document.getElementById('type-overlay').classList.contains('hidden')) closeTypeView();
