@@ -272,6 +272,18 @@ body {
   border-color: var(--red-dark);
 }
 
+/* Auto-backup active state (shared by index.html and pos.html) */
+.btn-auto-backup-on {
+  background: #dcfce7 !important;
+  color: #166534 !important;
+  border-color: #86efac !important;
+}
+[data-theme="dark"] .btn-auto-backup-on {
+  background: #14532d !important;
+  color: #86efac !important;
+  border-color: #166534 !important;
+}
+
 /* Ghost + danger: calm at rest, turns red on hover */
 .btn-ghost.btn-danger {
   background: transparent;

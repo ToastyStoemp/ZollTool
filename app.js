@@ -348,6 +348,58 @@ function showStorageWarning() {
   if (main) main.prepend(banner);
 }
 
+/* =========================================================
+   AUTO-BACKUP (shared with POS — preference in localStorage)
+   ========================================================= */
+const AUTOBACKUP_PREF_KEY = 'zolltool_autobackup';
+let _autoBackupTimer = null;
+
+function isAutoBackupOn() {
+  try { return localStorage.getItem(AUTOBACKUP_PREF_KEY) === '1'; } catch { return false; }
+}
+
+function setAutoBackup(on) {
+  try {
+    if (on) localStorage.setItem(AUTOBACKUP_PREF_KEY, '1');
+    else    localStorage.removeItem(AUTOBACKUP_PREF_KEY);
+  } catch { /* blocked */ }
+  const btn = document.getElementById('btn-auto-backup');
+  const lbl = document.getElementById('auto-backup-label');
+  if (btn) {
+    btn.classList.toggle('btn-auto-backup-on', on);
+    btn.title = on
+      ? 'Auto-backup ON — JSON downloaded automatically after changes. Click to disable.'
+      : 'Auto-backup OFF — click to enable automatic JSON downloads after changes.';
+  }
+  if (lbl) lbl.textContent = on ? 'Auto-backup ON' : 'Auto-backup';
+}
+
+function triggerAutoBackup() {
+  const filename = (() => {
+    const event  = (state.meta && state.meta.event)  || 'ZollTool';
+    const artist = (state.artist && (state.artist.companyName || state.artist.fullName)) || '';
+    const date   = new Date().toISOString().slice(0, 10);
+    return [event, artist, 'backup', date].filter(Boolean).join('_')
+      .replace(/[^a-zA-Z0-9_\-\.]/g, '_') + '.json';
+  })();
+  try {
+    const blob = new Blob([JSON.stringify(state)], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 200);
+  } catch (e) { console.warn('Auto-backup download failed:', e); }
+}
+
+// Call after any meaningful save — debounced so rapid field edits produce one file
+function scheduleAutoBackup() {
+  if (!isAutoBackupOn()) return;
+  clearTimeout(_autoBackupTimer);
+  _autoBackupTimer = setTimeout(triggerAutoBackup, 3000);
+}
+
 function saveToStorage() {
   try {
     const json = JSON.stringify(state);
@@ -356,7 +408,10 @@ function saveToStorage() {
     const hasSales = (state.transactions && state.transactions.length > 0)
       || state.products.some(p => (p.soldQty || 0) > 0
           || (p.variants || []).some(v => (v.soldQty || 0) > 0));
-    if (hasSales) localStorage.setItem(STORAGE_BACKUP_KEY, json);
+    if (hasSales) {
+      localStorage.setItem(STORAGE_BACKUP_KEY, json);
+      scheduleAutoBackup(); // only auto-backup when there is actual sales data
+    }
     markUnsaved(false); // storage worked — clear the unsaved indicator
   } catch (e) {
     // Storage might not be available (cross-origin iframe, strict privacy mode…)
@@ -5303,7 +5358,11 @@ function init() {
   document.getElementById('btn-save-json').addEventListener('click', saveJSON);
   document.getElementById('btn-load-json').addEventListener('click', loadJSON);
   document.getElementById('btn-reset-sales').addEventListener('click', resetSalesData);
+  document.getElementById('btn-auto-backup').addEventListener('click', () => setAutoBackup(!isAutoBackupOn()));
   document.getElementById('file-input').addEventListener('change', handleFileLoad);
+
+  // Sync auto-backup button to stored preference on load
+  setAutoBackup(isAutoBackupOn());
 
   // Flatpickr date pickers
   if (typeof flatpickr !== 'undefined') {

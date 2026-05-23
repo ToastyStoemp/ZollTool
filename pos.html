@@ -147,8 +147,6 @@
     .settings-action-btn { width: 100%; margin-top: 8px; justify-content: center;
                            font-size: 13px; padding: 9px 14px; }
     /* Auto-backup active state */
-    .btn-auto-backup-on { background: #dcfce7 !important; color: #166534 !important; border-color: #86efac !important; }
-    [data-theme="dark"] .btn-auto-backup-on { background: #14532d !important; color: #86efac !important; border-color: #166534 !important; }
     /* Shortcut list inside drawer */
     .shortcut-list-inline { display: grid; gap: 2px; margin-top: 4px; }
     .shortcut-row-inline { display: grid; grid-template-columns: 100px 1fr; gap: 10px;
@@ -2641,26 +2639,25 @@
       if (checkbox) checkbox.checked = false;
     }
   }
-  document.getElementById('theme-toggle-cb').addEventListener('change', (event) => {
-    localStorage.setItem('zolltool_theme', event.target.checked ? 'dark' : 'light');
-    applyTheme();
-  });
+  // Theme is now controlled entirely through the settings drawer (setThemeFromDrawer)
 
   // ── Storage change listener (sync with main tab) ───────────────────────────
   window.addEventListener('storage', e => {
     if (e.key === STORAGE_KEY) { loadState(); render(); }
   });
 
-  // ── Auto-backup (download JSON after each sale) ────────────────────────────
-  const AUTO_BACKUP_KEY = 'zolltool_pos_autobackup';
+  // ── Auto-backup (shared preference via localStorage, same key as index.html) ──
+  const AUTOBACKUP_PREF_KEY = 'zolltool_autobackup';
 
   function isAutoBackupOn() {
-    return sessionStorage.getItem(AUTO_BACKUP_KEY) === '1';
+    try { return localStorage.getItem(AUTOBACKUP_PREF_KEY) === '1'; } catch { return false; }
   }
 
   function setAutoBackup(on) {
-    if (on) sessionStorage.setItem(AUTO_BACKUP_KEY, '1');
-    else     sessionStorage.removeItem(AUTO_BACKUP_KEY);
+    try {
+      if (on) localStorage.setItem(AUTOBACKUP_PREF_KEY, '1');
+      else    localStorage.removeItem(AUTOBACKUP_PREF_KEY);
+    } catch { /* blocked — storage unavailable */ }
     const segOn  = document.getElementById('seg-backup-on');
     const segOff = document.getElementById('seg-backup-off');
     if (segOn)  segOn.classList.toggle('active', on);
@@ -2780,7 +2777,6 @@
 
   function setThemeFromDrawer(mode) {
     const isDark = mode === 'dark';
-    document.getElementById('theme-toggle-cb') && (document.getElementById('theme-toggle-cb').checked = isDark);
     document.documentElement.setAttribute('data-theme', isDark ? 'dark' : 'light');
     localStorage.setItem('zolltool_theme', isDark ? 'dark' : 'light');
     document.getElementById('seg-theme-light').classList.toggle('active', !isDark);
@@ -3144,7 +3140,6 @@
     document.getElementById('pos-file-input').click();
   });
   document.getElementById('btn-save-json').addEventListener('click', saveJSON);
-  document.getElementById('btn-auto-backup').addEventListener('click', () => setAutoBackup(!isAutoBackupOn()));
   document.getElementById('pos-file-input').addEventListener('change', e => {
     const file = e.target.files[0];
     if (!file) return;
