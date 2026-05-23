@@ -321,6 +321,53 @@ function saveToStorage() {
   }
 }
 
+/* =========================================================
+   RESET SALES DATA
+   ========================================================= */
+function resetSalesData() {
+  const txCount = (state.transactions || []).length;
+  const productCount = state.products.filter(p => {
+    if (hasVariants(p)) return p.variants.some(v => (v.soldQty || 0) > 0 || (v.soldValue || 0) > 0);
+    return (p.soldQty || 0) > 0 || (p.soldValue || 0) > 0;
+  }).length;
+
+  if (txCount === 0 && productCount === 0) {
+    showToast('No sales data to reset.', 'info');
+    return;
+  }
+
+  const confirmed = window.confirm(
+    `Reset all sales data?\n\n` +
+    `This will clear:\n` +
+    `  • ${txCount} transaction${txCount !== 1 ? 's' : ''} from the POS log\n` +
+    `  • Sold Qty & Sold Value on ${productCount} product${productCount !== 1 ? 's' : ''}\n\n` +
+    `Product list, stock quantities and all other settings are kept.\n` +
+    `This cannot be undone.`
+  );
+  if (!confirmed) return;
+
+  // Clear transaction log
+  state.transactions = [];
+
+  // Clear sold data on every product and its variants
+  state.products.forEach(p => {
+    p.soldQty   = 0;
+    p.soldValue = 0;
+    p.soldVAT   = 0;
+    if (Array.isArray(p.variants)) {
+      p.variants.forEach(v => {
+        v.soldQty   = 0;
+        v.soldValue = 0;
+      });
+    }
+  });
+
+  saveToStorage();
+  renderTable();
+  updateSectionSummaries();
+  showToast(`Sales data reset — ${txCount} transaction${txCount !== 1 ? 's' : ''} cleared.`, 'success');
+}
+
 function loadFromStorage() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -5135,6 +5182,7 @@ function init() {
   // Header buttons
   document.getElementById('btn-save-json').addEventListener('click', saveJSON);
   document.getElementById('btn-load-json').addEventListener('click', loadJSON);
+  document.getElementById('btn-reset-sales').addEventListener('click', resetSalesData);
   document.getElementById('file-input').addEventListener('change', handleFileLoad);
 
   // Flatpickr date pickers

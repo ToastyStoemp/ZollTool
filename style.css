@@ -242,6 +242,26 @@ body {
   border-color: var(--red-dark);
 }
 
+/* Ghost + danger: calm at rest, turns red on hover */
+.btn-ghost.btn-danger {
+  background: transparent;
+  color: var(--red);
+  border-color: transparent;
+}
+.btn-ghost.btn-danger:hover {
+  background: #fff1f1;
+  border-color: var(--red);
+  color: var(--red-dark);
+}
+[data-theme="dark"] .btn-ghost.btn-danger {
+  color: #ff8080;
+}
+[data-theme="dark"] .btn-ghost.btn-danger:hover {
+  background: #3a1010;
+  border-color: #ff6060;
+  color: #ffaaaa;
+}
+
 .btn-sm {
   padding: 4px 10px;
   font-size: 12px;
