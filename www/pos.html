@@ -606,12 +606,18 @@
     <input type="file" id="pos-file-input" accept=".json" style="display:none" />
     <span id="bridge-indicator" title="Card terminal not connected"
       style="font-size:11px;font-weight:700;letter-spacing:.03em;padding:0 4px;cursor:default;user-select:none;color:var(--text-muted)">💳 ○</span>
+    <span id="host-ip-badge" title="WiFi host address — remotes connect here"
+      style="display:none;font-size:11px;font-weight:600;color:var(--green);padding:0 4px;cursor:default;user-select:all"></span>
     <button class="btn btn-ghost hdr-burger" id="hdr-burger" onclick="togglePosMenu()" title="Menu">
       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
         <line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="14" y2="12"/>
       </svg>
     </button>
     <div class="hdr-collapsible" id="hdr-collapsible">
+      <button class="btn btn-ghost" id="btn-host-mode" onclick="toggleHostMode()" title="Toggle WiFi host mode — remotes connect to this device">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+        <span class="btn-label">WiFi Host</span>
+      </button>
       <label class="theme-toggle" title="Toggle dark mode">
         <span class="toggle-icon" aria-hidden="true">
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
@@ -1838,6 +1844,11 @@
   const IS_CAPACITOR    = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   let myposNativeReady  = false;
 
+  // ── Carbon WiFi host mode ─────────────────────────────────────────────────
+  let hostMode     = false;   // true when acting as embedded WS server
+  let hostWsPlugin = null;    // WsServerPlugin instance
+  let hostClients  = {};      // { clientId: { name, hasTerminal } }
+
   // ── MyPOS Carbon bridge (ZollBridge desktop app via WebSocket) ────────────
   let myposBridge        = null;   // active WebSocket
   let myposTerminalReady = false;  // true when USB terminal is also connected
@@ -2022,7 +2033,8 @@
   }
 
   async function nativeCardPayment(amount, currency) {
-    const plugin = window.Capacitor?.Plugins?.MyPos;
+    const plugin = window.Capacitor?.Plugins?.CarbonPayment
+                || window.Capacitor?.Plugins?.MyPos;
     if (!plugin) {
       document.getElementById('confirm-ok').style.display     = '';
       document.getElementById('force-complete').style.display = 'none';
@@ -2062,9 +2074,9 @@
   let pendingRemoteOrder = null; // set while processing a remote device's order
   let remoteCount        = 0;   // live count of connected remote devices
 
-  // Broadcast the current product catalog to the bridge (forwarded to remote devices)
-  function broadcastCatalog() {
-    if (!myposBridge || myposBridge.readyState !== WebSocket.OPEN || !appState) return;
+  // Build the catalog JSON string (shared by bridge and host-mode broadcast)
+  function buildCatalogMsg() {
+    if (!appState) return null;
     const products = (appState.products || [])
       .filter(p => p.forSale !== false)
       .map(p => ({
@@ -2083,25 +2095,132 @@
         amount:   p.amount  != null ? p.amount : null,
         soldQty:  p.soldQty || 0,
       }));
-    myposBridge.send(JSON.stringify({
+    return JSON.stringify({
       action:   'catalog',
       products,
       currency: getCurrency(),
       meta:     { event: (appState.meta && appState.meta.event) || '' },
-    }));
+    });
   }
 
-  // Send the result of a remote order back through the bridge
+  // Broadcast the current product catalog to all connected remotes
+  function broadcastCatalog() {
+    const msg = buildCatalogMsg();
+    if (!msg) return;
+    if (myposBridge && myposBridge.readyState === WebSocket.OPEN)
+      myposBridge.send(msg);
+    if (hostMode && hostWsPlugin)
+      hostWsPlugin.broadcast({ data: msg }).catch(() => {});
+  }
+
+  // Send the result of a remote order back to the originating device
   function sendOrderResult(clientId, approved, error, receipt, cancelled) {
-    if (!myposBridge || myposBridge.readyState !== WebSocket.OPEN) return;
-    myposBridge.send(JSON.stringify({
+    const msg = JSON.stringify({
       action:    'order_result',
       clientId,
       approved,
       error:     error     || null,
       receipt:   receipt   || null,
       cancelled: cancelled || false,
-    }));
+    });
+    if (hostMode && hostWsPlugin)
+      hostWsPlugin.send({ clientId, data: msg }).catch(() => {});
+    else if (myposBridge && myposBridge.readyState === WebSocket.OPEN)
+      myposBridge.send(msg);
+  }
+
+  // ── Carbon WiFi host mode functions ──────────────────────────────────────
+
+  async function startHostMode() {
+    const plugin = window.Capacitor?.Plugins?.WsServer;
+    if (!plugin) { showToast('WiFi server not available', 'error'); return; }
+    hostWsPlugin = plugin;
+    try {
+      await plugin.start({ port: 8766 });
+      const { ip } = await plugin.getLocalIp();
+      const badge = document.getElementById('host-ip-badge');
+      if (badge) { badge.textContent = ip + ':8766'; badge.style.display = ''; }
+
+      plugin.addListener('clientConnected', ({ clientId }) => {
+        hostClients[clientId] = { name: clientId, hasTerminal: false };
+        updateRemoteIndicator(Object.keys(hostClients).length);
+      });
+      plugin.addListener('clientDisconnected', ({ clientId }) => {
+        delete hostClients[clientId];
+        updateRemoteIndicator(Object.keys(hostClients).length);
+        if (pendingRemoteOrder && pendingRemoteOrder.clientId === clientId) {
+          pendingRemoteOrder = null;
+          closeOverlay();
+          showToast('Remote disconnected — payment cancelled', 'info');
+        }
+      });
+      plugin.addListener('message', ({ clientId, data }) => {
+        try { onHostMessage(clientId, JSON.parse(data)); } catch (_) {}
+      });
+
+      showToast('WiFi host active · ' + ip, 'success');
+    } catch (err) {
+      showToast('Host mode error: ' + err.message, 'error');
+      hostMode = false;
+      localStorage.setItem('pos_host_mode', 'false');
+    }
+  }
+
+  async function stopHostMode() {
+    if (hostWsPlugin) { try { await hostWsPlugin.stop(); } catch (_) {} }
+    hostWsPlugin = null;
+    hostClients  = {};
+    const badge = document.getElementById('host-ip-badge');
+    if (badge) badge.style.display = 'none';
+    updateRemoteIndicator(0);
+    showToast('WiFi host stopped', 'info');
+  }
+
+  async function toggleHostMode() {
+    if (!IS_CAPACITOR) { showToast('WiFi host requires the Android app', 'error'); return; }
+    hostMode = !hostMode;
+    localStorage.setItem('pos_host_mode', hostMode ? 'true' : 'false');
+    const btn = document.getElementById('btn-host-mode');
+    if (btn) btn.classList.toggle('btn-primary', hostMode);
+    if (hostMode) await startHostMode(); else await stopHostMode();
+  }
+
+  function onHostMessage(clientId, msg) {
+    switch (msg.action) {
+      case 'identify': {
+        hostClients[clientId] = { name: msg.name || clientId, hasTerminal: !!msg.hasTerminal };
+        if (hostWsPlugin) {
+          hostWsPlugin.send({ clientId, data: JSON.stringify({
+            action: 'connected', clientId, hasPrimary: true,
+          }) }).catch(() => {});
+          const catalogMsg = buildCatalogMsg();
+          if (catalogMsg) hostWsPlugin.send({ clientId, data: catalogMsg }).catch(() => {});
+        }
+        updateRemoteIndicator(Object.keys(hostClients).length);
+        break;
+      }
+      case 'order':
+        handleRemoteOrder({
+          ...msg,
+          paymentMethod: msg.paymentMethod || msg.method || 'cash',
+          remoteName:    msg.name || hostClients[clientId]?.name || 'Remote',
+          clientId,
+        });
+        break;
+      case 'order_self_paid':
+        handleRemoteSelfPaid({
+          ...msg,
+          remoteName: msg.name || hostClients[clientId]?.name || 'Remote',
+          clientId,
+        });
+        break;
+      case 'cart_sync':
+        handleCartSync({ clientId, items: msg.items });
+        break;
+      case 'remote_cancel':
+        handleRemoteCancel({ clientId, remoteName: hostClients[clientId]?.name || 'Remote' });
+        break;
+    }
   }
 
   // Process an order that arrived from a remote device
@@ -2284,18 +2403,33 @@
 
   // ── Native terminal init (Capacitor APK only) ─────────────────────────────
   if (IS_CAPACITOR) {
-    const nativePlugin = window.Capacitor?.Plugins?.MyPos;
-    if (nativePlugin) {
-      nativePlugin.getStatus()
+    const carbonPlugin = window.Capacitor?.Plugins?.CarbonPayment;
+    const myposPlugin  = window.Capacitor?.Plugins?.MyPos;
+
+    if (carbonPlugin) {
+      // On-device Carbon terminal — always ready, no pairing events needed
+      myposNativeReady = true;
+      updateBridgeIndicator('connected', 'Terminal');
+    } else if (myposPlugin) {
+      // External GO2 terminal via Bluetooth Slave SDK
+      myposPlugin.getStatus()
         .then(s => {
           myposNativeReady = !!s.connected;
           if (myposNativeReady) updateBridgeIndicator('connected', 'Terminal');
         })
         .catch(() => {});
-      nativePlugin.addListener('terminalStatus', s => {
+      myposPlugin.addListener('terminalStatus', s => {
         myposNativeReady = !!s.connected;
         updateBridgeIndicator(myposNativeReady ? 'connected' : 'offline', 'Terminal');
       });
+    }
+
+    // Host mode — start embedded WS server if configured
+    hostMode = localStorage.getItem('pos_host_mode') === 'true';
+    if (hostMode) {
+      startHostMode();
+      const btn = document.getElementById('btn-host-mode');
+      if (btn) btn.classList.add('btn-primary');
     }
   }
 

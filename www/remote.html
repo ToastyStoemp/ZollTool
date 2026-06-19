@@ -564,7 +564,10 @@ function connect() {
   if (!url) { showSetup(false); return; }
   try {
     ws = new WebSocket(url);
-    ws.onopen    = () => ws.send(JSON.stringify({ action: 'identify', role: 'remote', name: deviceName() }));
+    ws.onopen    = () => ws.send(JSON.stringify({
+      action: 'identify', role: 'remote', name: deviceName(),
+      hasTerminal: IS_CAPACITOR && !!(window.Capacitor?.Plugins?.CarbonPayment),
+    }));
     ws.onmessage = e => { try { onMsg(JSON.parse(e.data)); } catch {} };
     ws.onclose   = () => {
       ws = null; wsConnected = false; primaryOnline = false;
@@ -667,6 +670,8 @@ function onMsg(msg) {
       break;
     case 'order_result':
       onOrderResult(msg); break;
+    case 'process_payment':
+      handleIncomingPaymentRequest(msg); break;
   }
 }
 
@@ -1083,8 +1088,9 @@ function remoteForceComplete() {
 }
 
 async function localCardPayment(amount, currency) {
-  const plugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MyPos;
-  if (!plugin) { failPayment('myPOS plugin not available'); return; }
+  const plugin = window.Capacitor?.Plugins?.CarbonPayment
+              || window.Capacitor?.Plugins?.MyPos;
+  if (!plugin) { failPayment('Payment plugin not available'); return; }
   try {
     const result = await plugin.startPayment({ amount, currency });
     if (result.approved) {
@@ -1113,6 +1119,37 @@ async function localCardPayment(amount, currency) {
     }
   } catch (err) {
     failPayment(err.message || 'Terminal error');
+  }
+}
+
+// Called when the host asks this Carbon to process a payment on behalf of another client
+async function handleIncomingPaymentRequest(msg) {
+  const plugin = window.Capacitor?.Plugins?.CarbonPayment;
+  if (!plugin) {
+    if (ws && ws.readyState === 1)
+      ws.send(JSON.stringify({ action: 'payment_result', clientId: msg.clientId, approved: false, error: 'No terminal on this device' }));
+    return;
+  }
+  try {
+    const result = await plugin.startPayment({ amount: msg.total, currency: msg.currency });
+    if (ws && ws.readyState === 1) {
+      ws.send(JSON.stringify({
+        action:        'payment_result',
+        clientId:      msg.clientId,
+        approved:      result.approved,
+        transactionId: result.transactionId || '',
+        cardBrand:     result.cardBrand     || '',
+        authCode:      result.authCode      || '',
+        error:         result.error         || null,
+      }));
+    }
+    if (result.approved) {
+      const brand = result.cardBrand ? ` · ${result.cardBrand}` : '';
+      showToast(`Payment processed${brand}`, 'success');
+    }
+  } catch (err) {
+    if (ws && ws.readyState === 1)
+      ws.send(JSON.stringify({ action: 'payment_result', clientId: msg.clientId, approved: false, error: err.message }));
   }
 }
 
@@ -1195,12 +1232,18 @@ el('btn-all').classList.toggle('active', !groupByType);
 el('btn-grouped').classList.toggle('active', groupByType);
 if (IS_CAPACITOR) {
   el('settings-btn').style.display = '';
-  const plugin = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.MyPos;
-  if (plugin) {
-    window.Capacitor.Plugins.MyPos.addListener('terminalStatus', s => {
-      myposPluginReady = !!s.connected;
+  const carbonPlugin = window.Capacitor?.Plugins?.CarbonPayment;
+  const myposPlugin  = window.Capacitor?.Plugins?.MyPos;
+
+  if (carbonPlugin) {
+    // On-device Carbon terminal — always ready
+    myposPluginReady = true;
+    updatePayBtns();
+  }
+  if (myposPlugin) {
+    myposPlugin.addListener('terminalStatus', s => {
+      if (!carbonPlugin) myposPluginReady = !!s.connected;
       updatePayBtns();
-      // Keep the setup dot in sync if the screen is open
       if (!el('setup-overlay').classList.contains('hidden'))
         updateTerminalDot(s.connected, s.connected ? 'GO2 connected' : 'GO2 disconnected');
     });

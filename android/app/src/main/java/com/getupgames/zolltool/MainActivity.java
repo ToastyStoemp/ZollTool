@@ -7,6 +7,8 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(MyPosPlugin.class);
+        registerPlugin(CarbonPaymentPlugin.class);
+        registerPlugin(WsServerPlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
