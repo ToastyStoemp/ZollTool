@@ -9,6 +9,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(MyPosPlugin.class);
         registerPlugin(CarbonPaymentPlugin.class);
         registerPlugin(WsServerPlugin.class);
+        registerPlugin(FileSharePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }

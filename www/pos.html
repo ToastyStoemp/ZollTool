@@ -2977,10 +2977,16 @@
     return parts.replace(/[^a-zA-Z0-9_\-\.]/g, '_') + '.json';
   }
 
-  function saveJSON() {
+  async function saveJSON() {
     if (!appState) { showToast('No data to save.', 'error'); return; }
     const filename = buildFilename();
     const json = JSON.stringify(appState, null, 2);
+
+    if (IS_CAPACITOR) {
+      showSaveOptions(filename, json);
+      return;
+    }
+
     const blob = new Blob([json], { type: 'application/json' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
@@ -2988,11 +2994,37 @@
     a.download = filename;
     document.body.appendChild(a);
     a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 100);
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
     showToast('JSON saved: ' + filename, 'success');
+  }
+
+  function showSaveOptions(filename, json) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+      <div style="background:var(--surface);border-radius:var(--radius);padding:24px;width:280px;box-shadow:var(--shadow-md);display:flex;flex-direction:column;gap:12px;">
+        <div style="font-weight:700;font-size:15px;color:var(--text)">Save JSON</div>
+        <div style="font-size:12px;color:var(--text-muted);word-break:break-all;">${filename}</div>
+        <button id="_sopt_local" class="btn btn-primary" style="width:100%">Save to Device</button>
+        <button id="_sopt_share" class="btn" style="width:100%">Share / Send</button>
+        <button id="_sopt_cancel" class="btn" style="width:100%;color:var(--text-muted)">Cancel</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = () => document.body.removeChild(overlay);
+    overlay.querySelector('#_sopt_cancel').onclick = close;
+    overlay.querySelector('#_sopt_local').onclick = async () => {
+      close();
+      try {
+        const r = await window.Capacitor.Plugins.FileShare.saveToDevice({ filename, content: json });
+        if (r?.saved) showToast('Saved: ' + filename, 'success');
+      } catch (e) { showToast('Save failed: ' + (e.message || e), 'error'); }
+    };
+    overlay.querySelector('#_sopt_share').onclick = async () => {
+      close();
+      try {
+        await window.Capacitor.Plugins.FileShare.shareFile({ filename, content: json, mimeType: 'application/json' });
+      } catch (e) { showToast('Share failed: ' + (e.message || e), 'error'); }
+    };
   }
 
   // ── Discount manager ──────────────────────────────────────────────────────
