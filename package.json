@@ -1,18 +1,30 @@
 {
   "name": "zolltool",
-  "version": "1.0.0",
-  "description": "ZollTool POS — web + Android",
+  "version": "2.0.0",
+  "private": true,
+  "description": "ZollTool POS — web + Android + sync server",
+  "workspaces": [
+    "shared",
+    "app",
+    "server"
+  ],
   "scripts": {
-    "android": "npx cap run android",
-    "android:build": "npx cap build android",
-    "android:sync": "npx cap sync android",
-    "android:open": "npx cap open android"
+    "dev": "npm run dev -w app",
+    "dev:server": "npm run dev -w server",
+    "build": "npm run build -w app",
+    "test": "npm run test -w app && npm run test -w server",
+    "typecheck": "npm run typecheck -w app && npm run typecheck -w server",
+    "android:sync": "npm run build && npx cap sync android",
+    "android:apk": "npm run android:sync && cd android && .\\gradlew.bat assembleDebug",
+    "android:open": "npx cap open android",
+    "android:live": "npx cap run android --live-reload --host=0.0.0.0"
   },
   "dependencies": {
-    "@capacitor/android": "^6.0.0",
-    "@capacitor/core": "^6.0.0"
+    "@capacitor/android": "^8.0.0",
+    "@capacitor/core": "^8.0.0"
   },
   "devDependencies": {
-    "@capacitor/cli": "^8.3.4"
+    "@capacitor/cli": "^8.3.4",
+    "typescript": "~5.9.0"
   }
 }

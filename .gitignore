@@ -12,3 +12,8 @@ Thumbs.db
 bridge/.vs
 bridge/obj
 bridge/bin
+app/dist/
+server/data/
+data/
+*.tsbuildinfo
+.codegraph/

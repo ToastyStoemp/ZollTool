@@ -1,0 +1,3325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ZollTool — Point of Sale</title>
+  <script>
+    if (localStorage.getItem('zolltool_theme') !== 'light') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { overflow-x: hidden; }
+
+    /* ── Palette: mirrors main style.css exactly ── */
+    :root {
+      --bg:          #f5f5f7;   /* gray-100 */
+      --surface:     #ffffff;   /* white */
+      --surface-2:   #f5f5f7;   /* gray-100 — secondary fills, input backgrounds */
+      --border:      #e8e8ec;   /* gray-200 */
+      --border-mid:  #d1d1d8;   /* gray-300 */
+      --text:        #1e1e2e;   /* gray-800 */
+      --text-muted:  #5a5a72;   /* gray-600 */
+      --red:         #D40000;
+      --red-dark:    #A80000;
+      --red-light:   #fdeaea;
+      --green:       #1a7a3e;
+      --blue:        #3b5bdb;
+      --accent:      var(--red);
+      --accent-dark: var(--red-dark);
+      --accent-soft: rgba(212,0,0,.12);
+      --amber:       #d97706;
+      --radius:      8px;
+      --shadow-sm:   0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+      --shadow-md:   0 4px 12px rgba(0,0,0,0.10), 0 2px 4px rgba(0,0,0,0.06);
+    }
+    [data-theme="dark"] {
+      --bg:          #1e1e2e;   /* = main dark body */
+      --surface:     #252535;   /* = main dark card */
+      --surface-2:   #32324a;   /* = main dark secondary */
+      --border:      #32324a;
+      --border-mid:  #44445e;
+      --text:        #e2e2f0;
+      --text-muted:  #a8a8c4;
+      --red-light:   #3d1818;
+      --accent-soft: rgba(212,0,0,.22);
+    }
+
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+           background: var(--bg); color: var(--text); height: 100dvh;
+           display: flex; flex-direction: column; overflow: hidden; }
+
+    .theme-toggle {
+      display: inline-flex;
+      align-items: center;
+      cursor: pointer;
+      margin-right: 8px;
+      gap: 8px;
+    }
+    .theme-toggle .toggle-icon {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      background: var(--surface-2);
+      color: var(--text-muted);
+      font-size: 14px;
+      border: 1px solid var(--border);
+    }
+    .theme-toggle input { display: none; }
+    .toggle-track {
+      width: 40px; height: 22px;
+      background: var(--border-mid);
+      border-radius: 11px;
+      position: relative;
+      transition: background .18s ease;
+    }
+    .theme-toggle input:checked ~ .toggle-track { background: var(--red); }
+    .toggle-thumb {
+      position: absolute;
+      top: 3px; left: 3px;
+      width: 16px; height: 16px;
+      background: #ffffff;
+      border-radius: 50%;
+      transition: transform .18s ease;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.18);
+    }
+    .theme-toggle input:checked ~ .toggle-track .toggle-thumb { transform: translateX(18px); }
+
+    /* ── Header ── */
+    .pos-header { background: var(--surface); border-bottom: 1px solid var(--border);
+                  padding: 10px 18px; display: flex; align-items: center;
+                  justify-content: space-between; flex-shrink: 0; gap: 12px;
+                  box-shadow: var(--shadow-sm); }
+    .pos-header-left { display: flex; align-items: center; gap: 12px; }
+    .app-logo { display: flex; align-items: center; gap: 12px; }
+    .logo-cross { display: flex; align-items: center; justify-content: center;
+                  width: 36px; height: 36px; background: var(--red); color: #fff;
+                  border-radius: 10px; font-size: 18px; font-weight: 700;
+                  flex-shrink: 0; }
+    .app-title { font-size: 17px; font-weight: 700; color: var(--text);
+                 letter-spacing: -0.3px; }
+    .app-subtitle { font-size: 11px; color: var(--text-muted);
+                    text-transform: uppercase; letter-spacing: .06em;
+                    margin-top: 1px; }
+    .pos-event { font-size: 13px; color: var(--text-muted);
+                 padding-left: 12px; border-left: 1px solid var(--border-mid); }
+    .pos-header-right { display: flex; align-items: center; gap: 6px; }
+    .shortcuts-help-desktop { display: inline-flex; }
+
+    /* ── Buttons ── */
+    .btn { display: inline-flex; align-items: center; justify-content: center;
+           gap: 6px; padding: 8px 18px; border-radius: 4px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+           font-size: 12px; font-weight: 600; cursor: pointer; border: 1.5px solid transparent;
+           transition: background .18s ease, border-color .18s ease, color .18s ease, box-shadow .18s ease;
+           white-space: nowrap; text-decoration: none; line-height: 1; background: transparent; }
+    .btn:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+    .btn:hover:not(:disabled) { filter: none; }
+    .btn-ghost { background: transparent; color: var(--text-muted);
+                 border-color: var(--border-mid); }
+    .btn-ghost:hover:not(:disabled) { background: var(--bg);
+                                      border-color: var(--text); color: var(--text); }
+    .btn-red, .btn-primary { background: var(--red); color: #fff; border-color: var(--red); }
+    .btn-red:hover, .btn-primary:hover { background: var(--red-dark); border-color: var(--red-dark);
+                                     box-shadow: 0 2px 8px rgba(212,0,0,0.25); }
+    .btn-red:active, .btn-primary:active { background: var(--red-dark); box-shadow: none; }
+    .btn-green { background: var(--green); color: #fff; }
+    .btn-blue  { background: var(--blue);  color: #fff; }
+    .btn-amber { background: var(--amber); color: #fff; }
+    .btn:disabled { opacity: .38; cursor: not-allowed; }
+
+    /* ── Layout ── */
+    .pos-body { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Products panel ── */
+    .products-panel { flex: 1; display: flex; flex-direction: column; overflow: hidden;
+                      padding: 14px; gap: 12px; }
+    .products-panel-hdr { display: flex; align-items: center; justify-content: space-between;
+                          flex-shrink: 0; }
+    .panel-title { font-size: 11px; font-weight: 600; text-transform: uppercase;
+                   letter-spacing: .06em; color: var(--text-muted); }
+    .product-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .scanner-input { width: min(280px, 36vw); padding: 7px 10px; border: 1.5px solid var(--border-mid);
+                     border-radius: var(--radius); background: var(--surface); color: var(--text);
+                     font-size: 13px; outline: none; }
+    .scanner-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+    .view-toggle { display: flex; border: 1px solid var(--border-mid); border-radius: var(--radius);
+                   overflow: hidden; background: var(--surface); }
+    .view-toggle-btn { background: transparent; border: none; padding: 5px 12px; font-size: 12px;
+                       font-weight: 500; cursor: pointer; color: var(--text-muted);
+                       transition: background .12s, color .12s; }
+    .view-toggle-btn.active { background: var(--accent); color: #fff; }
+    .view-toggle-btn:not(.active):hover { background: var(--surface-2); color: var(--text); }
+    .products-grid { flex: 1; overflow-y: auto; display: grid;
+                     grid-template-columns: repeat(auto-fill, 160px);
+                     gap: 10px; align-content: start;
+                     scrollbar-width: thin; scrollbar-color: var(--border-mid) transparent; }
+    .products-type-group { grid-column: 1 / -1; display: grid;
+                           grid-template-columns: repeat(auto-fill, 160px);
+                           gap: 10px; }
+
+    /* ── Type cards (grouped view) ── */
+    .type-card { background: var(--surface); border: 1.5px solid var(--border);
+                 border-radius: var(--radius); padding: 16px 14px 14px 16px; cursor: pointer;
+                 text-align: left; transition: border-color .15s, box-shadow .15s, transform .15s, background .15s;
+                 display: flex; flex-direction: column; justify-content: center; gap: 6px;
+                 min-height: 112px; box-shadow: var(--shadow-sm); position: relative; overflow: hidden;
+                 --card-accent: var(--accent); }
+    .type-card::before, .product-btn::before {
+      content: ''; position: absolute; inset: 0 auto 0 0; width: 4px;
+      background: var(--card-accent, var(--accent));
+    }
+    .type-card::before { width: 3px; opacity: .45; }
+    .type-card:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-sm); transform: translateY(-1px); }
+    .type-card:focus-visible, .product-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .type-card.out-of-stock { opacity: .55; }
+    .tc-name { font-size: 15px; font-weight: 800; color: var(--text); line-height: 1.2; padding-right: 26px; }
+    .tc-meta { font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+    .tc-stock { font-size: 11px; font-weight: 700; align-self: flex-start; }
+
+    /* ── Product buttons ── */
+    .product-btn { background: var(--surface); border: 1.5px solid var(--border);
+                   border-radius: var(--radius); padding: 14px 12px 12px 16px; cursor: pointer;
+                   text-align: left; transition: border-color .15s, box-shadow .15s, transform .15s, background .15s;
+                   display: flex; flex-direction: column; gap: 7px; min-height: 132px;
+                   box-shadow: var(--shadow-sm); position: relative; overflow: hidden;
+                   --card-accent: var(--accent); }
+    .product-btn:hover { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft), var(--shadow-sm); transform: translateY(-1px); }
+    .product-btn.out-of-stock { opacity: .5; }
+    .product-btn.out-of-stock:hover { border-color: var(--red); box-shadow: 0 0 0 3px rgba(212,0,0,.12); }
+    .pb-title { font-size: 13px; font-weight: 750; line-height: 1.3; color: var(--text); padding-right: 26px; margin-top: auto;
+                display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+                overflow: hidden; }
+    .pb-sku, .pb-type { display: none; }
+    .pb-sku { font-family: 'SF Mono', 'Fira Mono', Consolas, monospace; }
+    .pb-type { font-weight: 700; }
+    .pb-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: auto;
+                 padding-top: 8px; border-top: 1px solid var(--border); }
+    .pb-price { font-size: 11px; font-weight: 800; color: var(--text-muted); text-align: right; line-height: 1.2; }
+    .pb-stock { font-size: 11px; color: var(--text-muted); font-weight: 700; align-self: flex-start; }
+    .pb-stock.low, .pb-stock.none { border-radius: 5px; padding: 2px 6px; background: var(--surface-2); }
+    .pb-stock.low  { color: var(--amber); }
+    .pb-stock.none { color: var(--red); }
+    .card-markers { position: absolute; top: 0; right: 0; display: flex; align-items: flex-start; gap: 4px; z-index: 1; }
+    .card-ribbon { background: var(--accent); color: #fff; font-size: 10px; font-weight: 900;
+                   padding: 4px 7px; border-radius: 0 0 0 6px; line-height: 1; box-shadow: var(--shadow-sm); }
+    .card-dot { display: none; }
+
+    .shortcut-index { position: absolute; top: 8px; right: 8px; min-width: 22px; height: 22px;
+                      display: flex; align-items: center; justify-content: center;
+                      border-radius: 999px; background: var(--surface); border: 1px solid var(--border-mid);
+                      color: var(--text-muted); font-size: 11px; font-weight: 800;
+                      font-family: 'SF Mono', 'Fira Mono', Consolas, monospace; pointer-events: none;
+                      box-shadow: var(--shadow-sm); z-index: 2; }
+    .empty-msg { color: var(--text-muted); font-size: 14px; text-align: center;
+                 padding: 48px 20px; grid-column: 1/-1; line-height: 1.6; }
+
+    /* ── Type drill-down overlay ── */
+    .type-modal { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+                  width: min(760px, 94vw); max-height: 84vh;
+                  display: flex; flex-direction: column;
+                  box-shadow: 0 16px 48px rgba(0,0,0,.28); }
+    .type-modal-hdr { display: flex; align-items: center; justify-content: space-between;
+                      padding: 16px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+                      background: var(--surface-2); }
+    .type-modal-title { font-size: 17px; font-weight: 800; letter-spacing: -0.2px; }
+    .type-modal-body { flex: 1; overflow-y: auto; padding: 16px; display: grid;
+                       grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+                       gap: 12px; align-content: start; background: var(--bg); }
+
+    /* ── Cart panel ── */
+    .cart-panel { width: 320px; flex-shrink: 0; background: var(--surface);
+                  border-left: 1px solid var(--border); display: flex;
+                  flex-direction: column; overflow: hidden; }
+    .cart-header { padding: 12px 16px; border-bottom: 1px solid var(--border);
+                   display: flex; align-items: center; justify-content: space-between;
+                   background: var(--surface); }
+    .cart-title { font-size: 13px; font-weight: 600; text-transform: uppercase;
+                  letter-spacing: .04em; color: var(--text-muted); }
+    .cart-count { background: var(--accent); color: #fff; border-radius: 99px;
+                  font-size: 11px; font-weight: 700; padding: 2px 8px; }
+    .cart-items { flex: 1; overflow-y: auto; padding: 6px 0;
+                  scrollbar-width: thin; scrollbar-color: var(--border-mid) transparent; }
+    .cart-empty { color: var(--text-muted); font-size: 13px; text-align: center;
+                  padding: 36px 16px; }
+    .cart-item { display: flex; align-items: center; gap: 8px;
+                 padding: 9px 16px; border-bottom: 1px solid var(--border); position: relative;
+                 background: var(--surface); transition: transform .18s ease, background .15s ease; }
+    .cart-item::after { content: 'Remove'; position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+                       color: var(--red); font-size: 12px; font-weight: 700; opacity: 0; pointer-events: none;
+                       transition: opacity .15s ease; }
+    .cart-item.swipe-active { background: rgba(212,0,0,.06); }
+    .cart-item.swipe-active::after { opacity: 1; }
+    .cart-item:last-child { border-bottom: none; }
+    .ci-info { flex: 1; min-width: 0; }
+    .ci-title { font-size: 13px; font-weight: 500; white-space: nowrap;
+                overflow: hidden; text-overflow: ellipsis; color: var(--text); }
+    .ci-price { font-size: 12px; color: var(--text-muted); margin-top: 1px; }
+    .ci-qty { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+    .qty-btn { width: 26px; height: 26px; border-radius: var(--radius); border: 1px solid var(--border-mid);
+               background: var(--surface-2); cursor: pointer; font-size: 15px; font-weight: 600;
+               display: flex; align-items: center; justify-content: center;
+               color: var(--text); transition: background .1s, border-color .1s; }
+    .qty-btn:hover { background: var(--border); border-color: var(--accent); }
+    .qty-val { min-width: 22px; text-align: center; font-size: 13px; font-weight: 600; }
+    .ci-line { font-size: 13px; font-weight: 600; min-width: 58px; text-align: right;
+               flex-shrink: 0; color: var(--text); }
+
+    /* ── Cart footer ── */
+    .cart-footer { border-top: 2px solid var(--border); padding: 14px 16px; flex-shrink: 0;
+                   background: var(--surface); }
+    .cart-totals { margin-bottom: 14px; }
+    .total-row { display: flex; justify-content: space-between; font-size: 13px;
+                 padding: 3px 0; color: var(--text-muted); }
+    .total-row.grand { font-size: 18px; font-weight: 700; color: var(--text);
+                       padding-top: 10px; border-top: 1px solid var(--border-mid); margin-top: 8px; }
+    .payment-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .payment-btns .btn { justify-content: center; padding: 13px; font-size: 14px; font-weight: 600; }
+    .payment-btns .btn-wide { grid-column: 1 / -1; }
+    .btn-clear { margin-top: 8px; width: 100%; justify-content: center;
+                 padding: 7px; font-size: 12px; color: var(--text-muted); }
+
+    /* ── Toast ── */
+    .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px);
+             background: var(--text); color: var(--surface); padding: 10px 20px; border-radius: var(--radius);
+             font-size: 13px; font-weight: 500; transition: transform .25s ease;
+             pointer-events: none; z-index: 999; white-space: nowrap;
+             box-shadow: var(--shadow-md); }
+    .toast.show { transform: translateX(-50%) translateY(0); }
+    .toast.success { background: var(--green); color: #fff; }
+    .toast.error   { background: var(--red);   color: #fff; }
+
+    /* ── Overlays ── */
+    .overlay { position: fixed; inset: 0; background: rgba(0,0,0,.55);
+               display: flex; align-items: center; justify-content: center; z-index: 100; }
+    .overlay.hidden { display: none; }
+
+    /* ── Payment confirm modal ── */
+    .confirm-modal { background: var(--surface); border-radius: 12px; padding: 28px 24px;
+                     width: 380px; text-align: center;
+                     box-shadow: 0 16px 48px rgba(0,0,0,.28); }
+    .confirm-icon { font-size: 36px; margin-bottom: 10px; }
+    .confirm-title { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+    .confirm-subtitle { font-size: 13px; color: var(--text-muted); margin-bottom: 8px; }
+    .confirm-amount { font-size: 30px; font-weight: 800; margin-bottom: 16px; color: var(--accent); }
+    .confirm-btns { display: flex; gap: 10px; margin-top: 16px; }
+    .confirm-btns .btn { flex: 1; justify-content: center; padding: 12px; font-size: 14px; }
+
+    .shortcuts-modal { background: var(--surface); border-radius: 12px; width: min(520px, 92vw);
+                       box-shadow: 0 16px 48px rgba(0,0,0,.28); overflow: hidden; }
+    .shortcuts-modal-hdr { display: flex; align-items: center; justify-content: space-between;
+                           padding: 14px 18px; border-bottom: 1px solid var(--border); }
+    .shortcuts-modal-title { font-size: 16px; font-weight: 700; }
+    .shortcuts-modal-body { padding: 14px 18px 18px; }
+    .shortcut-list { display: grid; gap: 8px; }
+    .shortcut-row { display: grid; grid-template-columns: 140px 1fr; align-items: center; gap: 14px;
+                    padding: 8px 0; border-bottom: 1px solid var(--border); }
+    .shortcut-row:last-child { border-bottom: none; }
+    .shortcut-key { display: inline-flex; align-items: center; justify-content: center;
+                    min-height: 28px; padding: 4px 10px; border: 1px solid var(--border-mid);
+                    border-radius: var(--radius); background: var(--surface-2); font-weight: 800;
+                    font-family: 'SF Mono', 'Fira Mono', Consolas, monospace; font-size: 12px; }
+    .shortcut-desc { font-size: 13px; color: var(--text); }
+
+    /* ── Cash section ── */
+    .cash-section { text-align: left; border-top: 1px solid var(--border); padding-top: 14px; margin-top: 4px; }
+    .cash-shortcuts { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .shortcut-btn { background: var(--surface-2); border: 1.5px solid var(--border-mid);
+                    border-radius: var(--radius); padding: 6px 12px; font-size: 13px; font-weight: 600;
+                    cursor: pointer; color: var(--text); transition: border-color .12s, background .12s; }
+    .shortcut-btn:hover { border-color: var(--accent); background: var(--surface); }
+    .shortcut-btn.exact { border-color: var(--accent); color: var(--accent); background: var(--surface); }
+    .cash-input-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .cash-input-row label { font-size: 13px; color: var(--text-muted); white-space: nowrap; }
+    .cash-input-row input { flex: 1; padding: 9px 12px; border: 1.5px solid var(--border-mid);
+                            border-radius: var(--radius); background: var(--surface-2); color: var(--text);
+                            font-size: 16px; font-weight: 600; text-align: right; outline: none;
+                            min-width: 0; appearance: textfield; -moz-appearance: textfield; }
+    .cash-input-row input::-webkit-outer-spin-button,
+    .cash-input-row input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+    .cash-input-row input:focus { border-color: var(--accent); }
+    .change-row { display: flex; justify-content: space-between; align-items: center;
+                  padding: 10px 14px; border-radius: var(--radius);
+                  background: var(--surface-2); border: 1px solid var(--border); }
+    .change-label { font-size: 13px; color: var(--text-muted); font-weight: 500; }
+    .change-val { font-size: 22px; font-weight: 800; }
+    .change-val.ok   { color: var(--green); }
+    .change-val.low  { color: var(--red); }
+
+    .split-section { text-align: left; border-top: 1px solid var(--border); padding-top: 14px; margin-top: 4px; }
+    .split-row { display: grid; grid-template-columns: 72px 1fr; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .split-row label { font-size: 13px; color: var(--text-muted); }
+    .split-row input { padding: 9px 12px; border: 1.5px solid var(--border-mid); border-radius: var(--radius);
+                       background: var(--surface-2); color: var(--text); font-size: 15px; font-weight: 600;
+                       text-align: right; outline: none; }
+    .split-row input:focus { border-color: var(--accent); }
+    .split-shortcuts { display: flex; flex-wrap: wrap; gap: 6px; margin: -2px 0 10px 82px; }
+    .split-section-title { font-size: 11px; font-weight: 700; color: var(--text-muted);
+                           text-transform: uppercase; letter-spacing: .05em; margin: 12px 0 8px; }
+    .split-summary { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px;
+                     background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+                     font-size: 13px; }
+    .split-summary strong { font-size: 15px; }
+
+    /* ── Cart quantity badge on product card ── */
+    .cart-qty-badge {
+      position: absolute; top: 6px; left: 50%; transform: translateX(-50%);
+      background: var(--accent); color: #fff;
+      font-size: 13px; font-weight: 800;
+      min-width: 24px; height: 24px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0 5px; line-height: 1; pointer-events: none;
+      box-shadow: 0 1px 5px rgba(0,0,0,0.30);
+    }
+
+    /* ── Discount badge on product card ── */
+    .pb-discount { display: none; }
+    [data-theme="dark"] .pb-discount { background: rgba(26,122,62,.22); }
+
+    /* ── Cart discount lines ── */
+    .cart-disc { display: flex; justify-content: space-between; align-items: center;
+                 padding: 4px 16px; font-size: 12px; color: var(--green); }
+    .cart-disc .cd-amount { font-weight: 700; }
+    .cart-discount-btn { background: var(--surface-2); border-color: var(--border-mid); color: var(--text);
+                         gap: 6px; }
+    .cart-discount-btn.active { border-color: var(--green); background: rgba(26,122,62,.1); color: var(--green); }
+    [data-theme="dark"] .cart-discount-btn.active { background: rgba(26,122,62,.18); }
+    .custom-discount-row { display: flex; align-items: center; gap: 8px; }
+    .custom-discount-row .df-input { flex: 1; }
+    .custom-discount-mode { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+
+    /* ── Discount manager modal ── */
+    .disc-modal { background: var(--surface); border-radius: 12px; width: 440px;
+                  max-height: 80vh; display: flex; flex-direction: column;
+                  box-shadow: 0 16px 48px rgba(0,0,0,.28); }
+    .disc-modal-hdr { display: flex; justify-content: space-between; align-items: center;
+                      padding: 14px 18px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .disc-modal-title { font-size: 15px; font-weight: 700; }
+    .disc-modal-body { flex: 1; overflow-y: auto; padding: 12px; }
+    .disc-modal-foot { padding: 12px 14px; border-top: 1px solid var(--border); flex-shrink: 0; }
+    .disc-empty { text-align: center; color: var(--text-muted); padding: 32px 16px; font-size: 13px; }
+    .disc-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px;
+                 border: 1.5px solid var(--border); border-radius: var(--radius); margin-bottom: 8px;
+                 background: var(--surface); }
+    .di-info { flex: 1; min-width: 0; }
+    .di-name { font-size: 13px; font-weight: 600; }
+    .di-summary { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+    .di-products { font-size: 11px; color: var(--text-muted); margin-top: 2px;
+                   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .di-actions { display: flex; gap: 5px; flex-shrink: 0; }
+
+    /* ── Discount form modal ── */
+    .disc-form-modal { background: var(--surface); border-radius: 12px; width: 460px;
+                       max-height: 88vh; display: flex; flex-direction: column;
+                       box-shadow: 0 16px 48px rgba(0,0,0,.28); }
+    .df-body { flex: 1; overflow-y: auto; padding: 16px 18px; display: flex;
+               flex-direction: column; gap: 14px; }
+    .df-footer { padding: 12px 16px; border-top: 1px solid var(--border); flex-shrink: 0;
+                 display: flex; gap: 10px; justify-content: flex-end; }
+    .df-label { font-size: 11px; font-weight: 600; color: var(--text-muted);
+                text-transform: uppercase; letter-spacing: .05em; margin-bottom: 6px; }
+    .df-input { width: 100%; padding: 8px 10px; border: 1.5px solid var(--border-mid);
+                border-radius: var(--radius); background: var(--surface-2); color: var(--text);
+                font-size: 14px; outline: none; transition: border-color .15s; }
+    .df-input:focus { border-color: var(--accent); }
+    .df-search { margin-bottom: 8px; }
+    .type-options { display: flex; flex-direction: column; gap: 6px; }
+    .type-option { display: flex; align-items: center; gap: 10px; padding: 9px 12px;
+                   border: 1.5px solid var(--border); border-radius: var(--radius); cursor: pointer;
+                   font-size: 13px; transition: border-color .12s, background .12s; }
+    .type-option:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+    [data-theme="dark"] .type-option:has(input:checked) { background: var(--accent-soft); }
+    .type-option input[type="radio"] { accent-color: var(--accent); flex-shrink: 0; }
+    .type-option-desc { font-size: 11px; color: var(--text-muted); margin-top: 1px; }
+    .inline-fields { display: flex; align-items: center; gap: 7px; flex-wrap: wrap;
+                     font-size: 13px; color: var(--text-muted); }
+    .df-inline { width: 62px; padding: 6px 8px; border: 1.5px solid var(--border-mid);
+                 border-radius: 6px; background: var(--surface-2); color: var(--text);
+                 font-size: 14px; font-weight: 600; text-align: center; outline: none;
+                 transition: border-color .15s; }
+    .df-inline:focus { border-color: var(--accent); }
+    .df-inline::-webkit-outer-spin-button, .df-inline::-webkit-inner-spin-button { -webkit-appearance: none; }
+    .df-inline { -moz-appearance: textfield; appearance: textfield; }
+    .tier-row { display: flex; align-items: center; gap: 7px; margin-bottom: 6px;
+                font-size: 13px; color: var(--text-muted); }
+    .products-check-list { display: flex; flex-direction: column; gap: 5px;
+                           max-height: 160px; overflow-y: auto; }
+    .product-check { display: flex; align-items: center; gap: 8px; padding: 6px 9px;
+                     border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+                     font-size: 13px; transition: border-color .12s; }
+    .product-check.variant-check { margin-left: 18px; background: var(--surface-2); font-size: 12px; }
+    .product-check-title { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+    .product-check-meta { color: var(--text-muted); font-size: 11px; }
+    .product-check:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+    [data-theme="dark"] .product-check:has(input:checked) { background: var(--accent-soft); }
+    .product-check input { accent-color: var(--accent); }
+    .product-check.hidden { display: none; }
+    .product-check-empty { color: var(--text-muted); font-size: 12px; padding: 8px 2px; }
+
+    /* ── Mobile cart bottom-sheet ── */
+    .cart-fab {
+      display: none; /* desktop: hidden */
+    }
+    .cart-drag-handle {
+      display: none; /* desktop: hidden */
+      width: 36px; height: 4px; background: var(--border-mid); border-radius: 2px;
+      position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+    }
+    .cart-mobile-close { display: none; }
+    .cart-backdrop {
+      display: none;
+      position: fixed; inset: 0; background: rgba(0,0,0,.45);
+      z-index: 44; cursor: pointer;
+    }
+
+    @media (max-width: 768px) {
+      /* Cart becomes a fixed bottom-sheet (taken out of normal flow),
+         so products-panel expands to fill full width naturally.
+         DO NOT change pos-body overflow — the flex height chain must stay intact. */
+
+      /* Products panel: let flex handle the height; just pad the bottom
+         so the last row of cards isn't hidden behind the FAB bar. */
+      .products-panel {
+        padding-bottom: 74px;
+      }
+
+      /* Cart becomes fixed bottom-sheet */
+      .cart-panel {
+        position: fixed; bottom: 0; left: 0; right: 0; top: auto;
+        width: 100%; height: 88dvh;
+        transform: translateY(100%);
+        transition: transform .3s cubic-bezier(.4,0,.2,1);
+        z-index: 45;
+        border-left: none;
+        border-top: 1px solid var(--border);
+        border-radius: 16px 16px 0 0;
+        box-shadow: 0 -8px 40px rgba(0,0,0,.22);
+      }
+      .cart-panel.open { transform: translateY(0); }
+      .cart-backdrop.open { display: block; }
+
+      /* Drag handle and close button visible on mobile */
+      .cart-drag-handle { display: block; }
+      .cart-header { padding-top: 22px; position: relative; }
+      .cart-mobile-close { display: flex; }
+
+      /* FAB: sticky bottom bar (~64px tall) */
+      .cart-fab {
+        display: flex; align-items: center; gap: 12px;
+        position: fixed; bottom: 0; left: 0; right: 0;
+        background: var(--surface); border-top: 2px solid var(--border);
+        padding: 10px 16px; z-index: 40;
+        box-shadow: 0 -4px 20px rgba(0,0,0,.12);
+      }
+      .cart-fab-left { flex: 1; min-width: 0; }
+      .cart-fab-count { font-size: 12px; color: var(--text-muted); font-weight: 500; line-height: 1.3; }
+      .cart-fab-total { font-size: 20px; font-weight: 800; color: var(--text); line-height: 1.2; }
+      .cart-fab-total.empty { color: var(--text-muted); font-size: 14px; font-weight: 400; }
+
+      /* Header: go icon-only at tablet width to prevent overflow */
+      .pos-event { display: none; }
+      .pos-header-right .btn-label { display: none; }
+      .pos-header-right .btn { padding: 6px 9px; }
+      .shortcuts-help-desktop { display: none; }
+
+      /* Modals: narrower on tablets */
+      .disc-modal { width: min(440px, 94vw); }
+      .disc-form-modal { width: min(460px, 94vw); }
+      .confirm-modal { width: min(380px, 92vw); }
+    }
+
+    @media (min-width: 768px) {
+      .shortcuts-help-desktop { display: inline-flex; }
+    }
+
+    /* ── Header burger menu (phones) ── */
+    .hdr-burger { display: none; }
+    .hdr-collapsible { display: flex; align-items: center; gap: 4px; }
+
+    @media (max-width: 540px) {
+      .pos-header { position: relative; }
+      .hdr-burger { display: flex; }
+      .hdr-collapsible {
+        display: none;
+        position: absolute;
+        top: 100%;
+        right: 0;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow-md);
+        flex-direction: column;
+        align-items: stretch;
+        padding: 6px;
+        gap: 4px;
+        z-index: 200;
+        min-width: 170px;
+      }
+      .hdr-collapsible.open { display: flex; }
+      .hdr-collapsible .btn,
+      .hdr-collapsible .theme-toggle-wrap { width: 100%; justify-content: flex-start; padding: 8px 10px; }
+    }
+
+    @media (max-width: 480px) {
+      /* Header: tighter padding on phones */
+      .pos-header { padding: 8px 12px; gap: 8px; }
+
+      /* Products: tighter grid — keep bottom padding for FAB */
+      .products-panel { padding: 8px 8px 74px; gap: 8px; }
+      .products-panel-hdr { flex-wrap: wrap; gap: 6px; }
+      .products-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+      .product-btn, .type-card { padding: 10px 8px; }
+      .pb-title { font-size: 12px; }
+      .pb-price { font-size: 13px; }
+
+      /* Cart bottom sheet full height on small phones */
+      .cart-panel { height: 92dvh; border-radius: 12px 12px 0 0; }
+      .cart-items { flex: 1; }
+
+      /* FAB: tighter */
+      .cart-fab { padding: 8px 14px; }
+      .cart-fab-total { font-size: 18px; }
+
+      /* Payment modal fits screen */
+      .confirm-modal { padding: 22px 18px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="pos-header">
+  <div class="pos-header-left">
+    <div class="app-logo">
+      <span class="logo-cross">&#10010;</span>
+      <div>
+        <div class="app-title">ZollTool POS</div>
+        <div class="app-subtitle">Point of Sale</div>
+      </div>
+    </div>
+    <div class="pos-event" id="hdr-event">—</div>
+  </div>
+  <div class="pos-header-right">
+    <input type="file" id="pos-file-input" accept=".json" style="display:none" />
+    <span id="bridge-indicator" title="Card terminal not connected"
+      style="font-size:11px;font-weight:700;letter-spacing:.03em;padding:0 4px;cursor:default;user-select:none;color:var(--text-muted)">💳 ○</span>
+    <span id="host-ip-badge" title="WiFi host address — remotes connect here"
+      style="display:none;font-size:11px;font-weight:600;color:var(--green);padding:0 4px;cursor:default;user-select:all"></span>
+    <button class="btn btn-ghost hdr-burger" id="hdr-burger" onclick="togglePosMenu()" title="Menu">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <line x1="2" y1="4" x2="14" y2="4"/><line x1="2" y1="8" x2="14" y2="8"/><line x1="2" y1="12" x2="14" y2="12"/>
+      </svg>
+    </button>
+    <div class="hdr-collapsible" id="hdr-collapsible">
+      <button class="btn btn-ghost" id="btn-host-mode" onclick="toggleHostMode()" title="Toggle WiFi host mode — remotes connect to this device">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.55a11 11 0 0 1 14.08 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+        <span class="btn-label">WiFi Host</span>
+      </button>
+      <label class="theme-toggle" title="Toggle dark mode">
+        <span class="toggle-icon" aria-hidden="true">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+        </span>
+        <input type="checkbox" id="theme-toggle-cb" aria-label="Toggle dark mode" />
+        <span class="toggle-track"><span class="toggle-thumb"></span></span>
+      </label>
+      <button class="btn btn-ghost" id="btn-load-json" title="Load ZollTool JSON file">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        <span class="btn-label">Load JSON</span>
+      </button>
+      <button class="btn btn-primary" id="btn-save-json" title="Save updated data for ZollTool" style="display:none">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        <span class="btn-label">Save JSON</span>
+      </button>
+      <button class="btn btn-ghost" id="btn-discounts">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+        <span class="btn-label">Discounts</span>
+      </button>
+      <a href="history.html" class="btn btn-ghost" id="btn-history">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span class="btn-label">History</span>
+      </a>
+      <a href="index.html" class="btn btn-ghost">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><polyline points="12 19 5 12 12 5"/></svg>
+        <span class="btn-label">ZollTool</span>
+      </a>
+      <button class="btn btn-ghost shortcuts-help-desktop" id="btn-shortcuts-help" title="POS keyboard shortcuts">
+        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 1 1 5.82 1c0 2-3 2-3 4"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span class="btn-label">Shortcuts</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<div class="pos-body">
+
+  <!-- Products -->
+  <div class="products-panel">
+    <div class="products-panel-hdr">
+      <div class="panel-title">Products</div>
+      <div class="product-tools">
+        <input class="scanner-input" id="barcode-input" type="text" inputmode="text"
+               placeholder="Scan barcode, SKU, or product name" autocomplete="off" title="Scan barcode/SKU or search product name (press / to focus)" />
+        <div class="view-toggle">
+          <button class="view-toggle-btn active" id="btn-sort-default">Default</button>
+          <button class="view-toggle-btn" id="btn-sort-az">A → Z</button>
+          <button class="view-toggle-btn" id="btn-sort-za">Z → A</button>
+        </div>
+        <div class="view-toggle">
+          <button class="view-toggle-btn active" id="btn-view-flat">All</button>
+          <button class="view-toggle-btn" id="btn-view-grouped">By Type</button>
+        </div>
+      </div>
+    </div>
+    <div class="products-grid" id="products-grid"></div>
+  </div>
+
+  <!-- Cart -->
+  <div class="cart-panel" id="cart-panel">
+    <div class="cart-drag-handle"></div>
+    <div class="cart-header">
+      <span class="cart-title">Current Sale</span>
+      <span class="cart-count" id="cart-count">0</span>
+      <button class="btn btn-ghost cart-mobile-close" id="cart-mobile-close" style="padding:4px 9px;margin-left:4px">✕</button>
+    </div>
+    <div class="cart-items" id="cart-items">
+      <div class="cart-empty">Cart is empty</div>
+    </div>
+    <div class="cart-footer">
+      <div class="cart-totals">
+        <div class="total-row"><span>Items</span><span id="tot-items">0</span></div>
+        <div class="total-row" id="tot-subtotal-row" style="display:none"><span>Subtotal</span><span id="tot-subtotal">—</span></div>
+        <div id="tot-disc-lines"></div>
+        <div class="total-row grand"><span>Total</span><span id="tot-price">—</span></div>
+      </div>
+      <div class="payment-btns">
+        <button class="btn btn-green btn-wide" id="btn-cash" disabled>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2"/><path d="M6 12h.01M18 12h.01"/></svg>
+          Pay with Cash
+        </button>
+        <button class="btn btn-blue btn-wide" id="btn-card" disabled>
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+          Pay with Card
+        </button>
+        <button class="btn btn-amber" id="btn-split" disabled>
+          Split Payment
+        </button>
+        <button class="btn btn-ghost cart-discount-btn" id="btn-cart-discount" disabled>
+          Discount
+        </button>
+      </div>
+      <button class="btn btn-ghost btn-clear" id="btn-clear">Clear cart</button>
+    </div>
+  </div>
+
+</div>
+
+<!-- Custom cart discount overlay -->
+<div class="overlay hidden" id="cart-discount-overlay" style="z-index:110">
+  <div class="disc-form-modal">
+    <div class="disc-modal-hdr">
+      <span class="disc-modal-title">Custom Cart Discount</span>
+      <button class="btn btn-ghost" id="cart-discount-close" style="padding:4px 9px">x</button>
+    </div>
+    <div class="df-body">
+      <div>
+        <div class="df-label">Name</div>
+        <input id="cart-disc-name" class="df-input" type="text" placeholder="e.g. Event discount" />
+      </div>
+      <div>
+        <div class="df-label">Discount type</div>
+        <div class="custom-discount-mode">
+          <label class="type-option">
+            <input type="radio" name="cart-disc-type" value="amount" checked />
+            <div><div style="font-weight:600">Amount off</div><div class="type-option-desc">Subtract a fixed amount</div></div>
+          </label>
+          <label class="type-option">
+            <input type="radio" name="cart-disc-type" value="percent" />
+            <div><div style="font-weight:600">Percent off</div><div class="type-option-desc">Apply to cart subtotal</div></div>
+          </label>
+        </div>
+      </div>
+      <div>
+        <div class="df-label">Value</div>
+        <div class="custom-discount-row">
+          <input id="cart-disc-value" class="df-input" type="number" min="0" step="0.01" placeholder="0.00" />
+          <span id="cart-disc-unit" style="font-size:13px;color:var(--text-muted);font-weight:700"></span>
+        </div>
+      </div>
+    </div>
+    <div class="df-footer">
+      <button class="btn btn-ghost" id="cart-discount-remove">Remove</button>
+      <button class="btn btn-ghost" id="cart-discount-cancel">Cancel</button>
+      <button class="btn btn-green" id="cart-discount-apply">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- Shortcuts help overlay -->
+<div class="overlay hidden" id="shortcuts-overlay">
+  <div class="shortcuts-modal">
+    <div class="shortcuts-modal-hdr">
+      <span class="shortcuts-modal-title">POS Shortcuts</span>
+      <button class="btn btn-ghost" id="shortcuts-close" style="padding:4px 9px">x</button>
+    </div>
+    <div class="shortcuts-modal-body">
+      <div class="shortcut-list">
+        <div class="shortcut-row"><span class="shortcut-key">/</span><span class="shortcut-desc">Focus barcode or SKU scanner</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">1-9</span><span class="shortcut-desc">Add the matching visible product, type, or variant</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Enter</span><span class="shortcut-desc">Add scanned barcode/SKU or confirm an open payment</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Esc</span><span class="shortcut-desc">Close payment, product, or help dialogs</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Alt + C</span><span class="shortcut-desc">Open cash payment</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Alt + V</span><span class="shortcut-desc">Open card payment</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Alt + S</span><span class="shortcut-desc">Open split payment</span></div>
+        <div class="shortcut-row"><span class="shortcut-key">Alt + X</span><span class="shortcut-desc">Clear the current cart</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Payment confirm overlay -->
+<div class="overlay hidden" id="pay-overlay">
+  <div class="confirm-modal">
+    <div class="confirm-icon" id="confirm-icon">💵</div>
+    <div class="confirm-title" id="confirm-title">Confirm Payment</div>
+    <div class="confirm-subtitle" id="confirm-subtitle"></div>
+    <div class="confirm-amount" id="confirm-amount"></div>
+    <div class="cash-section" id="cash-section" style="display:none">
+      <div class="cash-shortcuts" id="cash-shortcuts"></div>
+      <div class="cash-input-row">
+        <label for="cash-received">Received</label>
+        <input type="number" id="cash-received" min="0" step="0.01" placeholder="0.00" />
+      </div>
+      <div class="change-row">
+        <span class="change-label">Change</span>
+        <span class="change-val" id="change-val">—</span>
+      </div>
+    </div>
+    <div class="split-section" id="split-section" style="display:none">
+      <div class="split-section-title">Cash portion</div>
+      <div class="split-row">
+        <label for="split-cash">Cash</label>
+        <input type="number" id="split-cash" min="0" step="0.01" placeholder="0.00" />
+      </div>
+      <div class="split-shortcuts" id="split-cash-shortcuts"></div>
+      <div class="split-section-title">Card portion</div>
+      <div class="split-row">
+        <label for="split-card">Card</label>
+        <input type="number" id="split-card" min="0" step="0.01" placeholder="0.00" />
+      </div>
+      <div class="split-shortcuts" id="split-card-shortcuts"></div>
+      <div class="split-summary">
+        <span id="split-status">Remaining</span>
+        <strong id="split-remaining">-</strong>
+      </div>
+    </div>
+    <div class="confirm-btns">
+      <button class="btn btn-ghost" id="confirm-cancel">Cancel</button>
+      <button class="btn btn-amber" id="force-complete" style="display:none" title="Mark as paid without terminal confirmation">Force Complete</button>
+      <button class="btn btn-green" id="confirm-ok">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<!-- Variant picker overlay -->
+<div class="overlay hidden" id="variant-overlay" style="z-index:110">
+  <div class="type-modal" style="max-width:420px">
+    <div class="type-modal-hdr">
+      <span class="type-modal-title" id="variant-modal-title">Choose a variant</span>
+      <button class="btn btn-ghost" id="variant-overlay-close" style="padding:4px 9px">✕</button>
+    </div>
+    <div class="type-modal-body" id="variant-modal-body"></div>
+  </div>
+</div>
+
+<!-- Type drill-down overlay -->
+<div class="overlay hidden" id="type-overlay">
+  <div class="type-modal">
+    <div class="type-modal-hdr">
+      <span class="type-modal-title" id="type-modal-title">—</span>
+      <button class="btn btn-ghost" id="type-overlay-close" style="padding:4px 9px">✕</button>
+    </div>
+    <div class="type-modal-body" id="type-modal-body"></div>
+  </div>
+</div>
+
+<!-- Discount manager overlay -->
+<div class="overlay hidden" id="disc-overlay">
+  <div class="disc-modal">
+    <div class="disc-modal-hdr">
+      <span class="disc-modal-title">Discounts</span>
+      <button class="btn btn-ghost" id="disc-close" style="padding:4px 9px">✕</button>
+    </div>
+    <div class="disc-modal-body" id="disc-list"></div>
+    <div class="disc-modal-foot">
+      <button class="btn btn-green" id="disc-new-btn" style="width:100%;justify-content:center">+ New Discount</button>
+    </div>
+  </div>
+</div>
+
+<!-- Discount form overlay -->
+<div class="overlay hidden" id="disc-form-overlay" style="z-index:110">
+  <div class="disc-form-modal">
+    <div class="disc-modal-hdr">
+      <span class="disc-modal-title" id="df-title">New Discount</span>
+      <button class="btn btn-ghost" id="df-close" style="padding:4px 9px">✕</button>
+    </div>
+    <div class="df-body">
+      <div>
+        <div class="df-label">Name</div>
+        <input id="df-name" class="df-input" type="text" placeholder="e.g. 3 for 2, Bundle deal…" />
+      </div>
+      <div>
+        <div class="df-label">Type</div>
+        <div class="type-options">
+          <label class="type-option">
+            <input type="radio" name="df-type" value="bxgy" checked />
+            <div><div style="font-weight:600">Buy X get Y free</div><div class="type-option-desc">e.g. Buy 2, get 1 free — cheapest item(s) are free</div></div>
+          </label>
+          <label class="type-option">
+            <input type="radio" name="df-type" value="nth_pct" />
+            <div><div style="font-weight:600">Every Nth item % off</div><div class="type-option-desc">e.g. Every 3rd item is 50% off</div></div>
+          </label>
+          <label class="type-option">
+            <input type="radio" name="df-type" value="tiered" />
+            <div><div style="font-weight:600">Tiered pricing</div><div class="type-option-desc">e.g. 1 for $5, 3 for $13, 5 for $20</div></div>
+          </label>
+        </div>
+      </div>
+      <div id="df-bxgy-section">
+        <div class="df-label">Configuration</div>
+        <div class="inline-fields">
+          Buy <input id="df-buy" class="df-inline" type="number" min="1" value="2" />
+          get <input id="df-free" class="df-inline" type="number" min="1" value="1" /> free
+        </div>
+      </div>
+      <div id="df-nth-section" style="display:none">
+        <div class="df-label">Configuration</div>
+        <div class="inline-fields">
+          Every <input id="df-nth" class="df-inline" type="number" min="2" value="3" />
+          items, the last is <input id="df-pct" class="df-inline" type="number" min="1" max="100" value="50" />% off
+        </div>
+      </div>
+      <div id="df-tiered-section" style="display:none">
+        <div class="df-label">Tiers</div>
+        <div id="df-tiers"></div>
+        <button type="button" class="btn btn-ghost" id="df-add-tier" style="font-size:12px;padding:5px 10px;margin-top:4px">+ Add tier</button>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;margin-top:10px;cursor:pointer">
+          <input type="checkbox" id="df-tier-continue" style="accent-color:var(--accent)" />
+          Continue at highest tier unit price beyond max tier
+        </label>
+      </div>
+      <div>
+        <div class="df-label">Applies to (products or variants)</div>
+        <input id="df-product-search" class="df-input df-search" type="search" placeholder="Search products, variants, SKU, or type" autocomplete="off" />
+        <div class="products-check-list" id="df-products"></div>
+        <div class="product-check-empty" id="df-products-empty" style="display:none">No matching products.</div>
+      </div>
+    </div>
+    <div class="df-footer">
+      <button class="btn btn-ghost" id="df-cancel">Cancel</button>
+      <button class="btn btn-green" id="df-save">Save discount</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mobile: cart backdrop (dims products when cart is open) -->
+<div class="cart-backdrop" id="cart-backdrop"></div>
+
+<!-- Mobile: sticky cart FAB (replaces fixed cart panel) -->
+<div class="cart-fab" id="cart-fab">
+  <div class="cart-fab-left">
+    <div class="cart-fab-count" id="fab-item-count">Cart is empty</div>
+    <div class="cart-fab-total empty" id="fab-total">Tap to view</div>
+  </div>
+  <button class="btn btn-blue" id="fab-open-cart" style="white-space:nowrap">
+    View Cart
+  </button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+  const STORAGE_KEY        = 'zolltool_state_v1';
+  const DISCOUNTS_KEY_OLD  = 'zolltool_pos_discounts'; // legacy — migrate on first load
+
+  function uuid() {
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+    });
+  }
+
+  // ── State ──────────────────────────────────────────────────────────────────
+  let appState = null;   // full ZollTool state from localStorage
+  let cart = {};         // { productId: qty }
+  let cartDiscount = null;
+  let pendingPayment = null; // { method: 'cash'|'card'|'split', total, payments? }
+
+  function loadState() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      appState = raw ? JSON.parse(raw) : null;
+    } catch (e) { appState = null; }
+  }
+
+  function saveState() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+    } catch(e) {}
+  }
+
+  function getCurrency() {
+    return (appState && appState.meta && appState.meta.currency) ? appState.meta.currency : 'CHF';
+  }
+
+  function fmtPrice(val) {
+    if (val == null || isNaN(val)) return '—';
+    return getCurrency() + ' ' + parseFloat(val).toFixed(2);
+  }
+
+  function calcProduct(p) {
+    const amount = p.amount || 0;
+    const totalWeightKg = Math.round(amount * (p.weightG || 0)) / 1000;
+    let totalValue = p.totalValueCHF != null ? Math.round(parseFloat(p.totalValueCHF)) : null;
+    if (totalValue == null && p.price != null && p.price !== '') {
+      totalValue = Math.round(parseFloat(p.price) * amount);
+    }
+    const effectiveUnitPrice = (totalValue != null && amount > 0) ? totalValue / amount : null;
+    return { totalValue, effectiveUnitPrice, totalWeightKg };
+  }
+
+  // ── Variant helpers ────────────────────────────────────────────────────────
+  function hasVariants(p) {
+    return Array.isArray(p.variants) && p.variants.length > 0;
+  }
+  function variantPrice(p, v) {
+    const raw = (v.price != null && v.price !== '') ? v.price : p.price;
+    return (raw != null && !isNaN(parseFloat(raw))) ? parseFloat(raw) : null;
+  }
+  function variantWeight(p, v) {
+    const raw = (v.weightG != null && v.weightG !== '') ? v.weightG : p.weightG;
+    return parseFloat(raw) || 0;
+  }
+
+  // Cart keys: plain productId for non-variant products, "productId:variantId" for variants.
+  function parseCartKey(key) {
+    const idx = key.indexOf(':');
+    return idx === -1 ? { pid: key, vid: null } : { pid: key.slice(0, idx), vid: key.slice(idx + 1) };
+  }
+
+  // ── Cart helpers ───────────────────────────────────────────────────────────
+  function cartTotal() {
+    if (!appState) return 0;
+    return Object.entries(cart).reduce((sum, [key, qty]) => {
+      if (!qty) return sum;
+      const { pid, vid } = parseCartKey(key);
+      const p = appState.products.find(pr => pr.id === pid);
+      if (!p) return sum;
+      let price;
+      if (vid) {
+        const v = (p.variants || []).find(vv => vv.id === vid);
+        price = v ? variantPrice(p, v) : null;
+      } else {
+        price = calcProduct(p).effectiveUnitPrice;
+      }
+      return sum + (price != null ? price * qty : 0);
+    }, 0);
+  }
+
+  function cartItemCount() {
+    return Object.values(cart).reduce((s, q) => s + q, 0);
+  }
+
+  function remainingStock(p, vid) {
+    if (vid) {
+      const v = (p.variants || []).find(vv => vv.id === vid);
+      if (!v) return 0;
+      return (v.amount || 0) - (v.soldQty || 0) - (cart[`${p.id}:${vid}`] || 0);
+    }
+    if (hasVariants(p)) {
+      return p.variants.reduce((s, v) => s + remainingStock(p, v.id), 0);
+    }
+    return (p.amount || 0) - (p.soldQty || 0) - (cart[p.id] || 0);
+  }
+
+  function addToCart(productId, variantId) {
+    const p = appState && appState.products.find(pr => pr.id === productId);
+    if (!p) return;
+    if (hasVariants(p) && !variantId) { openVariantPicker(productId); return; }
+    const key = variantId ? `${productId}:${variantId}` : productId;
+    cart[key] = (cart[key] || 0) + 1;
+    render();
+  }
+
+  function normalizeSearch(s) {
+    return String(s || '').trim().toLowerCase();
+  }
+
+  function productSearchText(p, v) {
+    return [p.title, p.sku, p.type, v && v.name, v && v.sku]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase();
+  }
+
+  function findPosSearchMatch(code) {
+    const needle = normalizeSearch(code);
+    if (!needle || !appState) return null;
+    const partial = [];
+
+    for (const p of appState.products || []) {
+      if (p.forSale === false) continue;
+      const productLabel = p.title || '(untitled)';
+      const productTitle = normalizeSearch(p.title);
+      const productSku = normalizeSearch(p.sku);
+
+      if (productSku && productSku === needle) return { productId: p.id, variantId: null, label: productLabel };
+      if (productTitle && productTitle === needle) return { productId: p.id, variantId: null, label: productLabel };
+
+      for (const v of p.variants || []) {
+        const variantLabel = `${productLabel} - ${v.name || v.sku || 'variant'}`;
+        const variantName = normalizeSearch(v.name);
+        const variantSku = normalizeSearch(v.sku);
+        const combinedName = normalizeSearch(`${p.title || ''} ${v.name || ''}`);
+
+        if (variantSku && variantSku === needle) return { productId: p.id, variantId: v.id, label: variantLabel };
+        if (variantName && variantName === needle) return { productId: p.id, variantId: v.id, label: variantLabel };
+        if (combinedName && combinedName === needle) return { productId: p.id, variantId: v.id, label: variantLabel };
+
+        if (productSearchText(p, v).includes(needle)) {
+          partial.push({ productId: p.id, variantId: v.id, label: variantLabel });
+        }
+      }
+
+      if (productSearchText(p).includes(needle)) {
+        partial.push({ productId: p.id, variantId: null, label: productLabel });
+      }
+    }
+
+    const unique = [];
+    const seen = new Set();
+    for (const match of partial) {
+      const key = `${match.productId}:${match.variantId || ''}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unique.push(match);
+    }
+
+    if (unique.length === 1) return unique[0];
+    if (unique.length > 1) return { ambiguous: true, count: unique.length };
+    return null;
+  }
+
+  function scanBarcode(code) {
+    const match = findPosSearchMatch(code);
+    if (!match) { showToast('No product found for that search.', 'error'); return; }
+    if (match.ambiguous) { showToast(`${match.count} matches - keep typing to narrow it down.`, 'error'); return; }
+    addToCart(match.productId, match.variantId);
+    showToast(`Added ${match.label || 'product'}`, 'success');
+  }
+
+  function setCartQty(key, qty) {
+    qty = Math.max(0, qty);
+    if (qty === 0) delete cart[key];
+    else cart[key] = qty;
+    if (cartItemCount() === 0) cartDiscount = null;
+    render();
+  }
+
+  function clearCart() { cart = {}; cartDiscount = null; render(); }
+
+  // ── Variant picker ─────────────────────────────────────────────────────────
+  let variantPickerProductId = null;
+
+  function openVariantPicker(productId) {
+    const p = appState.products.find(pr => pr.id === productId);
+    if (!p) return;
+    variantPickerProductId = productId;
+    const color = p.type ? typeColor(p.type) : 'var(--accent)';
+    const title = document.getElementById('variant-modal-title');
+    title.textContent = p.title || 'Choose a variant';
+    title.style.color = color;
+    const body = document.getElementById('variant-modal-body');
+    body.style.borderTop = `3px solid ${color}`;
+    body.innerHTML = p.variants.map(v => {
+      const stock = remainingStock(p, v.id);
+      const price = variantPrice(p, v);
+      const stockClass = stock <= 0 ? 'none' : stock <= 3 ? 'low' : '';
+      const stockLabel = stock <= 0 ? 'Out of stock' : stock <= 3 ? `${stock} left` : `${stock} in stock`;
+      const vCartQty = cart[`${productId}:${v.id}`] || 0;
+      return `<button class="product-btn${stock <= 0 ? ' out-of-stock' : ''}"
+                style="--card-accent:${color}"
+                onclick="addToCart('${productId}','${v.id}');closeVariantPicker()">
+        ${vCartQty > 0 ? `<span class="cart-qty-badge">${vCartQty}</span>` : ''}
+        <span class="pb-title">${escHtml(v.name || '(untitled)')}</span>
+        ${v.sku ? `<span class="pb-sku">${escHtml(v.sku)}</span>` : ''}
+        <span class="pb-footer"><span class="pb-stock ${stockClass}">${stockLabel}</span>${price != null ? `<span class="pb-price">${fmtPrice(price)}</span>` : ''}</span>
+      </button>`;
+    }).join('');
+    document.getElementById('variant-overlay').classList.remove('hidden');
+    applyNumberShortcuts(body);
+  }
+
+  function closeVariantPicker() {
+    document.getElementById('variant-overlay').classList.add('hidden');
+    variantPickerProductId = null;
+  }
+
+  document.getElementById('variant-overlay-close').addEventListener('click', closeVariantPicker);
+  document.getElementById('variant-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('variant-overlay')) closeVariantPicker();
+  });
+
+  function applyNumberShortcuts(root) {
+    if (!root) return;
+    root.querySelectorAll('.shortcut-index').forEach(el => el.remove());
+    const buttons = [...root.querySelectorAll('button.product-btn, button.type-card')]
+      .slice(0, 9);
+    buttons.forEach((btn, idx) => {
+      const badge = document.createElement('span');
+      badge.className = 'shortcut-index';
+      badge.textContent = String(idx + 1);
+      btn.appendChild(badge);
+    });
+  }
+
+  function activeShortcutContainer() {
+    if (!document.getElementById('variant-overlay').classList.contains('hidden')) {
+      return document.getElementById('variant-modal-body');
+    }
+    if (!document.getElementById('type-overlay').classList.contains('hidden')) {
+      return document.getElementById('type-modal-body');
+    }
+    return document.getElementById('products-grid');
+  }
+
+  function triggerNumberShortcut(key) {
+    const idx = parseInt(key, 10) - 1;
+    if (idx < 0 || idx > 8) return false;
+    const container = activeShortcutContainer();
+    const buttons = [...container.querySelectorAll('button.product-btn, button.type-card')]
+      .filter(btn => btn.offsetParent !== null);
+    const btn = buttons[idx];
+    if (!btn) return false;
+    btn.click();
+    return true;
+  }
+
+  // ── Discounts ──────────────────────────────────────────────────────────────
+  // Discounts live in appState.discounts so they are included in the exported JSON.
+  function loadDiscounts() {
+    if (!appState) return [];
+    // One-time migration from the old separate localStorage key
+    if (!Array.isArray(appState.discounts)) {
+      try {
+        const legacy = JSON.parse(localStorage.getItem(DISCOUNTS_KEY_OLD) || '[]');
+        appState.discounts = legacy;
+        if (legacy.length) { saveState(); localStorage.removeItem(DISCOUNTS_KEY_OLD); }
+        else appState.discounts = [];
+      } catch(e) { appState.discounts = []; }
+    }
+    return appState.discounts;
+  }
+  function saveDiscounts(d) {
+    if (!appState) return;
+    appState.discounts = d;
+    saveState();
+  }
+
+  function discTypeSummary(d) {
+    if (d.type === 'bxgy')    return `Buy ${d.buyQty}, get ${d.freeQty} free`;
+    if (d.type === 'nth_pct') return `Every ${d.nth} items, last is ${d.percent}% off`;
+    if (d.type === 'tiered')  return (d.tiers || []).map(t => `${t.qty} for ${getCurrency()} ${t.total}`).join(' · ') || 'Tiered';
+    return '';
+  }
+
+  function discountProductIds(d) {
+    return Array.isArray(d.productIds) ? d.productIds : [];
+  }
+
+  function discountVariantIds(d) {
+    return Array.isArray(d.variantIds) ? d.variantIds : [];
+  }
+
+  function calculateDiscounts() {
+    if (!appState) return [];
+    const results = [];
+    for (const disc of loadDiscounts()) {
+      const productTargets = discountProductIds(disc);
+      const variantTargets = discountVariantIds(disc);
+      if (!productTargets.length && !variantTargets.length) continue;
+      const items = [];
+      const seenCartKeys = new Set();
+      for (const pid of productTargets) {
+        const p = appState.products.find(pr => pr.id === pid);
+        if (!p) continue;
+        if (hasVariants(p)) {
+          for (const [key, qty] of Object.entries(cart)) {
+            const { pid: kpid, vid } = parseCartKey(key);
+            if (kpid !== pid || !vid || !qty) continue;
+            seenCartKeys.add(key);
+            const v = (p.variants || []).find(vv => vv.id === vid);
+            const price = v ? (variantPrice(p, v) || 0) : 0;
+            for (let i = 0; i < qty; i++) items.push(price);
+          }
+        } else {
+          const qty = cart[pid] || 0;
+          if (!qty) continue;
+          seenCartKeys.add(pid);
+          const price = calcProduct(p).effectiveUnitPrice || 0;
+          for (let i = 0; i < qty; i++) items.push(price);
+        }
+      }
+      for (const variantKey of variantTargets) {
+        if (seenCartKeys.has(variantKey)) continue;
+        const { pid, vid } = parseCartKey(variantKey);
+        if (!pid || !vid) continue;
+        const qty = cart[variantKey] || 0;
+        if (!qty) continue;
+        const p = appState.products.find(pr => pr.id === pid);
+        const v = p ? (p.variants || []).find(vv => vv.id === vid) : null;
+        if (!p || !v) continue;
+        const price = variantPrice(p, v) || 0;
+        for (let i = 0; i < qty; i++) items.push(price);
+      }
+      if (!items.length) continue;
+      items.sort((a, b) => a - b); // cheapest first
+      const totalQty = items.length;
+      let amount = 0;
+
+      if (disc.type === 'bxgy') {
+        const groupSize = (disc.buyQty || 2) + (disc.freeQty || 1);
+        const freeCount = Math.floor(totalQty / groupSize) * (disc.freeQty || 1);
+        for (let i = 0; i < freeCount; i++) amount += items[i] || 0;
+      } else if (disc.type === 'nth_pct') {
+        const nth = disc.nth || 3, pct = (disc.percent || 50) / 100;
+        for (let i = nth - 1; i < totalQty; i += nth) amount += (items[i] || 0) * pct;
+      } else if (disc.type === 'tiered') {
+        if (!disc.tiers || !disc.tiers.length) continue;
+        if (totalQty < 2) continue;
+        const normalTotal = items.reduce((s, v) => s + v, 0);
+        const avgUnit = normalTotal / totalQty;
+        const sortedTiers = [...disc.tiers].sort((a, b) => b.qty - a.qty);
+        let remaining = totalQty, tieredTotal = 0;
+        for (const tier of sortedTiers) {
+          const g = Math.floor(remaining / tier.qty);
+          if (g > 0) { tieredTotal += g * tier.total; remaining -= g * tier.qty; }
+        }
+        const maxTier = sortedTiers[0];
+        const remainderUnit = disc.tierContinue ? (maxTier.total / maxTier.qty) : avgUnit;
+        tieredTotal += remaining * remainderUnit;
+        amount = normalTotal - tieredTotal;
+      }
+
+      if (amount > 0.001) results.push({ disc, amount });
+    }
+    return results;
+  }
+
+  function calculateCartDiscount(baseTotal) {
+    if (!cartDiscount || !baseTotal) return 0;
+    const value = parseFloat(cartDiscount.value) || 0;
+    if (value <= 0) return 0;
+    if (cartDiscount.type === 'percent') return Math.min(baseTotal, baseTotal * Math.min(value, 100) / 100);
+    return Math.min(baseTotal, value);
+  }
+
+  function cartDiscountLabel() {
+    if (!cartDiscount) return '';
+    const name = cartDiscount.name && cartDiscount.name.trim() ? cartDiscount.name.trim() : 'Custom discount';
+    if (cartDiscount.type === 'percent') return `${name} (${parseFloat(cartDiscount.value) || 0}%)`;
+    return name;
+  }
+
+  function updateCartDiscountUnit() {
+    const type = document.querySelector('input[name="cart-disc-type"]:checked')?.value || 'amount';
+    document.getElementById('cart-disc-unit').textContent = type === 'percent' ? '%' : getCurrency();
+  }
+
+  function openCartDiscountForm() {
+    if (cartItemCount() === 0) return;
+    const type = cartDiscount ? cartDiscount.type : 'amount';
+    document.querySelectorAll('input[name="cart-disc-type"]').forEach(r => {
+      r.checked = r.value === type;
+    });
+    document.getElementById('cart-disc-name').value = cartDiscount ? (cartDiscount.name || '') : '';
+    document.getElementById('cart-disc-value').value = cartDiscount ? (cartDiscount.value || '') : '';
+    document.getElementById('cart-discount-remove').disabled = !cartDiscount;
+    updateCartDiscountUnit();
+    document.getElementById('cart-discount-overlay').classList.remove('hidden');
+  }
+
+  function closeCartDiscountForm() {
+    document.getElementById('cart-discount-overlay').classList.add('hidden');
+  }
+
+  function applyCartDiscount() {
+    const type = document.querySelector('input[name="cart-disc-type"]:checked').value;
+    const value = parseFloat(document.getElementById('cart-disc-value').value) || 0;
+    if (value <= 0) { showToast('Enter a discount value.', 'error'); return; }
+    if (type === 'percent' && value > 100) { showToast('Percent discount cannot be over 100%.', 'error'); return; }
+    cartDiscount = {
+      type,
+      value,
+      name: document.getElementById('cart-disc-name').value.trim() || 'Custom discount'
+    };
+    closeCartDiscountForm();
+    renderCart();
+  }
+
+  function removeCartDiscount() {
+    cartDiscount = null;
+    closeCartDiscountForm();
+    renderCart();
+  }
+
+  function cartGrandTotal() {
+    const subtotal = cartTotal();
+    const ruleDiscAmt = calculateDiscounts().reduce((s, r) => s + r.amount, 0);
+    const afterRuleDiscounts = Math.max(0, subtotal - ruleDiscAmt);
+    return Math.max(0, afterRuleDiscounts - calculateCartDiscount(afterRuleDiscounts));
+  }
+
+  function getProductDiscounts(productId) {
+    return loadDiscounts().filter(d => discountProductIds(d).includes(productId));
+  }
+
+  function getVariantDiscounts(productId, variantId) {
+    return loadDiscounts().filter(d =>
+      discountProductIds(d).includes(productId) ||
+      discountVariantIds(d).includes(`${productId}:${variantId}`)
+    );
+  }
+
+  // ── Cash shortcuts ─────────────────────────────────────────────────────────
+  // Real note denominations per currency (smallest → largest)
+  const CURRENCY_BILLS = {
+    CHF: [10, 20, 50, 100, 200],
+    EUR: [5, 10, 20, 50, 100, 200],
+    USD: [1, 5, 10, 20, 50, 100],
+    GBP: [5, 10, 20, 50],
+    SGD: [5, 10, 20, 50, 100],   // $20 commemorative still widely circulated
+    JPY: [1000, 2000, 5000, 10000],
+    AUD: [5, 10, 20, 50, 100],
+    CAD: [5, 10, 20, 50, 100],
+    DKK: [50, 100, 200, 500, 1000],
+    NOK: [50, 100, 200, 500, 1000],
+    SEK: [20, 50, 100, 200, 500, 1000],
+    HKD: [10, 20, 50, 100, 500],
+  };
+
+  function buildCashShortcuts(total, currency) {
+    const amounts = cashShortcutAmounts(total, currency);
+    const container = document.getElementById('cash-shortcuts');
+    container.innerHTML = '';
+
+    const exactBtn = document.createElement('button');
+    exactBtn.className = 'shortcut-btn exact';
+    exactBtn.textContent = 'Exact';
+    exactBtn.type = 'button';
+    exactBtn.onclick = () => setCashReceived(total);
+    container.appendChild(exactBtn);
+
+    amounts.forEach(amount => {
+      const btn = document.createElement('button');
+      btn.className = 'shortcut-btn';
+      btn.textContent = Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+      btn.type = 'button';
+      btn.onclick = () => setCashReceived(amount);
+      container.appendChild(btn);
+    });
+  }
+
+  function cashShortcutAmounts(total, currency) {
+    const bills = CURRENCY_BILLS[currency] || [5, 10, 20, 50, 100, 200];
+    const candidates = new Set();
+
+    // 1-bill amounts above total
+    for (const b of bills) {
+      if (b > total) candidates.add(b);
+    }
+
+    // 2-bill combinations above total (b1 ≤ b2 to avoid same-sum duplicates, but Set handles that)
+    for (const b1 of bills) {
+      for (const b2 of bills) {
+        const s = b1 + b2;
+        if (s > total) candidates.add(s);
+      }
+    }
+
+    // 3-bill combinations as fallback when we still have fewer than 4 options
+    if (candidates.size < 4) {
+      for (const b1 of bills) {
+        for (const b2 of bills) {
+          for (const b3 of bills) {
+            const s = b1 + b2 + b3;
+            if (s > total) candidates.add(s);
+          }
+        }
+      }
+    }
+
+    return [...candidates].sort((a, b) => a - b).slice(0, 4);
+  }
+
+  function splitCashPortionAmounts(total, currency) {
+    const bills = CURRENCY_BILLS[currency] || [5, 10, 20, 50, 100, 200];
+    const candidates = new Set();
+    bills.forEach(b => {
+      if (b > 0 && b < total) candidates.add(b);
+    });
+    [0.25, 0.5, 0.75].forEach(part => {
+      const amount = Math.round(total * part * 100) / 100;
+      if (amount > 0 && amount < total) candidates.add(amount);
+    });
+    return [...candidates].sort((a, b) => a - b).slice(0, 5);
+  }
+
+  function setCashReceived(amount) {
+    const input = document.getElementById('cash-received');
+    input.value = Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+    updateChange();
+    input.focus();
+  }
+
+  function setSplitAmount(field, amount) {
+    const input = document.getElementById(field === 'cash' ? 'split-cash' : 'split-card');
+    input.value = Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+    updateSplitPayment();
+    input.focus();
+  }
+
+  function buildSplitShortcuts() {
+    if (!pendingPayment || pendingPayment.method !== 'split') return;
+    const total = pendingPayment.total;
+    const cur = getCurrency();
+    const cash = parseFloat(document.getElementById('split-cash').value) || 0;
+    const card = parseFloat(document.getElementById('split-card').value) || 0;
+    const remainingAfterCash = Math.max(0, total - card);
+    const remainingAfterCard = Math.max(0, total - cash);
+    renderSplitShortcutButtons('split-cash-shortcuts', 'cash', remainingAfterCash, cur, true);
+    renderSplitShortcutButtons('split-card-shortcuts', 'card', remainingAfterCard, cur, false);
+  }
+
+  function renderSplitShortcutButtons(containerId, field, remaining, currency, includeBills) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = '';
+
+    const exactBtn = document.createElement('button');
+    exactBtn.className = 'shortcut-btn exact';
+    exactBtn.type = 'button';
+    exactBtn.textContent = field === 'cash' ? 'Remaining' : 'Card remainder';
+    exactBtn.onclick = () => setSplitAmount(field, remaining);
+    container.appendChild(exactBtn);
+
+    if (includeBills) {
+      splitCashPortionAmounts(remaining, currency).forEach(amount => {
+        const btn = document.createElement('button');
+        btn.className = 'shortcut-btn';
+        btn.type = 'button';
+        btn.textContent = Number.isInteger(amount) ? String(amount) : amount.toFixed(2);
+        btn.onclick = () => setSplitAmount(field, amount);
+        container.appendChild(btn);
+      });
+    } else {
+      [0.25, 0.5, 0.75].forEach(part => {
+        const amount = Math.round(remaining * part * 100) / 100;
+        if (amount <= 0) return;
+        const btn = document.createElement('button');
+        btn.className = 'shortcut-btn';
+        btn.type = 'button';
+        btn.textContent = `${Math.round(part * 100)}%`;
+        btn.onclick = () => setSplitAmount(field, amount);
+        container.appendChild(btn);
+      });
+    }
+  }
+
+  function updateChange() {
+    const total = pendingPayment ? pendingPayment.total : 0;
+    const received = parseFloat(document.getElementById('cash-received').value) || 0;
+    const change = received - total;
+    const el = document.getElementById('change-val');
+    const cur = getCurrency();
+
+    if (received === 0) {
+      el.textContent = '—';
+      el.className = 'change-val';
+    } else if (change < -0.001) {
+      el.textContent = `− ${cur} ${Math.abs(change).toFixed(2)}`;
+      el.className = 'change-val low';
+    } else if (change < 0.001) {
+      el.textContent = 'No change';
+      el.className = 'change-val ok';
+    } else {
+      el.textContent = `${cur} ${change.toFixed(2)}`;
+      el.className = 'change-val ok';
+    }
+
+    document.getElementById('confirm-ok').disabled = received < total - 0.001;
+  }
+
+  function updateSplitPayment() {
+    if (!pendingPayment || pendingPayment.method !== 'split') return;
+    const total = pendingPayment.total;
+    const cash = parseFloat(document.getElementById('split-cash').value) || 0;
+    const card = parseFloat(document.getElementById('split-card').value) || 0;
+    const paid = cash + card;
+    const remaining = total - paid;
+    const cur = getCurrency();
+    const status = document.getElementById('split-status');
+    const amount = document.getElementById('split-remaining');
+    const ok = document.getElementById('confirm-ok');
+
+    if (remaining > 0.001) {
+      status.textContent = 'Remaining';
+      amount.textContent = cur + ' ' + remaining.toFixed(2);
+      amount.style.color = 'var(--red)';
+      ok.disabled = true;
+    } else if (remaining < -0.001) {
+      status.textContent = 'Over by';
+      amount.textContent = cur + ' ' + Math.abs(remaining).toFixed(2);
+      amount.style.color = 'var(--amber)';
+      ok.disabled = true;
+    } else {
+      status.textContent = 'Paid';
+      amount.textContent = cur + ' ' + paid.toFixed(2);
+      amount.style.color = 'var(--green)';
+      ok.disabled = cash <= 0 && card <= 0;
+    }
+    pendingPayment.payments = [
+      { method: 'cash', amount: Math.max(0, cash) },
+      { method: 'card', amount: Math.max(0, card) },
+    ].filter(p => p.amount > 0);
+    buildSplitShortcuts();
+  }
+
+  // ── Payment ────────────────────────────────────────────────────────────────
+  function initiatePayment(method) {
+    if (cartItemCount() === 0) return;
+    const total = cartGrandTotal();
+    const cur = getCurrency();
+    pendingPayment = { method, total };
+    document.getElementById('confirm-icon').textContent = method === 'cash' ? '💵' : '💳';
+    document.getElementById('confirm-title').textContent = method === 'cash' ? 'Cash Payment' : 'Card Payment';
+    document.getElementById('confirm-subtitle').textContent = `Mark ${cartItemCount()} item${cartItemCount()!==1?'s':''} as sold?`;
+    document.getElementById('confirm-amount').textContent = cur + ' ' + total.toFixed(2);
+    document.getElementById('confirm-ok').className = method === 'cash' ? 'btn btn-green' : 'btn btn-blue';
+
+    const cashSection = document.getElementById('cash-section');
+    if (method === 'cash') {
+      cashSection.style.display = '';
+      buildCashShortcuts(total, cur);
+      setCashReceived(total);
+    } else {
+      cashSection.style.display = 'none';
+      document.getElementById('confirm-ok').disabled = false;
+    }
+
+    document.getElementById('pay-overlay').classList.remove('hidden');
+  }
+
+  function confirmPayment() {
+    if (!pendingPayment || !appState) return;
+    // Reload fresh state before writing to avoid overwriting concurrent changes
+    loadState();
+
+    const txItems = [];
+
+    // Step 1: build items with full (undiscounted) line totals
+    Object.entries(cart).forEach(([key, qty]) => {
+      if (!qty) return;
+      const { pid, vid } = parseCartKey(key);
+      const p = appState.products.find(pr => pr.id === pid);
+      if (!p) return;
+      if (vid) {
+        const v = (p.variants || []).find(vv => vv.id === vid);
+        if (!v) return;
+        const price = variantPrice(p, v);
+        const lineTotal = price != null ? price * qty : 0;
+        txItems.push({ pid, vid, title: p.title || '(untitled)', variantLabel: v.name || vid, qty, unitPrice: price, lineTotal });
+      } else {
+        const c = calcProduct(p);
+        const unitPrice = c.effectiveUnitPrice;
+        const lineTotal = unitPrice != null ? unitPrice * qty : 0;
+        txItems.push({ pid, vid: null, title: p.title || '(untitled)', variantLabel: null, qty, unitPrice, lineTotal });
+      }
+    });
+
+    // Step 2: capture discount breakdown (needed for the transaction record)
+    const ruleDiscounts = calculateDiscounts().map(r => ({
+      id: r.disc.id,
+      name: r.disc.name,
+      amount: r.amount
+    }));
+    const subtotal = txItems.reduce((s, item) => s + (item.lineTotal || 0), 0);
+    const ruleDiscountTotal = ruleDiscounts.reduce((s, d) => s + d.amount, 0);
+    const customDiscountAmount = calculateCartDiscount(Math.max(0, subtotal - ruleDiscountTotal));
+
+    // Step 3: scale each item's lineTotal to the actual paid total so soldValue
+    // matches what the customer actually paid (discounts distributed proportionally)
+    const actualTotal = pendingPayment.total;
+    if (subtotal > 0.001 && Math.abs(actualTotal - subtotal) > 0.001) {
+      const ratio = actualTotal / subtotal;
+      let distributed = 0;
+      txItems.forEach((item, i) => {
+        if (i < txItems.length - 1) {
+          item.lineTotal = Math.round(item.lineTotal * ratio * 100) / 100;
+          distributed += item.lineTotal;
+        } else {
+          // last item absorbs any cent-level rounding difference
+          item.lineTotal = Math.round((actualTotal - distributed) * 100) / 100;
+        }
+      });
+    }
+
+    // Step 4: update soldQty and soldValue using the discounted line totals
+    txItems.forEach(item => {
+      const p = appState.products.find(pr => pr.id === item.pid);
+      if (!p) return;
+      if (item.vid) {
+        const v = (p.variants || []).find(vv => vv.id === item.vid);
+        if (!v) return;
+        v.soldQty   = (v.soldQty   || 0) + item.qty;
+        v.soldValue = (v.soldValue || 0) + item.lineTotal;
+      } else {
+        p.soldQty   = (p.soldQty   || 0) + item.qty;
+        p.soldValue = (p.soldValue || 0) + item.lineTotal;
+      }
+    });
+
+    // Record transaction in history
+    if (!Array.isArray(appState.transactions)) appState.transactions = [];
+    appState.transactions.push({
+      id: uuid(),
+      timestamp: Date.now(),
+      method: pendingPayment.method,
+      payments: pendingPayment.payments || [{ method: pendingPayment.method, amount: pendingPayment.total }],
+      total: pendingPayment.total,
+      currency: getCurrency(),
+      discounts: [
+        ...ruleDiscounts,
+        ...(customDiscountAmount > 0.001 ? [{ name: cartDiscountLabel(), amount: customDiscountAmount, custom: true }] : [])
+      ],
+      reverted: false,
+      revertedAt: null,
+      items: txItems,
+    });
+
+    saveState();
+    showToast(`Payment confirmed — ${cartItemCount()} item${cartItemCount()!==1?'s':''} marked as sold`, 'success');
+    // Notify originating remote device of success before closeOverlay clears pendingRemoteOrder
+    if (pendingRemoteOrder) {
+      const remoteOrder = pendingRemoteOrder;
+      pendingRemoteOrder = null; // clear so closeOverlay won't send a "cancelled" result
+      sendOrderResult(remoteOrder.clientId, true, null, {
+        total: actualTotal, currency: getCurrency(),
+      });
+    }
+    broadcastCatalog(); // push updated stock counts to remotes
+    clearCart();
+    closeOverlay();
+    renderProducts(); // refresh stock counts
+  }
+
+  function closeOverlay() {
+    // Send cancel to bridge if a card payment was in progress
+    if (pendingPayment?.method === 'card' && myposBridge?.readyState === WebSocket.OPEN) {
+      myposBridge.send(JSON.stringify({ action: 'cancel' }));
+    }
+    document.getElementById('pay-overlay').classList.add('hidden');
+    document.getElementById('confirm-ok').disabled = false;
+    document.getElementById('confirm-ok').style.display = '';
+    document.getElementById('force-complete').style.display = 'none';
+    pendingPayment = null;
+    // Notify originating remote device that the order was cancelled
+    if (pendingRemoteOrder) {
+      sendOrderResult(pendingRemoteOrder.clientId, false, 'Payment cancelled', null, true /*cancelled*/);
+      pendingRemoteOrder = null;
+    }
+  }
+
+  function openPayment(method) {
+    if (cartItemCount() === 0) return;
+    const total = cartGrandTotal();
+    const cur = getCurrency();
+
+    // ── Card via native Capacitor plugin (standalone Android APK) ───────────
+    if (method === 'card' && IS_CAPACITOR && myposNativeReady) {
+      pendingPayment = { method: 'card', total };
+      document.getElementById('confirm-icon').textContent     = '💳';
+      document.getElementById('confirm-title').textContent    = 'Card Payment';
+      document.getElementById('confirm-subtitle').textContent = 'Present card to terminal…';
+      document.getElementById('confirm-amount').textContent   = cur + ' ' + total.toFixed(2);
+      document.getElementById('confirm-ok').style.display     = 'none';
+      document.getElementById('force-complete').style.display = '';
+      document.getElementById('confirm-cancel').textContent   = 'Cancel';
+      document.getElementById('cash-section').style.display   = 'none';
+      document.getElementById('split-section').style.display  = 'none';
+      document.getElementById('pay-overlay').classList.remove('hidden');
+      nativeCardPayment(total, cur);
+      return;
+    }
+
+    // ── Card via myPOS bridge (only when terminal is actually ready) ─────────
+    if (method === 'card' && myposBridge?.readyState === WebSocket.OPEN && myposTerminalReady) {
+      pendingPayment = { method: 'card', total };
+      // Show overlay in "waiting" state so user can cancel or force-complete if needed
+      document.getElementById('confirm-icon').textContent    = '💳';
+      document.getElementById('confirm-title').textContent   = 'Card Payment';
+      document.getElementById('confirm-subtitle').textContent = 'Waiting for card on terminal…';
+      document.getElementById('confirm-amount').textContent  = cur + ' ' + total.toFixed(2);
+      document.getElementById('confirm-ok').style.display    = 'none';
+      document.getElementById('force-complete').style.display = '';
+      document.getElementById('confirm-cancel').textContent  = 'Cancel';
+      document.getElementById('cash-section').style.display  = 'none';
+      document.getElementById('split-section').style.display = 'none';
+      document.getElementById('pay-overlay').classList.remove('hidden');
+
+      requestMyPOSPayment(total, cur)
+        .then(result => {
+          document.getElementById('confirm-ok').style.display = '';
+          document.getElementById('force-complete').style.display = 'none';
+          if (!pendingPayment) return; // overlay was cancelled while waiting — ignore result
+          if (result.approved) {
+            const remoteOrder = pendingRemoteOrder;
+            pendingRemoteOrder = null; // clear before confirmPayment so closeOverlay won't double-send
+            confirmPayment();
+            showToast(`Card approved${result.card_brand ? ' · ' + result.card_brand : ''}`, 'success');
+            if (remoteOrder) {
+              sendOrderResult(remoteOrder.clientId, true, null, {
+                total, currency: cur, authCode: result.auth_code, cardBrand: result.card_brand,
+              });
+            }
+          } else {
+            closeOverlay();
+            showToast('Card payment declined', 'error');
+          }
+        })
+        .catch(err => {
+          document.getElementById('confirm-ok').style.display = '';
+          document.getElementById('force-complete').style.display = 'none';
+          if (!pendingPayment) return; // already cancelled
+          closeOverlay();
+          showToast('Terminal: ' + err.message, 'error');
+        });
+      return;
+    }
+    // Bridge connected but terminal not ready — warn and fall through to manual confirm
+    if (method === 'card' && myposBridge?.readyState === WebSocket.OPEN && !myposTerminalReady) {
+      showToast('Terminal not ready — confirming manually', 'info');
+    }
+    pendingPayment = { method, total };
+    document.getElementById('confirm-icon').textContent = method === 'cash' ? 'Cash' : method === 'card' ? 'Card' : 'Split';
+    document.getElementById('confirm-title').textContent = method === 'cash' ? 'Cash Payment' : method === 'card' ? 'Card Payment' : 'Split Payment';
+    document.getElementById('confirm-subtitle').textContent = `Mark ${cartItemCount()} item${cartItemCount()!==1?'s':''} as sold?`;
+    document.getElementById('confirm-amount').textContent = cur + ' ' + total.toFixed(2);
+    document.getElementById('confirm-ok').className = method === 'cash' ? 'btn btn-green' : method === 'card' ? 'btn btn-blue' : 'btn btn-amber';
+
+    const cashSection = document.getElementById('cash-section');
+    const splitSection = document.getElementById('split-section');
+    cashSection.style.display = method === 'cash' ? '' : 'none';
+    splitSection.style.display = method === 'split' ? '' : 'none';
+
+    if (method === 'cash') {
+      buildCashShortcuts(total, cur);
+      setCashReceived(total);
+    } else if (method === 'split') {
+      document.getElementById('split-cash').value = '';
+      document.getElementById('split-card').value = '';
+      document.getElementById('confirm-ok').disabled = true;
+      updateSplitPayment();
+      setTimeout(() => document.getElementById('split-cash').focus(), 0);
+    } else {
+      document.getElementById('confirm-ok').disabled = false;
+    }
+
+    document.getElementById('pay-overlay').classList.remove('hidden');
+  }
+
+  // ── Native Capacitor terminal (Android APK, standalone) ──────────────────
+  const IS_CAPACITOR    = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  let myposNativeReady  = false;
+
+  // ── Carbon WiFi host mode ─────────────────────────────────────────────────
+  let hostMode     = false;   // true when acting as embedded WS server
+  let hostWsPlugin = null;    // WsServerPlugin instance
+  let hostClients  = {};      // { clientId: { name, hasTerminal } }
+
+  // ── MyPOS Carbon bridge (ZollBridge desktop app via WebSocket) ────────────
+  let myposBridge        = null;   // active WebSocket
+  let myposTerminalReady = false;  // true when USB terminal is also connected
+  let myposResolve       = null;   // pending payment Promise resolver
+  let myposReject        = null;
+  let myposReconnectTimer = null;
+  let myposGiveUpTimer    = null;
+  let myposGaveUp         = false;
+  const BRIDGE_WS         = 'wss://localhost:8765';
+  const BRIDGE_RECONNECT  = 5000;   // retry every 5 s
+  const BRIDGE_GIVE_UP    = 300000; // stop after 5 min
+
+  function connectMyPOSBridge(isManual = false, force = false) {
+    clearTimeout(myposReconnectTimer);
+    if (isManual) {
+      // Manual reconnect: reset give-up state and restart the give-up timer
+      myposGaveUp = false;
+      clearTimeout(myposGiveUpTimer);
+      myposGiveUpTimer = setTimeout(bridgeGiveUp, BRIDGE_GIVE_UP);
+      updateBridgeIndicator('retrying');
+    }
+    if (myposGaveUp) return;
+    try {
+      const ws = new WebSocket(BRIDGE_WS);
+      ws.onopen = () => {
+        // Identify ourselves as the primary POS so the bridge can route correctly
+        const msg = { action: 'identify', role: 'primary' };
+        if (force) msg.force = true;
+        ws.send(JSON.stringify(msg));
+      };
+      ws.onmessage = e => {
+        let msg;
+        try { msg = JSON.parse(e.data); } catch { return; }
+        if (msg.status === 'primary_taken') {
+          // Another tab already owns this bridge — stop retrying and show "Taken" state
+          myposGaveUp = true;
+          clearTimeout(myposReconnectTimer);
+          clearTimeout(myposGiveUpTimer);
+          updateBridgeIndicator('taken');
+          return;
+        }
+        if (msg.status === 'connected') {
+          myposGaveUp = false;
+          clearTimeout(myposGiveUpTimer);
+          myposBridge = ws;
+          myposTerminalReady = true;
+          updateBridgeIndicator('connected', msg.provider || '');
+          broadcastCatalog(); // send current catalog to any waiting remotes
+          return;
+        }
+        if (msg.status === 'terminal_disconnected') {
+          myposTerminalReady = false;
+          updateBridgeIndicator('offline', msg.provider || '');
+          return;
+        }
+        if (msg.status === 'terminal_reconnected') {
+          myposTerminalReady = true;
+          updateBridgeIndicator('connected', msg.provider || '');
+          return;
+        }
+        if (msg.action === 'remote_order') {
+          handleRemoteOrder(msg);
+          return;
+        }
+        if (msg.action === 'remote_cancel') {
+          handleRemoteCancel(msg);
+          return;
+        }
+        if (msg.action === 'remote_force_complete') {
+          handleRemoteForceComplete(msg);
+          return;
+        }
+        if (msg.action === 'remote_self_paid') {
+          handleRemoteSelfPaid(msg);
+          return;
+        }
+        if (msg.action === 'remote_count') {
+          updateRemoteIndicator(msg.count || 0);
+          return;
+        }
+        if (msg.action === 'cart_sync') {
+          handleCartSync(msg);
+          return;
+        }
+        if (myposResolve) {
+          myposResolve(msg);
+          myposResolve = myposReject = null;
+        }
+      };
+      ws.onclose = () => {
+        const wasConnected = myposBridge !== null;
+        myposBridge = null;
+        myposTerminalReady = false;
+        if (myposReject) {
+          myposReject(new Error('Terminal disconnected'));
+          myposResolve = myposReject = null;
+        }
+        if (wasConnected) {
+          // Was connected — lost connection, restart give-up timer and retry
+          clearTimeout(myposGiveUpTimer);
+          myposGiveUpTimer = setTimeout(bridgeGiveUp, BRIDGE_GIVE_UP);
+          updateBridgeIndicator('retrying');
+        } else {
+          // If we were in 'taken' state the indicator already shows that — don't overwrite
+          const currentText = document.getElementById('bridge-indicator')?.textContent || '';
+          if (!currentText.includes('Taken'))
+            updateBridgeIndicator(myposGaveUp ? 'gaveup' : 'retrying');
+        }
+        if (!myposGaveUp) myposReconnectTimer = setTimeout(() => connectMyPOSBridge(), BRIDGE_RECONNECT);
+      };
+      ws.onerror = () => ws.close();
+    } catch (e) {
+      if (!myposGaveUp) myposReconnectTimer = setTimeout(() => connectMyPOSBridge(), BRIDGE_RECONNECT);
+    }
+  }
+
+  function bridgeGiveUp() {
+    myposGaveUp = true;
+    clearTimeout(myposReconnectTimer);
+    updateBridgeIndicator('gaveup');
+    console.log('[ZollBridge] Stopped retrying after 5 minutes. Click the indicator to reconnect.');
+  }
+
+  function updateBridgeIndicator(state, providerName) {
+    const el = document.getElementById('bridge-indicator');
+    if (!el) return;
+    if (state === 'connected') {
+      const label = providerName ? ` (${providerName})` : '';
+      el.title       = `Card terminal connected${label}`;
+      el.style.color = 'var(--green)';
+      el.textContent = `💳 ●${providerName ? ' ' + providerName : ''}`;
+      el.style.cursor = 'default';
+      el.onclick = null;
+    } else if (state === 'offline') {
+      const label = providerName ? ` (${providerName})` : '';
+      el.title       = `Card terminal USB unplugged — reconnecting automatically…${label}`;
+      el.style.color = 'var(--amber)';
+      el.textContent = `💳 ⚠`;
+      el.style.cursor = 'default';
+      el.onclick = null;
+    } else if (state === 'retrying') {
+      el.title       = 'Card terminal not connected — trying to reach ZollBridge…';
+      el.style.color = 'var(--text-muted)';
+      el.textContent = '💳 ○';
+      el.style.cursor = 'default';
+      el.onclick = null;
+    } else if (state === 'taken') {
+      el.title       = 'Another ZollTool tab owns the bridge — click to take over';
+      el.style.color = 'var(--amber)';
+      el.textContent = '💳 Taken';
+      el.style.cursor = 'pointer';
+      el.onclick = () => connectMyPOSBridge(true, true); // force takeover
+    } else { // gaveup
+      el.title       = 'Click to retry connecting to ZollBridge';
+      el.style.color = 'var(--amber)';
+      el.textContent = '💳 Connect';
+      el.style.cursor = 'pointer';
+      el.onclick = () => connectMyPOSBridge(true);
+    }
+  }
+
+  function requestMyPOSPayment(amount, currency) {
+    return new Promise((resolve, reject) => {
+      if (!myposBridge || myposBridge.readyState !== WebSocket.OPEN) {
+        reject(new Error('Bridge not connected')); return;
+      }
+      myposResolve = resolve;
+      myposReject  = reject;
+      myposBridge.send(JSON.stringify({
+        action:    'pay',
+        amount:    amount.toFixed(2),
+        currency:  currency,
+        reference: 'zoll-' + Date.now(),
+      }));
+      setTimeout(() => {
+        if (myposResolve === resolve) {
+          myposResolve = myposReject = null;
+          reject(new Error('Payment timed out — no response from terminal'));
+        }
+      }, 120000);
+    });
+  }
+
+  async function nativeCardPayment(amount, currency) {
+    const plugin = window.Capacitor?.Plugins?.CarbonPayment
+                || window.Capacitor?.Plugins?.MyPos;
+    if (!plugin) {
+      document.getElementById('confirm-ok').style.display     = '';
+      document.getElementById('force-complete').style.display = 'none';
+      closeOverlay();
+      showToast('Terminal plugin not available', 'error');
+      return;
+    }
+    try {
+      const result = await plugin.startPayment({ amount, currency });
+      document.getElementById('confirm-ok').style.display     = '';
+      document.getElementById('force-complete').style.display = 'none';
+      if (!pendingPayment) return; // cancelled while waiting
+      if (result.approved) {
+        const remoteOrder = pendingRemoteOrder;
+        pendingRemoteOrder = null;
+        confirmPayment();
+        showToast(`Card approved${result.cardBrand ? ' · ' + result.cardBrand : ''}`, 'success');
+        if (remoteOrder) {
+          sendOrderResult(remoteOrder.clientId, true, null, {
+            total: amount, currency, authCode: result.authCode || '', cardBrand: result.cardBrand || '',
+          });
+        }
+      } else {
+        closeOverlay();
+        showToast('Card payment declined', 'error');
+      }
+    } catch (err) {
+      document.getElementById('confirm-ok').style.display     = '';
+      document.getElementById('force-complete').style.display = 'none';
+      if (!pendingPayment) return;
+      closeOverlay();
+      showToast('Terminal: ' + err.message, 'error');
+    }
+  }
+
+  // ── Remote POS support ───────────────────────────────────────────────────
+  let pendingRemoteOrder = null; // set while processing a remote device's order
+  let remoteCount        = 0;   // live count of connected remote devices
+
+  // Build the catalog JSON string (shared by bridge and host-mode broadcast)
+  function buildCatalogMsg() {
+    if (!appState) return null;
+    const products = (appState.products || [])
+      .filter(p => p.forSale !== false)
+      .map(p => ({
+        id:       p.id,
+        title:    p.title,
+        type:     p.type  || null,
+        price:    p.price != null ? parseFloat(p.price) : null,
+        variants: (p.variants || []).map(v => ({
+          id:      v.id,
+          name:    v.name  || v.label || v.id,
+          price:   v.price != null ? parseFloat(v.price) : null,
+          soldQty: v.soldQty || 0,
+          amount:  v.amount  != null ? v.amount : null,
+        })),
+        forSale:  p.forSale !== false,
+        amount:   p.amount  != null ? p.amount : null,
+        soldQty:  p.soldQty || 0,
+      }));
+    return JSON.stringify({
+      action:   'catalog',
+      products,
+      currency: getCurrency(),
+      meta:     { event: (appState.meta && appState.meta.event) || '' },
+    });
+  }
+
+  // Broadcast the current product catalog to all connected remotes
+  function broadcastCatalog() {
+    const msg = buildCatalogMsg();
+    if (!msg) return;
+    if (myposBridge && myposBridge.readyState === WebSocket.OPEN)
+      myposBridge.send(msg);
+    if (hostMode && hostWsPlugin)
+      hostWsPlugin.broadcast({ data: msg }).catch(() => {});
+  }
+
+  // Send the result of a remote order back to the originating device
+  function sendOrderResult(clientId, approved, error, receipt, cancelled) {
+    const msg = JSON.stringify({
+      action:    'order_result',
+      clientId,
+      approved,
+      error:     error     || null,
+      receipt:   receipt   || null,
+      cancelled: cancelled || false,
+    });
+    if (hostMode && hostWsPlugin)
+      hostWsPlugin.send({ clientId, data: msg }).catch(() => {});
+    else if (myposBridge && myposBridge.readyState === WebSocket.OPEN)
+      myposBridge.send(msg);
+  }
+
+  // ── Carbon WiFi host mode functions ──────────────────────────────────────
+
+  async function startHostMode() {
+    const plugin = window.Capacitor?.Plugins?.WsServer;
+    if (!plugin) { showToast('WiFi server not available', 'error'); return; }
+    hostWsPlugin = plugin;
+    try {
+      await plugin.start({ port: 8766 });
+      const { ip } = await plugin.getLocalIp();
+      const badge = document.getElementById('host-ip-badge');
+      if (badge) { badge.textContent = ip + ':8766'; badge.style.display = ''; }
+
+      plugin.addListener('clientConnected', ({ clientId }) => {
+        hostClients[clientId] = { name: clientId, hasTerminal: false };
+        updateRemoteIndicator(Object.keys(hostClients).length);
+      });
+      plugin.addListener('clientDisconnected', ({ clientId }) => {
+        delete hostClients[clientId];
+        updateRemoteIndicator(Object.keys(hostClients).length);
+        if (pendingRemoteOrder && pendingRemoteOrder.clientId === clientId) {
+          pendingRemoteOrder = null;
+          closeOverlay();
+          showToast('Remote disconnected — payment cancelled', 'info');
+        }
+      });
+      plugin.addListener('message', ({ clientId, data }) => {
+        try { onHostMessage(clientId, JSON.parse(data)); } catch (_) {}
+      });
+
+      showToast('WiFi host active · ' + ip, 'success');
+    } catch (err) {
+      showToast('Host mode error: ' + err.message, 'error');
+      hostMode = false;
+      localStorage.setItem('pos_host_mode', 'false');
+    }
+  }
+
+  async function stopHostMode() {
+    if (hostWsPlugin) { try { await hostWsPlugin.stop(); } catch (_) {} }
+    hostWsPlugin = null;
+    hostClients  = {};
+    const badge = document.getElementById('host-ip-badge');
+    if (badge) badge.style.display = 'none';
+    updateRemoteIndicator(0);
+    showToast('WiFi host stopped', 'info');
+  }
+
+  async function toggleHostMode() {
+    if (!IS_CAPACITOR) { showToast('WiFi host requires the Android app', 'error'); return; }
+    hostMode = !hostMode;
+    localStorage.setItem('pos_host_mode', hostMode ? 'true' : 'false');
+    const btn = document.getElementById('btn-host-mode');
+    if (btn) btn.classList.toggle('btn-primary', hostMode);
+    if (hostMode) await startHostMode(); else await stopHostMode();
+  }
+
+  function onHostMessage(clientId, msg) {
+    switch (msg.action) {
+      case 'identify': {
+        hostClients[clientId] = { name: msg.name || clientId, hasTerminal: !!msg.hasTerminal };
+        if (hostWsPlugin) {
+          hostWsPlugin.send({ clientId, data: JSON.stringify({
+            action: 'connected', clientId, hasPrimary: true,
+          }) }).catch(() => {});
+          const catalogMsg = buildCatalogMsg();
+          if (catalogMsg) hostWsPlugin.send({ clientId, data: catalogMsg }).catch(() => {});
+        }
+        updateRemoteIndicator(Object.keys(hostClients).length);
+        break;
+      }
+      case 'order':
+        handleRemoteOrder({
+          ...msg,
+          paymentMethod: msg.paymentMethod || msg.method || 'cash',
+          remoteName:    msg.name || hostClients[clientId]?.name || 'Remote',
+          clientId,
+        });
+        break;
+      case 'order_self_paid':
+        handleRemoteSelfPaid({
+          ...msg,
+          remoteName: msg.name || hostClients[clientId]?.name || 'Remote',
+          clientId,
+        });
+        break;
+      case 'cart_sync':
+        handleCartSync({ clientId, items: msg.items });
+        break;
+      case 'remote_cancel':
+        handleRemoteCancel({ clientId, remoteName: hostClients[clientId]?.name || 'Remote' });
+        break;
+    }
+  }
+
+  // Process an order that arrived from a remote device
+  function handleRemoteOrder(data) {
+    if (!appState) {
+      sendOrderResult(data.clientId, false, 'POS has no data loaded');
+      return;
+    }
+    if (pendingPayment) {
+      sendOrderResult(data.clientId, false, 'POS is busy with another payment');
+      return;
+    }
+    const method = data.paymentMethod || 'card';
+    // Load remote items into the local cart
+    cart = {};
+    for (const item of data.items || []) {
+      const key = item.variantId ? `${item.productId}:${item.variantId}` : item.productId;
+      if (item.qty > 0) cart[key] = item.qty;
+    }
+    if (cartItemCount() === 0) {
+      sendOrderResult(data.clientId, false, 'Order contained no valid items');
+      return;
+    }
+    renderProducts();
+    const name = data.remoteName || 'remote device';
+
+    if (method === 'cash') {
+      // Remote cashier already confirmed — silently record and reply
+      pendingPayment = { method: 'cash', total: data.total };
+      const remoteOrder = data;
+      pendingRemoteOrder = null; // prevent closeOverlay() from sending a "cancelled" result
+      confirmPayment();
+      showToast(`📱 Cash sale from ${name} recorded`, 'success');
+      sendOrderResult(remoteOrder.clientId, true, null, { total: data.total, currency: getCurrency() });
+      broadcastCatalog(); // update stock counts on all remotes
+    } else {
+      // Card payment from remote device
+      const total = cartGrandTotal();
+      const cur   = getCurrency();
+      pendingRemoteOrder = data;
+
+      const bridgeOpen  = myposBridge != null && myposBridge.readyState === 1 /*OPEN*/;
+      const termReady   = myposTerminalReady === true;
+
+      if (bridgeOpen && termReady) {
+        // ── Terminal path: trigger myPOS payment directly ──────────────────
+        pendingPayment = { method: 'card', total };
+        document.getElementById('confirm-icon').textContent     = '💳';
+        document.getElementById('confirm-title').textContent    = 'Card Payment';
+        document.getElementById('confirm-subtitle').textContent = `From ${name} — tap card on terminal`;
+        document.getElementById('confirm-amount').textContent   = cur + ' ' + total.toFixed(2);
+        document.getElementById('confirm-ok').style.display     = 'none';
+        document.getElementById('force-complete').style.display = '';
+        document.getElementById('confirm-cancel').textContent   = 'Cancel';
+        document.getElementById('cash-section').style.display   = 'none';
+        document.getElementById('split-section').style.display  = 'none';
+        document.getElementById('pay-overlay').classList.remove('hidden');
+
+        requestMyPOSPayment(total, cur)
+          .then(result => {
+            document.getElementById('confirm-ok').style.display     = '';
+            document.getElementById('force-complete').style.display = 'none';
+            if (!pendingPayment) return; // cancelled while waiting
+            if (result.approved) {
+              const remoteOrder = pendingRemoteOrder;
+              pendingRemoteOrder = null;
+              confirmPayment();
+              showToast(`Card approved${result.card_brand ? ' · ' + result.card_brand : ''}`, 'success');
+              if (remoteOrder) {
+                sendOrderResult(remoteOrder.clientId, true, null, {
+                  total, currency: cur, authCode: result.auth_code, cardBrand: result.card_brand,
+                });
+              }
+            } else {
+              closeOverlay();
+              showToast('Card payment declined', 'error');
+              sendOrderResult(data.clientId, false, 'Card payment declined');
+            }
+          })
+          .catch(err => {
+            document.getElementById('confirm-ok').style.display     = '';
+            document.getElementById('force-complete').style.display = 'none';
+            if (!pendingPayment) return; // already cancelled
+            closeOverlay();
+            showToast('Terminal: ' + err.message, 'error');
+            sendOrderResult(data.clientId, false, err.message);
+          });
+      } else {
+        // ── Fallback: manual confirm on the POS ────────────────────────────
+        openPayment('card');
+      }
+    }
+  }
+
+  // Handle a cancel request that originated on the remote device
+  function handleRemoteCancel(data) {
+    if (!pendingRemoteOrder || pendingRemoteOrder.clientId !== data.clientId) return;
+    const name = data.remoteName || 'remote device';
+    pendingRemoteOrder = null; // clear BEFORE closeOverlay so it won't double-send order_result
+    closeOverlay();            // cancels terminal + closes overlay on PC
+    showToast(`📱 ${name} cancelled the payment`, 'info');
+  }
+
+  // Handle a force-complete request that originated on the remote device
+  function handleRemoteForceComplete(data) {
+    if (!pendingPayment || !pendingRemoteOrder || pendingRemoteOrder.clientId !== data.clientId) return;
+    const remoteOrder = pendingRemoteOrder;
+    const total       = pendingPayment.total;
+    const cur         = getCurrency();
+    document.getElementById('force-complete').style.display = 'none';
+    pendingRemoteOrder = null; // clear so confirmPayment won't double-send
+    confirmPayment();
+    showToast(`📱 ${data.remoteName || 'Remote'} force-completed payment`, 'success');
+    sendOrderResult(remoteOrder.clientId, true, null, { total, currency: cur });
+  }
+
+  // Android remote processed payment locally — just record inventory + acknowledge
+  function handleRemoteSelfPaid(data) {
+    if (!appState) {
+      sendOrderResult(data.clientId, false, 'POS has no data loaded');
+      return;
+    }
+    if (pendingPayment) {
+      sendOrderResult(data.clientId, false, 'POS is busy with another payment');
+      return;
+    }
+    cart = {};
+    for (const item of data.items || []) {
+      const key = item.variantId ? `${item.productId}:${item.variantId}` : item.productId;
+      if (item.qty > 0) cart[key] = item.qty;
+    }
+    if (cartItemCount() === 0) {
+      sendOrderResult(data.clientId, false, 'Order contained no valid items');
+      return;
+    }
+    renderProducts();
+    const name = data.remoteName || 'remote device';
+    pendingPayment     = { method: 'card', total: data.total };
+    pendingRemoteOrder = null; // prevent closeOverlay from sending a "cancelled" result
+    confirmPayment();
+    const brand = data.cardBrand ? ` · ${data.cardBrand}` : '';
+    showToast(`📱 Card sale from ${name} recorded${brand}`, 'success');
+    sendOrderResult(data.clientId, true, null, {
+      total: data.total, currency: data.currency || getCurrency(),
+      authCode: data.authCode || '', cardBrand: data.cardBrand || '',
+      transactionId: data.transactionId || '',
+    });
+    broadcastCatalog();
+  }
+
+  // Show how many remote devices are connected (shown in the bridge indicator)
+  function updateRemoteIndicator(count) {
+    remoteCount = count;
+    // If remotes are waiting and we have catalog data, push it to them immediately.
+    // This covers the bridge-restart race: remote connects before pos.html has broadcast.
+    if (count > 0) broadcastCatalog();
+    const el = document.getElementById('bridge-indicator');
+    if (!el || !myposBridge) return;
+    if (count > 0) {
+      el.title = el.title.replace(/ · \d+ remote.*/,'') + ` · ${count} remote${count !== 1 ? 's' : ''} connected`;
+    }
+  }
+
+  // Mirror the remote cart on the primary when exactly 1 remote device is connected
+  function handleCartSync(data) {
+    // Only auto-sync when there's exactly 1 remote and no payment in progress
+    if (remoteCount !== 1 || pendingPayment || pendingRemoteOrder) return;
+    cart = {};
+    for (const item of data.items || []) {
+      const key = item.variantId ? `${item.productId}:${item.variantId}` : item.productId;
+      if (item.qty > 0) cart[key] = item.qty;
+    }
+    renderProducts();
+    renderCart();
+  }
+
+  // Start trying; give up after 5 minutes if no bridge found
+  myposGiveUpTimer = setTimeout(bridgeGiveUp, BRIDGE_GIVE_UP);
+  connectMyPOSBridge();
+
+  // ── Native terminal init (Capacitor APK only) ─────────────────────────────
+  if (IS_CAPACITOR) {
+    const carbonPlugin = window.Capacitor?.Plugins?.CarbonPayment;
+    const myposPlugin  = window.Capacitor?.Plugins?.MyPos;
+
+    if (carbonPlugin) {
+      // On-device Carbon terminal — always ready, no pairing events needed
+      myposNativeReady = true;
+      updateBridgeIndicator('connected', 'Terminal');
+    } else if (myposPlugin) {
+      // External GO2 terminal via Bluetooth Slave SDK
+      myposPlugin.getStatus()
+        .then(s => {
+          myposNativeReady = !!s.connected;
+          if (myposNativeReady) updateBridgeIndicator('connected', 'Terminal');
+        })
+        .catch(() => {});
+      myposPlugin.addListener('terminalStatus', s => {
+        myposNativeReady = !!s.connected;
+        updateBridgeIndicator(myposNativeReady ? 'connected' : 'offline', 'Terminal');
+      });
+    }
+
+    // Host mode — start embedded WS server if configured
+    hostMode = localStorage.getItem('pos_host_mode') === 'true';
+    if (hostMode) {
+      startHostMode();
+      const btn = document.getElementById('btn-host-mode');
+      if (btn) btn.classList.add('btn-primary');
+    }
+  }
+
+  // ── Type colour ───────────────────────────────────────────────────────────
+  function typeColor(type) {
+    let hash = 0;
+    for (let i = 0; i < type.length; i++) hash = type.charCodeAt(i) + ((hash << 5) - hash);
+    const hue = Math.abs(hash) % 360;
+    return `hsl(${hue}, 60%, 52%)`;
+  }
+
+  // ── View mode & sort ───────────────────────────────────────────────────────
+  const POS_VIEW_KEY = 'zolltool_pos_view';
+  const POS_SORT_KEY = 'zolltool_pos_sort';
+  let posView = localStorage.getItem(POS_VIEW_KEY) || 'flat';    // 'flat' | 'grouped'
+  let posSort = localStorage.getItem(POS_SORT_KEY) || 'default'; // 'default' | 'az' | 'za'
+
+  function setView(mode) {
+    posView = mode;
+    localStorage.setItem(POS_VIEW_KEY, mode);
+    document.getElementById('btn-view-flat').classList.toggle('active', mode === 'flat');
+    document.getElementById('btn-view-grouped').classList.toggle('active', mode === 'grouped');
+    renderProducts();
+  }
+
+  function setSort(mode) {
+    posSort = mode;
+    localStorage.setItem(POS_SORT_KEY, mode);
+    document.getElementById('btn-sort-default').classList.toggle('active', mode === 'default');
+    document.getElementById('btn-sort-az').classList.toggle('active', mode === 'az');
+    document.getElementById('btn-sort-za').classList.toggle('active', mode === 'za');
+    renderProducts();
+  }
+
+  // Sort products: by type name first, then by product title within each type.
+  // 'default' preserves original ZollTool order.
+  function sortedProducts(products) {
+    if (posSort === 'default') return products;
+    const dir = posSort === 'az' ? 1 : -1;
+    return [...products].sort((a, b) => {
+      const ta = (a.type || '').toLowerCase(), tb = (b.type || '').toLowerCase();
+      if (ta !== tb) return ta < tb ? -dir : dir;
+      const na = (a.title || '').toLowerCase(), nb = (b.title || '').toLowerCase();
+      return na < nb ? -dir : na > nb ? dir : 0;
+    });
+  }
+
+  document.getElementById('btn-view-flat').addEventListener('click', () => setView('flat'));
+  document.getElementById('btn-view-grouped').addEventListener('click', () => setView('grouped'));
+  document.getElementById('btn-sort-default').addEventListener('click', () => setSort('default'));
+  document.getElementById('btn-sort-az').addEventListener('click', () => setSort('az'));
+  document.getElementById('btn-sort-za').addEventListener('click', () => setSort('za'));
+
+  // Apply persisted button states on load
+  document.getElementById('btn-view-flat').classList.toggle('active', posView === 'flat');
+  document.getElementById('btn-view-grouped').classList.toggle('active', posView === 'grouped');
+  document.getElementById('btn-sort-default').classList.toggle('active', posSort === 'default');
+  document.getElementById('btn-sort-az').classList.toggle('active', posSort === 'az');
+  document.getElementById('btn-sort-za').classList.toggle('active', posSort === 'za');
+
+  // ── Type drill-down overlay ────────────────────────────────────────────────
+  function openTypeView(type) {
+    const color = typeColor(type);
+    const titleEl = document.getElementById('type-modal-title');
+    titleEl.textContent = type;
+    titleEl.style.color = color;
+    document.getElementById('type-modal-body').style.borderTop = `3px solid ${color}`;
+    renderTypeProducts(type);
+    document.getElementById('type-overlay').classList.remove('hidden');
+    applyNumberShortcuts(document.getElementById('type-modal-body'));
+  }
+
+  function closeTypeView() {
+    document.getElementById('type-overlay').classList.add('hidden');
+  }
+
+  function renderTypeProducts(type) {
+    const body = document.getElementById('type-modal-body');
+    if (!appState) { body.innerHTML = ''; return; }
+    const products = appState.products.filter(p => p.forSale !== false && p.type === type);
+    body.innerHTML = products.map(p => productCardHtml(p)).join('');
+    applyNumberShortcuts(body);
+  }
+
+  document.getElementById('type-overlay-close').addEventListener('click', closeTypeView);
+  document.getElementById('type-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('type-overlay')) closeTypeView();
+  });
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  function productCardHtml(p) {
+    const stock = remainingStock(p);
+    const allOut = stock <= 0;
+    const stockClass = allOut ? 'none' : stock <= 3 ? 'low' : '';
+    const color = p.type ? typeColor(p.type) : null;
+    const colorStyle = color ? `--card-accent:${color}` : '';
+    const cartQty = hasVariants(p)
+      ? (p.variants || []).reduce((s, v) => s + (cart[`${p.id}:${v.id}`] || 0), 0)
+      : (cart[p.id] || 0);
+    const cartBadge = cartQty > 0 ? `<span class="cart-qty-badge">${cartQty}</span>` : '';
+
+    if (hasVariants(p)) {
+      const stockLabel = allOut ? 'Out of stock' : `${stock} in stock`;
+      const prices = [...new Set(p.variants.map(v => variantPrice(p, v)).filter(x => x != null))];
+      const priceStr = prices.length === 0 ? '—'
+        : prices.length === 1 ? fmtPrice(prices[0])
+        : `${fmtPrice(Math.min(...prices))} – ${fmtPrice(Math.max(...prices))}`;
+      return `<button class="product-btn${allOut ? ' out-of-stock' : ''}"
+                style="${colorStyle}" onclick="addToCart('${p.id}')">
+        ${cartBadge}
+        <span class="pb-title">${escHtml(p.title || '(untitled)')}</span>
+        <span class="pb-footer"><span class="pb-stock ${stockClass}">${stockLabel}</span><span class="pb-price">${escHtml(priceStr)}</span></span>
+      </button>`;
+    }
+
+    const c = calcProduct(p);
+    const price = p.priceNote || (c.effectiveUnitPrice != null ? fmtPrice(c.effectiveUnitPrice) : '—');
+    const stockLabel = allOut ? 'Out of stock' : stock <= 3 ? `${stock} left` : `${stock} in stock`;
+    return `<button class="product-btn${allOut ? ' out-of-stock' : ''}"
+              style="${colorStyle}" onclick="addToCart('${p.id}')">
+      ${cartBadge}
+      <span class="pb-title">${escHtml(p.title || '(untitled)')}</span>
+      <span class="pb-footer"><span class="pb-stock ${stockClass}">${stockLabel}</span><span class="pb-price">${escHtml(price)}</span></span>
+    </button>`;
+  }
+
+  function renderProducts() {
+    const grid = document.getElementById('products-grid');
+    if (!appState) {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      const hint = raw ? 'Data found in storage but failed to parse.' : `No data found in localStorage key "${STORAGE_KEY}".`;
+      grid.innerHTML = `<div class="empty-msg">No ZollTool data found.<br><small style="font-size:11px;opacity:.7">${hint}<br>Load a JSON file in ZollTool first, then come back here.</small></div>`;
+      return;
+    }
+    const forSale = sortedProducts((appState.products || []).filter(p => p.forSale !== false));
+    if (!forSale.length) {
+      grid.innerHTML = '<div class="empty-msg">No products found.<br>Add products in ZollTool first.</div>';
+      return;
+    }
+    if (posView === 'grouped') {
+      renderGroupedProducts(grid, forSale);
+    } else {
+      renderUngroupedProducts(grid, forSale);
+    }
+    applyNumberShortcuts(grid);
+    // Refresh the type overlay if it's open so stock counts stay accurate
+    const typeOverlay = document.getElementById('type-overlay');
+    if (!typeOverlay.classList.contains('hidden')) {
+      renderTypeProducts(document.getElementById('type-modal-title').textContent);
+    }
+  }
+
+  function renderUngroupedProducts(grid, forSale) {
+    const typeMap = new Map();
+    for (const p of forSale) {
+      const key = p.type || '(no type)';
+      if (!typeMap.has(key)) typeMap.set(key, []);
+      typeMap.get(key).push(p);
+    }
+    grid.innerHTML = [...typeMap.entries()].map(([type, products]) => {
+      return `<div class="products-type-group">${products.map(p => productCardHtml(p)).join('')}</div>`;
+    }).join('');
+  }
+
+  function renderGroupedProducts(grid, forSale) {
+    const typeMap = new Map();
+    for (const p of forSale) {
+      const key = p.type || '(no type)';
+      if (!typeMap.has(key)) typeMap.set(key, []);
+      typeMap.get(key).push(p);
+    }
+    grid.innerHTML = [...typeMap.entries()].map(([type, products]) => {
+      // Single-product type: show the product card directly, no drill-down needed
+      if (products.length === 1) return productCardHtml(products[0]);
+
+      const totalStock = products.reduce((s, p) => s + remainingStock(p), 0);
+      const anyOut = products.some(p => remainingStock(p) <= 0);
+      const allOut = products.every(p => remainingStock(p) <= 0);
+      const stockClass = allOut ? 'none' : anyOut ? 'low' : '';
+      const stockLabel = allOut ? 'Out of stock' : `${totalStock} in stock`;
+      const hasDisc = products.some(p => getProductDiscounts(p.id).length > 0);
+      const color = typeColor(type);
+      return `<button class="type-card${allOut ? ' out-of-stock' : ''}"
+                style="--card-accent:${color}"
+                data-type="${escHtml(type)}"
+                onclick="openTypeView(this.dataset.type)">
+        ${hasDisc ? `<span class="card-markers"><span class="card-dot" title="Contains discounted products"></span></span>` : ''}
+        <span class="tc-name">${escHtml(type)}</span>
+        <span class="tc-meta">${products.length} products</span>
+        <span class="tc-stock pb-stock ${stockClass}">${stockLabel}</span>
+      </button>`;
+    }).join('');
+  }
+
+  function renderCart() {
+    const container = document.getElementById('cart-items');
+    const entries = Object.entries(cart).filter(([,q]) => q > 0);
+
+    if (!entries.length) {
+      container.innerHTML = '<div class="cart-empty">Cart is empty</div>';
+    } else {
+      container.innerHTML = entries.map(([key, qty]) => {
+        const { pid, vid } = parseCartKey(key);
+        const p = appState.products.find(pr => pr.id === pid);
+        if (!p) return '';
+        let unitPrice, displayTitle;
+        if (vid) {
+          const v = (p.variants || []).find(vv => vv.id === vid);
+          unitPrice    = v ? variantPrice(p, v) : null;
+          displayTitle = `${p.title || '(untitled)'}${v ? ' — ' + v.name : ''}`;
+        } else {
+          unitPrice    = calcProduct(p).effectiveUnitPrice;
+          displayTitle = p.title || '(untitled)';
+        }
+        const lineTotal = unitPrice != null ? unitPrice * qty : null;
+        const unitLabel = (vid ? null : p.priceNote) || (unitPrice != null ? fmtPrice(unitPrice) : '—');
+        return `<div class="cart-item" data-cart-key="${escHtml(key)}" style="touch-action: pan-y;">
+          <div class="ci-info">
+            <div class="ci-title">${escHtml(displayTitle)}</div>
+            <div class="ci-price">${escHtml(unitLabel)} each</div>
+          </div>
+          <div class="ci-qty">
+            <button class="qty-btn" onclick="setCartQty('${key}', ${qty - 1})">−</button>
+            <span class="qty-val">${qty}</span>
+            <button class="qty-btn" onclick="setCartQty('${key}', ${qty + 1})">+</button>
+          </div>
+          <div class="ci-line">${lineTotal != null ? fmtPrice(lineTotal) : '—'}</div>
+        </div>`;
+      }).join('');
+    }
+
+    const subtotal = cartTotal();
+    const discResults = calculateDiscounts();
+    const ruleDiscAmt = discResults.reduce((s, r) => s + r.amount, 0);
+    const cartDiscAmt = calculateCartDiscount(Math.max(0, subtotal - ruleDiscAmt));
+    const grandTotal = cartGrandTotal();
+    const count = cartItemCount();
+    const cur = getCurrency();
+    document.getElementById('cart-count').textContent = count;
+    document.getElementById('tot-items').textContent = count;
+    const subtotalRow = document.getElementById('tot-subtotal-row');
+    const discLines   = document.getElementById('tot-disc-lines');
+    if (count && (discResults.length || cartDiscAmt > 0.001)) {
+      subtotalRow.style.display = '';
+      document.getElementById('tot-subtotal').textContent = cur + ' ' + subtotal.toFixed(2);
+      const ruleLines = discResults.map(r =>
+        `<div class="cart-disc"><span>🎁 ${escHtml(r.disc.name)}</span><span class="cd-amount">− ${cur} ${r.amount.toFixed(2)}</span></div>`
+      ).join('');
+      const customLine = cartDiscAmt > 0.001
+        ? `<div class="cart-disc"><span>${escHtml(cartDiscountLabel())}</span><span class="cd-amount">âˆ’ ${cur} ${cartDiscAmt.toFixed(2)}</span></div>`
+        : '';
+      discLines.innerHTML = ruleLines + customLine;
+    } else {
+      subtotalRow.style.display = 'none';
+      discLines.innerHTML = '';
+    }
+    document.getElementById('tot-price').textContent = count ? cur + ' ' + grandTotal.toFixed(2) : '—';
+    const cartDiscBtn = document.getElementById('btn-cart-discount');
+    cartDiscBtn.disabled = count === 0;
+    cartDiscBtn.textContent = cartDiscount ? 'Edit Discount' : 'Discount';
+    cartDiscBtn.classList.toggle('active', !!cartDiscount);
+    document.getElementById('btn-cash').disabled = count === 0;
+    document.getElementById('btn-card').disabled = count === 0;
+    document.getElementById('btn-split').disabled = count === 0;
+
+    // Sync mobile FAB
+    const fabCount = document.getElementById('fab-item-count');
+    const fabTotal = document.getElementById('fab-total');
+    if (fabCount && fabTotal) {
+      fabCount.textContent = count ? `${count} item${count !== 1 ? 's' : ''} in cart` : 'Cart is empty';
+      if (count) {
+        fabTotal.textContent = cur + ' ' + grandTotal.toFixed(2);
+        fabTotal.className = 'cart-fab-total';
+      } else {
+        fabTotal.textContent = 'Tap to view';
+        fabTotal.className = 'cart-fab-total empty';
+      }
+    }
+  }
+
+  function render() { renderProducts(); renderCart(); }
+
+  const cartSwipeState = {
+    activeItem: null,
+    startX: 0,
+    startY: 0,
+    pointerId: null,
+    dragging: false,
+    threshold: 90,
+    maxTranslate: 120,
+  };
+
+  function initCartSwipe() {
+    const container = document.getElementById('cart-items');
+    if (!container) return;
+
+    container.addEventListener('pointerdown', e => {
+      const item = e.target.closest('.cart-item');
+      if (!item || e.target.closest('.qty-btn')) return;
+      cartSwipeState.activeItem = item;
+      cartSwipeState.startX = e.clientX;
+      cartSwipeState.startY = e.clientY;
+      cartSwipeState.pointerId = e.pointerId;
+      cartSwipeState.dragging = true;
+      item.setPointerCapture(e.pointerId);
+      item.classList.add('swipe-active');
+      item.style.transition = 'none';
+    });
+
+    container.addEventListener('pointermove', e => {
+      const item = cartSwipeState.activeItem;
+      if (!cartSwipeState.dragging || !item || e.pointerId !== cartSwipeState.pointerId) return;
+      const dx = e.clientX - cartSwipeState.startX;
+      const dy = e.clientY - cartSwipeState.startY;
+      if (Math.abs(dy) > Math.abs(dx)) return;
+      e.preventDefault();
+      const translate = Math.max(-cartSwipeState.maxTranslate, Math.min(0, dx));
+      item.style.transform = `translateX(${translate}px)`;
+    });
+
+    const resetSwipe = () => {
+      const item = cartSwipeState.activeItem;
+      if (!item) return;
+      item.style.transition = 'transform .18s ease';
+      item.style.transform = '';
+      item.classList.remove('swipe-active');
+      cartSwipeState.activeItem = null;
+      cartSwipeState.dragging = false;
+      cartSwipeState.pointerId = null;
+    };
+
+    container.addEventListener('pointerup', e => {
+      const item = cartSwipeState.activeItem;
+      if (!item || e.pointerId !== cartSwipeState.pointerId) return;
+      const dx = e.clientX - cartSwipeState.startX;
+      if (dx < -cartSwipeState.threshold) {
+        const key = item.dataset.cartKey;
+        if (key) setCartQty(key, 0);
+        showToast('Removed item from cart', '');
+      } else {
+        resetSwipe();
+      }
+    });
+
+    container.addEventListener('pointercancel', resetSwipe);
+    container.addEventListener('pointerleave', e => {
+      if (cartSwipeState.activeItem && e.pointerId === cartSwipeState.pointerId) resetSwipe();
+    });
+  }
+
+  initCartSwipe();
+
+  // ── Toast ──────────────────────────────────────────────────────────────────
+  let toastTimer;
+  function showToast(msg, type = '') {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.className = 'toast show' + (type ? ' ' + type : '');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { el.classList.remove('show'); }, 2800);
+  }
+
+  function escHtml(s) {
+    return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  // ── Theme — mirrors main app: dark by default unless 'light' is saved ──────
+  function applyTheme() {
+    const saved = localStorage.getItem('zolltool_theme');
+    const checkbox = document.getElementById('theme-toggle-cb');
+    if (saved !== 'light') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      if (checkbox) checkbox.checked = true;
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      if (checkbox) checkbox.checked = false;
+    }
+  }
+  document.getElementById('theme-toggle-cb').addEventListener('change', (event) => {
+    localStorage.setItem('zolltool_theme', event.target.checked ? 'dark' : 'light');
+    applyTheme();
+  });
+
+  // ── Storage change listener (sync with main tab) ───────────────────────────
+  window.addEventListener('storage', e => {
+    if (e.key === STORAGE_KEY) { loadState(); render(); }
+  });
+
+  // ── Init ───────────────────────────────────────────────────────────────────
+  applyTheme();
+  loadState();
+  if (appState) document.getElementById('btn-save-json').style.display = '';
+
+  function updateHeader() {
+    document.getElementById('hdr-event').textContent =
+      (appState && appState.meta && appState.meta.event) ? appState.meta.event : '';
+  }
+  updateHeader();
+
+  // Reload when tab regains focus so changes from the main ZollTool tab are picked up
+  window.addEventListener('focus', () => { loadState(); updateHeader(); render(); });
+
+  document.getElementById('cash-received').addEventListener('input', updateChange);
+  document.getElementById('split-cash').addEventListener('input', updateSplitPayment);
+  document.getElementById('split-card').addEventListener('input', updateSplitPayment);
+  document.getElementById('btn-cash').addEventListener('click', () => openPayment('cash'));
+  document.getElementById('btn-card').addEventListener('click', () => openPayment('card'));
+  document.getElementById('btn-split').addEventListener('click', () => openPayment('split'));
+  document.getElementById('btn-cart-discount').addEventListener('click', openCartDiscountForm);
+  document.getElementById('btn-clear').addEventListener('click', clearCart);
+  document.getElementById('barcode-input').addEventListener('keydown', e => {
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    scanBarcode(e.target.value);
+    e.target.value = '';
+  });
+  document.getElementById('confirm-cancel').addEventListener('click', closeOverlay);
+  document.getElementById('confirm-ok').addEventListener('click', confirmPayment);
+  document.getElementById('force-complete').addEventListener('click', () => {
+    if (!pendingPayment) return;
+    document.getElementById('force-complete').style.display = 'none';
+    document.getElementById('confirm-ok').style.display = '';
+    const remoteOrder = pendingRemoteOrder;
+    const total = pendingPayment.total;
+    const cur = getCurrency();
+    pendingRemoteOrder = null;
+    confirmPayment();
+    showToast('Payment force-completed', 'success');
+    if (remoteOrder) {
+      sendOrderResult(remoteOrder.clientId, true, null, { total, currency: cur });
+    }
+  });
+  document.getElementById('pay-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('pay-overlay')) closeOverlay();
+  });
+  document.getElementById('cart-discount-close').addEventListener('click', closeCartDiscountForm);
+  document.getElementById('cart-discount-cancel').addEventListener('click', closeCartDiscountForm);
+  document.getElementById('cart-discount-apply').addEventListener('click', applyCartDiscount);
+  document.getElementById('cart-discount-remove').addEventListener('click', removeCartDiscount);
+  document.getElementById('cart-discount-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('cart-discount-overlay')) closeCartDiscountForm();
+  });
+  document.querySelectorAll('input[name="cart-disc-type"]').forEach(r => {
+    r.addEventListener('change', updateCartDiscountUnit);
+  });
+
+  function togglePosMenu() {
+    document.getElementById('hdr-collapsible').classList.toggle('open');
+  }
+  document.addEventListener('click', e => {
+    const burger = document.getElementById('hdr-burger');
+    const menu   = document.getElementById('hdr-collapsible');
+    if (menu && !menu.contains(e.target) && e.target !== burger && !burger.contains(e.target)) {
+      menu.classList.remove('open');
+    }
+  });
+
+  function openShortcutsHelp() {
+    document.getElementById('shortcuts-overlay').classList.remove('hidden');
+  }
+
+  function closeShortcutsHelp() {
+    document.getElementById('shortcuts-overlay').classList.add('hidden');
+  }
+
+  document.getElementById('btn-shortcuts-help').addEventListener('click', openShortcutsHelp);
+  document.getElementById('shortcuts-close').addEventListener('click', closeShortcutsHelp);
+  document.getElementById('shortcuts-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('shortcuts-overlay')) closeShortcutsHelp();
+  });
+
+  document.addEventListener('keydown', e => {
+    const tag = (e.target && e.target.tagName || '').toLowerCase();
+    const typing = ['input', 'textarea', 'select'].includes(tag);
+    const payOpen = !document.getElementById('pay-overlay').classList.contains('hidden');
+    const helpOpen = !document.getElementById('shortcuts-overlay').classList.contains('hidden');
+    const discountOpen = !document.getElementById('disc-overlay').classList.contains('hidden')
+      || !document.getElementById('disc-form-overlay').classList.contains('hidden');
+    const cartDiscountOpen = !document.getElementById('cart-discount-overlay').classList.contains('hidden');
+
+    if (e.key === 'Escape') {
+      if (payOpen) closeOverlay();
+      else if (helpOpen) closeShortcutsHelp();
+      else if (cartDiscountOpen) closeCartDiscountForm();
+      else if (!document.getElementById('variant-overlay').classList.contains('hidden')) closeVariantPicker();
+      else if (!document.getElementById('type-overlay').classList.contains('hidden')) closeTypeView();
+      return;
+    }
+    if (payOpen && e.key === 'Enter' && !document.getElementById('confirm-ok').disabled) {
+      e.preventDefault();
+      confirmPayment();
+      return;
+    }
+    // When the cash dialog is open, number/decimal/backspace keys type into the cash amount field
+    if (payOpen && document.getElementById('cash-section').style.display !== 'none') {
+      const cashInput = document.getElementById('cash-received');
+      if (/^[0-9]$/.test(e.key)) {
+        e.preventDefault();
+        cashInput.value += e.key;
+        cashInput.dispatchEvent(new Event('input'));
+        return;
+      }
+      if (e.key === '.' || e.key === ',') {
+        e.preventDefault();
+        if (!cashInput.value.includes('.')) cashInput.value = (cashInput.value || '0') + '.';
+        cashInput.dispatchEvent(new Event('input'));
+        return;
+      }
+      if (e.key === 'Backspace') {
+        e.preventDefault();
+        cashInput.value = cashInput.value.slice(0, -1);
+        cashInput.dispatchEvent(new Event('input'));
+        return;
+      }
+    }
+    if (typing) return;
+    if (helpOpen || discountOpen || cartDiscountOpen) return;
+    if (/^[1-9]$/.test(e.key) && triggerNumberShortcut(e.key)) {
+      e.preventDefault();
+      return;
+    }
+    if (e.key === '/') {
+      e.preventDefault();
+      document.getElementById('barcode-input').focus();
+    } else if (e.altKey && e.key.toLowerCase() === 'c') {
+      e.preventDefault();
+      openPayment('cash');
+    } else if (e.altKey && e.key.toLowerCase() === 'v') {
+      e.preventDefault();
+      openPayment('card');
+    } else if (e.altKey && e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      openPayment('split');
+    } else if (e.altKey && e.key.toLowerCase() === 'x') {
+      e.preventDefault();
+      clearCart();
+    }
+  });
+
+  function buildFilename() {
+    const event  = (appState.meta && appState.meta.event)  || 'ZollTool';
+    const artist = (appState.artist && (appState.artist.companyName || appState.artist.fullName)) || '';
+    const date   = new Date().toISOString().slice(0, 10);
+    const parts  = [event, artist, date].filter(Boolean).join('_');
+    return parts.replace(/[^a-zA-Z0-9_\-\.]/g, '_') + '.json';
+  }
+
+  async function saveJSON() {
+    if (!appState) { showToast('No data to save.', 'error'); return; }
+    const filename = buildFilename();
+    const json = JSON.stringify(appState, null, 2);
+
+    if (IS_CAPACITOR) {
+      showSaveOptions(filename, json);
+      return;
+    }
+
+    const blob = new Blob([json], { type: 'application/json' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href     = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+    showToast('JSON saved: ' + filename, 'success');
+  }
+
+  function showSaveOptions(filename, json) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `
+      <div style="background:var(--surface);border-radius:var(--radius);padding:24px;width:280px;box-shadow:var(--shadow-md);display:flex;flex-direction:column;gap:12px;">
+        <div style="font-weight:700;font-size:15px;color:var(--text)">Save JSON</div>
+        <div style="font-size:12px;color:var(--text-muted);word-break:break-all;">${filename}</div>
+        <button id="_sopt_local" class="btn btn-primary" style="width:100%">Save to Device</button>
+        <button id="_sopt_share" class="btn" style="width:100%">Share / Send</button>
+        <button id="_sopt_cancel" class="btn" style="width:100%;color:var(--text-muted)">Cancel</button>
+      </div>`;
+    document.body.appendChild(overlay);
+    const close = () => document.body.removeChild(overlay);
+    overlay.querySelector('#_sopt_cancel').onclick = close;
+    overlay.querySelector('#_sopt_local').onclick = async () => {
+      close();
+      try {
+        const r = await window.Capacitor.Plugins.FileShare.saveToDevice({ filename, content: json });
+        if (r?.saved) showToast('Saved: ' + filename, 'success');
+      } catch (e) { showToast('Save failed: ' + (e.message || e), 'error'); }
+    };
+    overlay.querySelector('#_sopt_share').onclick = async () => {
+      close();
+      try {
+        await window.Capacitor.Plugins.FileShare.shareFile({ filename, content: json, mimeType: 'application/json' });
+      } catch (e) { showToast('Share failed: ' + (e.message || e), 'error'); }
+    };
+  }
+
+  // ── Discount manager ──────────────────────────────────────────────────────
+  let editingDiscId = null;
+
+  function openDiscManager() {
+    renderDiscList();
+    document.getElementById('disc-overlay').classList.remove('hidden');
+  }
+
+  function closeDiscManager() {
+    document.getElementById('disc-overlay').classList.add('hidden');
+  }
+
+  function renderDiscList() {
+    const container = document.getElementById('disc-list');
+    const discounts = loadDiscounts();
+    if (!discounts.length) {
+      container.innerHTML = '<div class="disc-empty">No discounts yet. Create one to get started.</div>';
+      return;
+    }
+    const products = (appState && appState.products) ? appState.products : [];
+    container.innerHTML = discounts.map(d => {
+      const resolvedProducts = discountProductIds(d).map(pid => {
+        const p = products.find(pr => pr.id === pid);
+        return { pid, title: p ? p.title : null };
+      });
+      const resolvedVariants = discountVariantIds(d).map(key => {
+        const { pid, vid } = parseCartKey(key);
+        const p = products.find(pr => pr.id === pid);
+        const v = p ? (p.variants || []).find(vv => vv.id === vid) : null;
+        return { key, title: p && v ? `${p.title || '(untitled)'} - ${v.name || v.sku || 'Variant'}` : null };
+      });
+      const resolved = [...resolvedProducts, ...resolvedVariants];
+      const missing = resolved.filter(r => !r.title);
+      const productNames = resolved.filter(r => r.title).map(r => r.title).join(', ') || '—';
+      const warningHtml = missing.length
+        ? `<div style="font-size:11px;color:var(--red);margin-top:3px">⚠ ${missing.length} product${missing.length > 1 ? 's' : ''} removed from ZollTool</div>`
+        : '';
+      return `<div class="disc-item" style="${missing.length ? 'border-color:var(--red);' : ''}">
+        <div class="di-info">
+          <div class="di-name">${escHtml(d.name)}</div>
+          <div class="di-summary">${escHtml(discTypeSummary(d))}</div>
+          <div class="di-products">${escHtml(productNames)}</div>
+          ${warningHtml}
+        </div>
+        <div class="di-actions">
+          <button class="btn btn-ghost" style="padding:4px 9px;font-size:12px" onclick="openDiscForm('${d.id}')">Edit</button>
+          <button class="btn btn-ghost" style="padding:4px 9px;font-size:12px;color:var(--red)" onclick="deleteDiscount('${d.id}')">Delete</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function deleteDiscount(id) {
+    const discounts = loadDiscounts().filter(d => d.id !== id);
+    saveDiscounts(discounts);
+    renderDiscList();
+    render();
+  }
+
+  function openDiscForm(id = null) {
+    editingDiscId = id;
+    const discounts = loadDiscounts();
+    const existing = id ? discounts.find(d => d.id === id) : null;
+
+    document.getElementById('df-title').textContent = existing ? 'Edit Discount' : 'New Discount';
+    document.getElementById('df-name').value = existing ? existing.name : '';
+    document.getElementById('df-product-search').value = '';
+
+    const type = existing ? existing.type : 'bxgy';
+    document.querySelectorAll('input[name="df-type"]').forEach(r => {
+      r.checked = r.value === type;
+    });
+    updateDiscFormType(type);
+
+    if (existing && existing.type === 'bxgy') {
+      document.getElementById('df-buy').value  = existing.buyQty  ?? 2;
+      document.getElementById('df-free').value = existing.freeQty ?? 1;
+    } else {
+      document.getElementById('df-buy').value  = 2;
+      document.getElementById('df-free').value = 1;
+    }
+    if (existing && existing.type === 'nth_pct') {
+      document.getElementById('df-nth').value = existing.nth     ?? 3;
+      document.getElementById('df-pct').value = existing.percent ?? 50;
+    } else {
+      document.getElementById('df-nth').value = 3;
+      document.getElementById('df-pct').value = 50;
+    }
+
+    const tiers = (existing && existing.type === 'tiered' && existing.tiers) ? existing.tiers : [{ qty: 3, total: '' }];
+    renderTierRows(tiers);
+    document.getElementById('df-tier-continue').checked = !!(existing && existing.tierContinue);
+
+    renderProductCheckboxes(existing ? {
+      productIds: discountProductIds(existing),
+      variantIds: discountVariantIds(existing)
+    } : { productIds: [], variantIds: [] });
+    filterDiscountProducts();
+
+    document.getElementById('disc-form-overlay').classList.remove('hidden');
+  }
+
+  function closeDiscForm() {
+    document.getElementById('disc-form-overlay').classList.add('hidden');
+    editingDiscId = null;
+  }
+
+  function updateDiscFormType(type) {
+    document.getElementById('df-bxgy-section').style.display   = type === 'bxgy'    ? '' : 'none';
+    document.getElementById('df-nth-section').style.display    = type === 'nth_pct' ? '' : 'none';
+    document.getElementById('df-tiered-section').style.display = type === 'tiered'  ? '' : 'none';
+  }
+
+  function renderTierRows(tiers) {
+    const container = document.getElementById('df-tiers');
+    container.innerHTML = tiers.map((t, i) =>
+      `<div class="tier-row">
+        <input class="df-inline tier-qty" type="number" min="1" value="${t.qty}" placeholder="qty" />
+        <span>items for</span>
+        <input class="df-inline tier-total" type="number" min="0" step="0.01" value="${t.total}" placeholder="0.00" />
+        <span>${getCurrency()}</span>
+        ${tiers.length > 1 ? `<button type="button" class="btn btn-ghost" style="padding:2px 8px;font-size:12px;color:var(--red)" onclick="removeTierRow(${i})">✕</button>` : ''}
+      </div>`
+    ).join('');
+  }
+
+  function removeTierRow(idx) {
+    const tiers = getTierValues();
+    tiers.splice(idx, 1);
+    renderTierRows(tiers);
+  }
+
+  function getTierValues() {
+    const qtys   = [...document.querySelectorAll('#df-tiers .tier-qty')].map(el => parseFloat(el.value) || 1);
+    const totals = [...document.querySelectorAll('#df-tiers .tier-total')].map(el => parseFloat(el.value) || 0);
+    return qtys.map((qty, i) => ({ qty, total: totals[i] }));
+  }
+
+  function renderProductCheckboxes(selectedTargets) {
+    const container = document.getElementById('df-products');
+    const products = (appState && appState.products) ? appState.products.filter(p => p.forSale !== false) : [];
+    if (!products.length) {
+      container.innerHTML = '<div style="font-size:12px;color:var(--text-muted)">No products — load a JSON file first.</div>';
+      return;
+    }
+    const selectedProducts = new Set(selectedTargets.productIds || []);
+    const selectedVariants = new Set(selectedTargets.variantIds || []);
+    container.innerHTML = products.map(p => {
+      const productSearch = [p.title, p.sku, p.type].filter(Boolean).join(' ').toLowerCase();
+      const productRow = `<label class="product-check" data-search="${escHtml(productSearch)}">
+        <input type="checkbox" data-target-kind="product" value="${p.id}" ${selectedProducts.has(p.id) ? 'checked' : ''} />
+        <span class="product-check-title">
+          <span>${escHtml(p.title || '(untitled)')}</span>
+          ${p.sku ? `<span class="product-check-meta">${escHtml(p.sku)}</span>` : ''}
+        </span>
+      </label>`;
+      const variantRows = hasVariants(p) ? (p.variants || []).map(v => {
+        const key = `${p.id}:${v.id}`;
+        const variantSearch = [p.title, p.sku, p.type, v.name, v.sku].filter(Boolean).join(' ').toLowerCase();
+        return `<label class="product-check variant-check" data-parent-id="${escHtml(p.id)}" data-search="${escHtml(variantSearch)}">
+          <input type="checkbox" data-target-kind="variant" value="${escHtml(key)}" ${selectedVariants.has(key) ? 'checked' : ''} />
+          <span class="product-check-title">
+            <span>${escHtml(v.name || 'Variant')}</span>
+            <span class="product-check-meta">${escHtml(p.title || '(untitled)')}${v.sku ? ` - ${escHtml(v.sku)}` : ''}</span>
+          </span>
+        </label>`;
+      }).join('') : '';
+      return productRow + variantRows;
+    }).join('');
+  }
+
+  document.getElementById('df-products').addEventListener('change', e => {
+    const cb = e.target;
+    if (cb.dataset.targetKind !== 'product') return;
+    const pid = cb.value;
+    document.querySelectorAll(`#df-products .variant-check[data-parent-id="${CSS.escape(pid)}"] input[type="checkbox"]`)
+      .forEach(v => { v.checked = cb.checked; });
+  });
+
+  function filterDiscountProducts() {
+    const q = document.getElementById('df-product-search').value.trim().toLowerCase();
+    const rows = [...document.querySelectorAll('#df-products .product-check')];
+    let visible = 0;
+    rows.forEach(row => {
+      const match = !q || (row.dataset.search || '').includes(q);
+      row.classList.toggle('hidden', !match);
+      if (match) visible++;
+    });
+    document.getElementById('df-products-empty').style.display = rows.length && visible === 0 ? '' : 'none';
+  }
+
+  function saveDiscount() {
+    const name = document.getElementById('df-name').value.trim();
+    if (!name) { showToast('Please enter a discount name.', 'error'); return; }
+
+    const type = document.querySelector('input[name="df-type"]:checked').value;
+    const checkedTargets = [...document.querySelectorAll('#df-products input[type="checkbox"]:checked')];
+    const selectedIds = checkedTargets.filter(el => el.dataset.targetKind !== 'variant').map(el => el.value);
+    const selectedVariantIds = checkedTargets.filter(el => el.dataset.targetKind === 'variant').map(el => el.value);
+    if (!selectedIds.length && !selectedVariantIds.length) { showToast('Select at least one product or variant.', 'error'); return; }
+
+    const disc = { id: editingDiscId || uuid(), name, type, productIds: selectedIds, variantIds: selectedVariantIds };
+
+    if (type === 'bxgy') {
+      disc.buyQty  = parseInt(document.getElementById('df-buy').value,  10) || 2;
+      disc.freeQty = parseInt(document.getElementById('df-free').value, 10) || 1;
+    } else if (type === 'nth_pct') {
+      disc.nth     = parseInt(document.getElementById('df-nth').value, 10) || 3;
+      disc.percent = parseInt(document.getElementById('df-pct').value, 10) || 50;
+    } else if (type === 'tiered') {
+      disc.tiers = getTierValues().filter(t => t.qty >= 1 && t.total > 0);
+      if (!disc.tiers.length) { showToast('Add at least one valid tier.', 'error'); return; }
+      disc.tierContinue = document.getElementById('df-tier-continue').checked;
+    }
+
+    const discounts = loadDiscounts();
+    const idx = discounts.findIndex(d => d.id === disc.id);
+    if (idx >= 0) discounts[idx] = disc; else discounts.push(disc);
+    saveDiscounts(discounts);
+
+    closeDiscForm();
+    renderDiscList();
+    render();
+    showToast('Discount saved.', 'success');
+  }
+
+  document.getElementById('btn-discounts').addEventListener('click', openDiscManager);
+  document.getElementById('disc-close').addEventListener('click', closeDiscManager);
+  document.getElementById('disc-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('disc-overlay')) closeDiscManager();
+  });
+  document.getElementById('disc-new-btn').addEventListener('click', () => openDiscForm(null));
+
+  document.getElementById('df-close').addEventListener('click', closeDiscForm);
+  document.getElementById('df-cancel').addEventListener('click', closeDiscForm);
+  document.getElementById('df-save').addEventListener('click', saveDiscount);
+  document.getElementById('df-product-search').addEventListener('input', filterDiscountProducts);
+  document.getElementById('df-add-tier').addEventListener('click', () => {
+    const tiers = getTierValues();
+    tiers.push({ qty: tiers.length + 1, total: '' });
+    renderTierRows(tiers);
+  });
+  document.querySelectorAll('input[name="df-type"]').forEach(r => {
+    r.addEventListener('change', () => updateDiscFormType(r.value));
+  });
+  document.getElementById('disc-form-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('disc-form-overlay')) closeDiscForm();
+  });
+
+  document.getElementById('btn-load-json').addEventListener('click', () => {
+    document.getElementById('pos-file-input').click();
+  });
+  document.getElementById('btn-save-json').addEventListener('click', saveJSON);
+  document.getElementById('pos-file-input').addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = evt => {
+      try {
+        const parsed = JSON.parse(evt.target.result);
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed));
+        loadState();
+        updateHeader();
+        render();
+        broadcastCatalog(); // push new catalog to any connected remote devices
+        document.getElementById('btn-save-json').style.display = '';
+        showToast('Loaded: ' + file.name, 'success');
+      } catch (err) {
+        showToast('Invalid JSON file.', 'error');
+      }
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  });
+
+  render();
+
+  // ── Mobile cart bottom-sheet ──────────────────────────────────────────────
+  function openMobileCart() {
+    document.getElementById('cart-panel').classList.add('open');
+    document.getElementById('cart-backdrop').classList.add('open');
+  }
+  function closeMobileCart() {
+    document.getElementById('cart-panel').classList.remove('open');
+    document.getElementById('cart-backdrop').classList.remove('open');
+  }
+  document.getElementById('fab-open-cart').addEventListener('click', openMobileCart);
+  document.getElementById('cart-mobile-close').addEventListener('click', closeMobileCart);
+  document.getElementById('cart-backdrop').addEventListener('click', closeMobileCart);
+  // Also close cart sheet when payment dialog opens (so user sees it)
+  document.getElementById('btn-cash').addEventListener('click', closeMobileCart);
+  document.getElementById('btn-card').addEventListener('click', closeMobileCart);
+  document.getElementById('btn-split').addEventListener('click', closeMobileCart);
+</script>
+</body>
+</html>

@@ -1,0 +1,38 @@
+[
+  {
+    "id": "fantasy-basel-2026",
+    "name": "Fantasy Basel 2026",
+    "dateStart": "2026-05-14",
+    "dateEnd": "2026-05-16",
+    "venueStreet": "Messeplatz 10",
+    "venuePostcode": "4005",
+    "venueCity": "Basel",
+    "venueCountry": "Switzerland",
+    "venueTIN": "CHE222251936",
+    "currency": "CHF"
+  },
+  {
+    "id": "zurich-pop-con-2026",
+    "name": "Zurich Pop Con 2026",
+    "dateStart": "2026-09-26",
+    "dateEnd": "2026-09-27",
+    "venueStreet": "Wallisellenstrasse 49",
+    "venuePostcode": "8050",
+    "venueCity": "Zurich",
+    "venueCountry": "Switzerland",
+    "venueTIN": "CHE222251936",
+    "currency": "CHF"
+  },
+  {
+    "id": "zurich-pop-con-2026",
+    "name": "Zurich Pop Con 2026",
+    "dateStart": "2026-10-2",
+    "dateEnd": "2026-10-4",
+    "venueStreet": "Mingerstrasse 6",
+    "venuePostcode": "3014",
+    "venueCity": "Bern",
+    "venueCountry": "Switzerland",
+    "venueTIN": "CHE222251936",
+    "currency": "CHF"
+  }
+]

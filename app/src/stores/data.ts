@@ -1,0 +1,108 @@
+import { computed } from 'vue';
+import { defineStore } from 'pinia';
+import type { Product, SalesEvent } from '@zolltool/shared';
+import { db } from '@/db/schema';
+import { useLive } from '@/db/live';
+import { useSettingsStore } from './settings';
+
+export interface SoldCounts {
+  qty: number;
+  value: number;
+}
+
+/** Cart/stock key: pid for plain products, `pid:vid` for variants. */
+export function stockKey(pid: string, vid: string | null): string {
+  return vid ? `${pid}:${vid}` : pid;
+}
+
+export const useDataStore = defineStore('data', () => {
+  const settings = useSettingsStore();
+
+  // Whole-table live views; data volumes are small (hundreds of products,
+  // low thousands of transactions), so filtering happens in computeds.
+  const events = useLive<SalesEvent[]>(
+    () => db.events.filter((e) => !e.deletedAt).toArray(),
+    [],
+  );
+  const products = useLive<Product[]>(
+    () => db.products.filter((p) => !p.deletedAt).sortBy('sortOrder'),
+    [],
+  );
+  const discounts = useLive(
+    () => db.discounts.filter((d) => !d.deletedAt).toArray(),
+    [],
+  );
+  const allStock = useLive(() => db.eventStock.toArray(), []);
+  const allTransactions = useLive(() => db.transactions.toArray(), []);
+
+  const activeEvent = computed<SalesEvent | null>(
+    () => events.value.find((e) => e.id === settings.activeEventId) ?? null,
+  );
+
+  const currency = computed(() => activeEvent.value?.currency ?? 'CHF');
+
+  const eventTransactions = computed(() =>
+    allTransactions.value
+      .filter((t) => t.eventId === settings.activeEventId)
+      .sort((a, b) => b.timestamp - a.timestamp),
+  );
+
+  /** broughtQty per stockKey for the active event. */
+  const stockByKey = computed<Map<string, number>>(() => {
+    const map = new Map<string, number>();
+    for (const row of allStock.value) {
+      if (row.eventId !== settings.activeEventId) continue;
+      map.set(stockKey(row.productId, row.variantId || null), row.broughtQty);
+    }
+    return map;
+  });
+
+  /** Sold qty/value per stockKey, derived from non-reverted transactions. */
+  const soldByKey = computed<Map<string, SoldCounts>>(() => {
+    const map = new Map<string, SoldCounts>();
+    for (const tx of eventTransactions.value) {
+      if (tx.revertedBy) continue;
+      for (const item of tx.items) {
+        const key = stockKey(item.pid, item.vid);
+        const cur = map.get(key) ?? { qty: 0, value: 0 };
+        cur.qty += item.qty;
+        cur.value += item.lineTotal;
+        map.set(key, cur);
+      }
+    }
+    return map;
+  });
+
+  function broughtQty(pid: string, vid: string | null): number {
+    return stockByKey.value.get(stockKey(pid, vid)) ?? 0;
+  }
+
+  function soldQty(pid: string, vid: string | null): number {
+    return soldByKey.value.get(stockKey(pid, vid))?.qty ?? 0;
+  }
+
+  /** Stock left ignoring the cart (the cart store subtracts its own reservations). */
+  function stockLeft(product: Product, vid: string | null): number {
+    if (vid) return broughtQty(product.id, vid) - soldQty(product.id, vid);
+    if (product.variants.length) {
+      return product.variants.reduce((s, v) => s + stockLeft(product, v.id), 0);
+    }
+    return broughtQty(product.id, null) - soldQty(product.id, null);
+  }
+
+  return {
+    events,
+    products,
+    discounts,
+    allStock,
+    allTransactions,
+    activeEvent,
+    currency,
+    eventTransactions,
+    stockByKey,
+    soldByKey,
+    broughtQty,
+    soldQty,
+    stockLeft,
+  };
+});

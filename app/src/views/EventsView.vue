@@ -1,0 +1,296 @@
+<script setup lang="ts">
+import { computed, reactive, ref } from 'vue';
+import type { SalesEvent } from '@zolltool/shared';
+import { useDataStore } from '@/stores/data';
+import { useSettingsStore } from '@/stores/settings';
+import { closeEvent, setStock, upsertEvent } from '@/db/repo';
+import { db } from '@/db/schema';
+import { uuidv7 } from '@/lib/uuid';
+import { fmtPrice } from '@/lib/money';
+import { EVENT_PRESETS } from '@/data/event-presets';
+import ModalShell from '@/components/ModalShell.vue';
+
+const data = useDataStore();
+const settings = useSettingsStore();
+
+const showCreate = ref(false);
+const confirmCloseId = ref<string | null>(null);
+
+const form = reactive({
+  preset: '',
+  name: '',
+  dateStart: '',
+  dateEnd: '',
+  street: '',
+  postcode: '',
+  city: '',
+  country: 'Switzerland',
+  tin: '',
+  currency: 'CHF',
+  copyStockFrom: '',
+});
+
+const statusOrder: Record<string, number> = { active: 0, planned: 1, closed: 2 };
+const sortedEvents = computed(() =>
+  [...data.events].sort(
+    (a, b) => (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3) || b.updatedAt - a.updatedAt,
+  ),
+);
+
+function eventStats(eventId: string): { count: number; revenue: number; currency: string } {
+  let count = 0;
+  let revenue = 0;
+  let currency = 'CHF';
+  for (const tx of data.allTransactions) {
+    if (tx.eventId !== eventId || tx.revertedBy) continue;
+    count++;
+    revenue += tx.total;
+    currency = tx.currency;
+  }
+  return { count, revenue, currency };
+}
+
+function applyPreset(): void {
+  const preset = EVENT_PRESETS.find((p) => p.id === form.preset);
+  if (!preset) return;
+  form.name = preset.name;
+  form.dateStart = preset.dateStart ?? '';
+  form.dateEnd = preset.dateEnd ?? '';
+  form.street = preset.venue.street ?? '';
+  form.postcode = preset.venue.postcode ?? '';
+  form.city = preset.venue.city ?? '';
+  form.country = preset.venue.country ?? '';
+  form.tin = preset.venue.tin ?? '';
+  form.currency = preset.currency;
+}
+
+function openCreate(): void {
+  Object.assign(form, {
+    preset: '',
+    name: '',
+    dateStart: '',
+    dateEnd: '',
+    street: '',
+    postcode: '',
+    city: '',
+    country: 'Switzerland',
+    tin: '',
+    currency: 'CHF',
+    copyStockFrom: '',
+  });
+  showCreate.value = true;
+}
+
+async function createEvent(): Promise<void> {
+  if (!form.name.trim()) return;
+  const event: SalesEvent = {
+    id: uuidv7(),
+    name: form.name.trim(),
+    dateStart: form.dateStart || undefined,
+    dateEnd: form.dateEnd || undefined,
+    venue: {
+      street: form.street || undefined,
+      postcode: form.postcode || undefined,
+      city: form.city || undefined,
+      country: form.country || undefined,
+      tin: form.tin || undefined,
+    },
+    currency: form.currency || 'CHF',
+    status: 'planned',
+    updatedAt: Date.now(),
+  };
+  await upsertEvent(event);
+
+  if (form.copyStockFrom) {
+    const rows = await db.eventStock.where('eventId').equals(form.copyStockFrom).toArray();
+    for (const row of rows) {
+      await setStock(event.id, row.productId, row.variantId, row.broughtQty);
+    }
+  }
+
+  showCreate.value = false;
+  if (!settings.activeEventId) await activate(event);
+}
+
+async function activate(event: SalesEvent): Promise<void> {
+  if (event.status !== 'active') {
+    await upsertEvent({ ...event, status: 'active', updatedAt: Date.now() });
+  }
+  await settings.setActiveEvent(event.id);
+}
+
+async function doClose(eventId: string): Promise<void> {
+  await closeEvent(eventId);
+  if (settings.activeEventId === eventId) await settings.setActiveEvent(null);
+  confirmCloseId.value = null;
+}
+
+function fmtDates(e: SalesEvent): string {
+  if (e.dateStart && e.dateEnd) return `${e.dateStart} → ${e.dateEnd}`;
+  return e.dateStart || '';
+}
+</script>
+
+<template>
+  <div class="mx-auto max-w-3xl p-4 md:p-6">
+    <div class="mb-5 flex items-center justify-between">
+      <h1 class="text-xl font-bold">Events</h1>
+      <button
+        class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+        @click="openCreate"
+      >
+        + New event
+      </button>
+    </div>
+
+    <p v-if="!sortedEvents.length" class="rounded-xl bg-slate-900 p-6 text-center text-sm text-slate-400">
+      No events yet. Create one to start selling — every sale is recorded against the active event.
+    </p>
+
+    <ul class="space-y-3">
+      <li
+        v-for="event in sortedEvents"
+        :key="event.id"
+        class="rounded-xl bg-slate-900 p-4 ring-1"
+        :class="event.id === settings.activeEventId ? 'ring-emerald-500' : 'ring-slate-800'"
+      >
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-base font-semibold">{{ event.name }}</span>
+          <span
+            class="rounded-full px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide"
+            :class="{
+              'bg-emerald-950 text-emerald-400': event.status === 'active',
+              'bg-sky-950 text-sky-400': event.status === 'planned',
+              'bg-slate-800 text-slate-400': event.status === 'closed',
+            }"
+          >
+            {{ event.id === settings.activeEventId ? 'selling' : event.status }}
+          </span>
+        </div>
+        <p class="mt-1 text-xs text-slate-400">
+          {{ fmtDates(event) }}<span v-if="event.venue.city"> · {{ event.venue.city }}</span>
+        </p>
+        <p class="mt-2 text-sm text-slate-300">
+          {{ eventStats(event.id).count }} sales ·
+          {{ fmtPrice(eventStats(event.id).revenue, eventStats(event.id).currency) }}
+        </p>
+        <div class="mt-3 flex gap-2">
+          <button
+            v-if="event.id !== settings.activeEventId && event.status !== 'closed'"
+            class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
+            @click="activate(event)"
+          >
+            Start selling
+          </button>
+          <button
+            v-if="event.status === 'closed'"
+            class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-200 hover:bg-slate-700"
+            @click="activate(event)"
+          >
+            Reopen
+          </button>
+          <button
+            v-if="event.status !== 'closed'"
+            class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
+            @click="confirmCloseId = event.id"
+          >
+            Close event
+          </button>
+        </div>
+      </li>
+    </ul>
+
+    <!-- Create modal -->
+    <ModalShell v-if="showCreate" title="New event" @close="showCreate = false">
+      <div class="space-y-3">
+        <label class="block text-sm">
+          <span class="text-slate-400">From preset</span>
+          <select
+            v-model="form.preset"
+            class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2"
+            @change="applyPreset"
+          >
+            <option value="">— blank —</option>
+            <option v-for="p in EVENT_PRESETS" :key="p.id" :value="p.id">{{ p.name }}</option>
+          </select>
+        </label>
+        <label class="block text-sm">
+          <span class="text-slate-400">Name *</span>
+          <input v-model="form.name" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+        </label>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block text-sm">
+            <span class="text-slate-400">Start</span>
+            <input v-model="form.dateStart" type="date" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          </label>
+          <label class="block text-sm">
+            <span class="text-slate-400">End</span>
+            <input v-model="form.dateEnd" type="date" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          </label>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block text-sm">
+            <span class="text-slate-400">Street</span>
+            <input v-model="form.street" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          </label>
+          <label class="block text-sm">
+            <span class="text-slate-400">City</span>
+            <input v-model="form.city" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          </label>
+        </div>
+        <div class="grid grid-cols-3 gap-3">
+          <label class="block text-sm">
+            <span class="text-slate-400">Postcode</span>
+            <input v-model="form.postcode" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          </label>
+          <label class="block text-sm">
+            <span class="text-slate-400">Country</span>
+            <input v-model="form.country" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          </label>
+          <label class="block text-sm">
+            <span class="text-slate-400">Currency</span>
+            <input v-model="form.currency" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          </label>
+        </div>
+        <label class="block text-sm">
+          <span class="text-slate-400">Copy stock from</span>
+          <select v-model="form.copyStockFrom" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2">
+            <option value="">— don't copy —</option>
+            <option v-for="e in data.events" :key="e.id" :value="e.id">{{ e.name }}</option>
+          </select>
+        </label>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <button class="rounded-lg bg-slate-800 px-4 py-2 text-sm" @click="showCreate = false">Cancel</button>
+          <button
+            class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+            :disabled="!form.name.trim()"
+            @click="createEvent"
+          >
+            Create
+          </button>
+        </div>
+      </template>
+    </ModalShell>
+
+    <!-- Close confirm -->
+    <ModalShell v-if="confirmCloseId" title="Close event?" @close="confirmCloseId = null">
+      <p class="text-sm text-slate-300">
+        Closing stops sales for this event. Nothing is deleted — history, stats and exports stay
+        available, and you can reopen it any time.
+      </p>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <button class="rounded-lg bg-slate-800 px-4 py-2 text-sm" @click="confirmCloseId = null">Cancel</button>
+          <button
+            class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500"
+            @click="doClose(confirmCloseId!)"
+          >
+            Close event
+          </button>
+        </div>
+      </template>
+    </ModalShell>
+  </div>
+</template>

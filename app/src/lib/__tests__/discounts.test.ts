@@ -1,0 +1,157 @@
+import { describe, expect, it } from 'vitest';
+import type { DiscountRule } from '@zolltool/shared';
+import {
+  computeCartTotals,
+  computeCustomDiscount,
+  computeRuleDiscounts,
+  distributeTotal,
+  type CartLine,
+} from '../discounts';
+
+// Golden values hand-computed from the legacy pos.html calculateDiscounts()
+// implementation — these tests pin v1 behavior exactly.
+
+function line(pid: string, vid: string | null, qty: number, unitPrice: number): CartLine {
+  return {
+    pid,
+    vid,
+    title: pid,
+    variantLabel: vid,
+    qty,
+    unitPrice,
+    lineTotal: unitPrice * qty,
+  };
+}
+
+function rule(partial: Partial<DiscountRule>): DiscountRule {
+  return {
+    id: 'r1',
+    name: 'Rule',
+    type: 'bxgy',
+    productIds: [],
+    variantIds: [],
+    updatedAt: 0,
+    ...partial,
+  };
+}
+
+describe('computeRuleDiscounts', () => {
+  it('bxgy: buy 2 get 1 — cheapest item of each full group goes free', () => {
+    // 5 matching items priced [5,10,10,10,12] → group size 3, 1 full group → 1 free = cheapest (5)
+    const lines = [line('a', null, 1, 5), line('a2', null, 3, 10), line('a3', null, 1, 12)];
+    const r = rule({ type: 'bxgy', buyQty: 2, freeQty: 1, productIds: ['a', 'a2', 'a3'] });
+    const res = computeRuleDiscounts(lines, [r]);
+    expect(res).toHaveLength(1);
+    expect(res[0]!.amount).toBe(5);
+  });
+
+  it('bxgy: two full groups discount the two cheapest items', () => {
+    // 6 items [5,6,10,10,10,12] → 2 groups → 2 free = 5 + 6
+    const lines = [
+      line('a', null, 1, 5),
+      line('b', null, 1, 6),
+      line('c', null, 3, 10),
+      line('d', null, 1, 12),
+    ];
+    const r = rule({ type: 'bxgy', buyQty: 2, freeQty: 1, productIds: ['a', 'b', 'c', 'd'] });
+    expect(computeRuleDiscounts(lines, [r])[0]!.amount).toBe(11);
+  });
+
+  it('nth_pct: every 3rd item (cheapest-first) gets 50% off', () => {
+    // sorted [4,6,8,10] → index 2 (8) at 50% → 4
+    const lines = [line('a', null, 1, 4), line('b', null, 1, 6), line('c', null, 1, 8), line('d', null, 1, 10)];
+    const r = rule({ type: 'nth_pct', nth: 3, percent: 50, productIds: ['a', 'b', 'c', 'd'] });
+    expect(computeRuleDiscounts(lines, [r])[0]!.amount).toBe(4);
+  });
+
+  it('tiered: greedy tier grouping, remainder at average unit price', () => {
+    // 5×10 with tier "3 for 25": tiered = 25 + 2×10 = 45 → discount 5
+    const lines = [line('a', null, 5, 10)];
+    const r = rule({ type: 'tiered', tiers: [{ qty: 3, total: 25 }], productIds: ['a'] });
+    expect(computeRuleDiscounts(lines, [r])[0]!.amount).toBeCloseTo(5, 10);
+  });
+
+  it('tiered with tierContinue: remainder priced at best-tier unit price', () => {
+    // 5×10, tier "3 for 25", continue: tiered = 25 + 2×(25/3) → discount = 50 − 41.666… = 8.333…
+    const lines = [line('a', null, 5, 10)];
+    const r = rule({
+      type: 'tiered',
+      tiers: [{ qty: 3, total: 25 }],
+      tierContinue: true,
+      productIds: ['a'],
+    });
+    expect(computeRuleDiscounts(lines, [r])[0]!.amount).toBeCloseTo(50 - (25 + (2 * 25) / 3), 10);
+  });
+
+  it('tiered: needs at least 2 matching items', () => {
+    const lines = [line('a', null, 1, 10)];
+    const r = rule({ type: 'tiered', tiers: [{ qty: 3, total: 25 }], productIds: ['a'] });
+    expect(computeRuleDiscounts(lines, [r])).toHaveLength(0);
+  });
+
+  it('matches variant lines via productIds and specific variantIds without double counting', () => {
+    const lines = [line('p', 'v1', 2, 10), line('p', 'v2', 1, 8)];
+    // Rule targets the whole product AND one variant explicitly — items must not be duplicated.
+    const r = rule({ type: 'bxgy', buyQty: 2, freeQty: 1, productIds: ['p'], variantIds: ['p:v1'] });
+    // 3 items [8,10,10] → 1 group → cheapest free = 8
+    expect(computeRuleDiscounts(lines, [r])[0]!.amount).toBe(8);
+  });
+
+  it('ignores rules with no matching cart items and deleted rules', () => {
+    const lines = [line('a', null, 1, 10)];
+    const r1 = rule({ id: 'x', productIds: ['other'] });
+    const r2 = rule({ id: 'y', productIds: ['a'], deletedAt: 123, buyQty: 1, freeQty: 1 });
+    expect(computeRuleDiscounts(lines, [r1, r2])).toHaveLength(0);
+  });
+});
+
+describe('computeCustomDiscount', () => {
+  it('percent discount caps at 100%', () => {
+    expect(computeCustomDiscount(80, { type: 'percent', value: 150, name: '' })).toBe(80);
+    expect(computeCustomDiscount(80, { type: 'percent', value: 25, name: '' })).toBe(20);
+  });
+
+  it('amount discount caps at the base total', () => {
+    expect(computeCustomDiscount(15, { type: 'amount', value: 20, name: '' })).toBe(15);
+    expect(computeCustomDiscount(50, { type: 'amount', value: 5, name: '' })).toBe(5);
+  });
+});
+
+describe('computeCartTotals', () => {
+  it('applies custom discount after rule discounts', () => {
+    // subtotal 100, bxgy(buy1 get1) on 2×50 → 50 off → 50; then 10% custom → 45
+    const lines = [line('a', null, 2, 50)];
+    const r = rule({ type: 'bxgy', buyQty: 1, freeQty: 1, productIds: ['a'] });
+    const t = computeCartTotals(lines, [r], { type: 'percent', value: 10, name: '' });
+    expect(t.subtotal).toBe(100);
+    expect(t.ruleDiscountTotal).toBe(50);
+    expect(t.customDiscountAmount).toBe(5);
+    expect(t.grandTotal).toBe(45);
+  });
+});
+
+describe('distributeTotal', () => {
+  it('scales proportionally, last line absorbs rounding', () => {
+    const lines = [{ lineTotal: 30 }, { lineTotal: 20 }];
+    distributeTotal(lines, 45);
+    expect(lines[0]!.lineTotal).toBe(27);
+    expect(lines[1]!.lineTotal).toBe(18);
+    expect(lines[0]!.lineTotal + lines[1]!.lineTotal).toBe(45);
+  });
+
+  it('cent-rounding drift lands on the last line', () => {
+    // 3×10 → 20: ratio 0.666…, first two round to 6.67, last = 20 − 13.34 = 6.66
+    const lines = [{ lineTotal: 10 }, { lineTotal: 10 }, { lineTotal: 10 }];
+    distributeTotal(lines, 20);
+    expect(lines[0]!.lineTotal).toBe(6.67);
+    expect(lines[1]!.lineTotal).toBe(6.67);
+    expect(lines[2]!.lineTotal).toBe(6.66);
+  });
+
+  it('leaves totals untouched when nothing changed', () => {
+    const lines = [{ lineTotal: 12.5 }, { lineTotal: 7.5 }];
+    distributeTotal(lines, 20);
+    expect(lines[0]!.lineTotal).toBe(12.5);
+    expect(lines[1]!.lineTotal).toBe(7.5);
+  });
+});
