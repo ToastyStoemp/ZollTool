@@ -6,8 +6,9 @@ import type {
   Transaction,
   Variant,
 } from '@zolltool/shared';
+import type { OpType } from '@zolltool/shared';
 import { db } from './schema';
-import { setSetting } from './repo';
+import { appendOps, setSetting } from './repo';
 import { uuidv7 } from '@/lib/uuid';
 
 const V1_KEY = 'zolltool_state_v1';
@@ -174,7 +175,7 @@ export async function importV1State(state: V1State, deviceId: string): Promise<s
 
   await db.transaction(
     'rw',
-    [db.events, db.products, db.eventStock, db.transactions, db.discounts, db.settings],
+    [db.events, db.products, db.eventStock, db.transactions, db.discounts, db.settings, db.ops],
     async () => {
       await db.events.put(event);
       await db.products.bulkPut(products);
@@ -182,6 +183,14 @@ export async function importV1State(state: V1State, deviceId: string): Promise<s
       await db.transactions.bulkPut(transactions);
       await db.discounts.bulkPut(discounts);
       await db.settings.put({ key: 'activeEventId', value: event.id });
+      // Queue everything for sync so the imported data reaches other devices
+      await appendOps([
+        { type: 'event.upsert' as OpType, payload: event },
+        ...products.map((p) => ({ type: 'product.upsert' as OpType, payload: p })),
+        ...stock.map((s) => ({ type: 'stock.set' as OpType, payload: s })),
+        ...transactions.map((t) => ({ type: 'tx.create' as OpType, payload: t })),
+        ...discounts.map((d) => ({ type: 'discount.upsert' as OpType, payload: d })),
+      ]);
     },
   );
 

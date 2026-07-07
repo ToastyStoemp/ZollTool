@@ -153,6 +153,7 @@ describe('importV1State', () => {
 describe('importBackup with a legacy v1 JSON file', () => {
   it('detects the v1 shape and imports it as a new event', async () => {
     const eventsBefore = await db.events.count();
+    const opsBefore = await db.ops.count();
     const counts = await importBackup(JSON.stringify(V1_STATE));
     expect(counts.events).toBe(1);
     expect(counts.products).toBe(3);
@@ -160,6 +161,14 @@ describe('importBackup with a legacy v1 JSON file', () => {
     // A fresh event is created; products merge by id instead of duplicating
     expect(await db.events.count()).toBe(eventsBefore + 1);
     expect(await db.products.count()).toBe(3);
+    // Imports queue sync ops so the data reaches the server and other devices
+    const newOps = (await db.ops.toArray()).slice(opsBefore);
+    expect(newOps.every((o) => o.synced === 0)).toBe(true);
+    expect(newOps.filter((o) => o.type === 'event.upsert')).toHaveLength(1);
+    expect(newOps.filter((o) => o.type === 'product.upsert')).toHaveLength(3);
+    expect(newOps.filter((o) => o.type === 'tx.create')).toHaveLength(2);
+    expect(newOps.filter((o) => o.type === 'stock.set')).toHaveLength(4); // p-print, p-book, 2 shirt variants
+    expect(newOps.filter((o) => o.type === 'discount.upsert')).toHaveLength(1);
   });
 
   it('still rejects files that are neither v1 nor v2', async () => {

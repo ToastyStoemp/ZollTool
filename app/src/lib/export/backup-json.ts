@@ -1,6 +1,6 @@
-import type { DiscountRule, EventStock, Product, SalesEvent, Transaction } from '@zolltool/shared';
+import type { DiscountRule, EventStock, OpType, Product, SalesEvent, Transaction } from '@zolltool/shared';
 import { db } from '@/db/schema';
-import { getSetting } from '@/db/repo';
+import { appendOps, getSetting } from '@/db/repo';
 import { importV1State } from '@/db/migrate-v1';
 import { base64ToBlob, blobToBase64 } from '@/lib/images';
 
@@ -77,8 +77,9 @@ function looksLikeV1State(parsed: unknown): parsed is Record<string, unknown> {
 /**
  * Merge a backup into the local database. Records are matched by id, so
  * re-importing the same file is safe; existing unrelated data is untouched.
- * Restored data is written directly (no ops appended) — a restore is not a
- * new local change to broadcast.
+ * Every imported record is also queued as a sync op, so a restore reaches
+ * the server and other devices like any other change (remote apply is
+ * insert-if-absent / last-writer-wins, so replays converge).
  *
  * Old ZollTool v1 JSON exports are accepted too: they run through the same
  * converter as the automatic localStorage migration and become a new event.
@@ -109,22 +110,37 @@ export async function importBackup(json: string): Promise<ImportCounts> {
     throw new Error('Not a ZollTool backup file');
   }
 
-  await db.transaction('rw', [db.events, db.products, db.eventStock, db.transactions, db.discounts, db.images], async () => {
-    await db.events.bulkPut(backup.events);
-    await db.products.bulkPut(backup.products);
-    await db.eventStock.bulkPut(backup.eventStock);
-    await db.transactions.bulkPut(backup.transactions);
-    await db.discounts.bulkPut(backup.discounts);
-    await db.images.bulkPut(
-      (backup.images ?? []).map((img) => ({
-        id: img.id,
-        productId: img.productId,
-        updatedAt: img.updatedAt,
-        full: base64ToBlob(img.fullB64, 'image/jpeg'),
-        thumb: base64ToBlob(img.thumbB64, 'image/webp'),
-      })),
-    );
-  });
+  await db.transaction(
+    'rw',
+    [db.events, db.products, db.eventStock, db.transactions, db.discounts, db.images, db.ops, db.settings],
+    async () => {
+      await db.events.bulkPut(backup.events);
+      await db.products.bulkPut(backup.products);
+      await db.eventStock.bulkPut(backup.eventStock);
+      await db.transactions.bulkPut(backup.transactions);
+      await db.discounts.bulkPut(backup.discounts);
+      await db.images.bulkPut(
+        (backup.images ?? []).map((img) => ({
+          id: img.id,
+          productId: img.productId,
+          updatedAt: img.updatedAt,
+          full: base64ToBlob(img.fullB64, 'image/jpeg'),
+          thumb: base64ToBlob(img.thumbB64, 'image/webp'),
+        })),
+      );
+      await appendOps([
+        ...backup.events.map((e) => ({ type: 'event.upsert' as OpType, payload: e })),
+        ...backup.products.map((p) => ({ type: 'product.upsert' as OpType, payload: p })),
+        ...backup.eventStock.map((s) => ({ type: 'stock.set' as OpType, payload: s })),
+        ...backup.transactions.map((t) => ({ type: 'tx.create' as OpType, payload: t })),
+        ...backup.discounts.map((d) => ({ type: 'discount.upsert' as OpType, payload: d })),
+        ...(backup.images ?? []).map((img) => ({
+          type: 'image.meta' as OpType,
+          payload: { imageId: img.id, productId: img.productId, updatedAt: img.updatedAt, thumbB64: img.thumbB64 },
+        })),
+      ]);
+    },
+  );
 
   return {
     events: backup.events.length,

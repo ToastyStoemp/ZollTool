@@ -43,6 +43,16 @@ export async function appendOp(type: OpType, payload: unknown): Promise<Op> {
   return op;
 }
 
+/** Bulk variant for imports/migrations: one settings lookup, one bulkAdd. */
+export async function appendOps(entries: { type: OpType; payload: unknown }[]): Promise<void> {
+  if (!entries.length) return;
+  const deviceId = ((await getSettingRaw('deviceId')) as string) || 'unknown-device';
+  const ts = Date.now();
+  await db.ops.bulkAdd(
+    entries.map((e) => ({ opId: uuidv7(), deviceId, ts, type: e.type, payload: e.payload, synced: 0 as const })),
+  );
+}
+
 // ── Events ────────────────────────────────────────────────────────────────
 
 export async function upsertEvent(event: SalesEvent): Promise<void> {
