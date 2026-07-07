@@ -48,6 +48,8 @@ export interface Product {
   vatRate?: number;
   packagingType?: string;
   originCountry?: string;
+  /** Customs: overrides the HS-code-derived permit obligation in the e-dec XML. */
+  permitOverride?: number;
   variants: Variant[];
   imageId?: string;
   sortOrder: number;
