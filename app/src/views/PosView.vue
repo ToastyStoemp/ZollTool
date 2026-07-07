@@ -51,6 +51,70 @@ const filtered = computed(() => {
   );
 });
 
+// ── View mode: flat grid or grouped by type (port of legacy "By Type") ──────
+const POS_VIEW_KEY = 'zolltool_pos_view';
+const viewMode = ref<'flat' | 'grouped'>(localStorage.getItem(POS_VIEW_KEY) === 'grouped' ? 'grouped' : 'flat');
+
+function setViewMode(mode: 'flat' | 'grouped'): void {
+  viewMode.value = mode;
+  localStorage.setItem(POS_VIEW_KEY, mode);
+}
+
+/** Searching always shows flat results — grouping only applies to browsing. */
+const showGrouped = computed(() => viewMode.value === 'grouped' && !search.value.trim());
+
+interface TypeGroup {
+  type: string;
+  products: Product[];
+  stock: number;
+  inCart: number;
+}
+
+const typeGroups = computed<TypeGroup[]>(() => {
+  const map = new Map<string, Product[]>();
+  for (const p of sellable.value) {
+    const key = p.type || '(no type)';
+    if (!map.has(key)) map.set(key, []);
+    map.get(key)!.push(p);
+  }
+  return [...map.entries()].map(([type, products]) => ({
+    type,
+    products,
+    stock: products.reduce((s, p) => s + Math.max(0, cart.remaining(p.id, null)), 0),
+    inCart: products.reduce(
+      (s, p) =>
+        s +
+        (p.variants.length
+          ? p.variants.reduce((sv, v) => sv + cart.inCart(p.id, v.id), 0)
+          : cart.inCart(p.id, null)),
+      0,
+    ),
+  }));
+});
+
+interface GridEntry {
+  key: string;
+  product?: Product;
+  group?: TypeGroup;
+}
+
+/** Grouped mode: one card per type; single-product types show the product directly. */
+const gridEntries = computed<GridEntry[]>(() => {
+  if (!showGrouped.value) return filtered.value.map((p) => ({ key: p.id, product: p }));
+  return typeGroups.value.map((g) =>
+    g.products.length === 1
+      ? { key: g.products[0]!.id, product: g.products[0]! }
+      : { key: 't:' + g.type, group: g },
+  );
+});
+
+const openTypeGroup = ref<string | null>(null);
+const typeGroupProducts = computed(() =>
+  openTypeGroup.value == null
+    ? []
+    : sellable.value.filter((p) => (p.type || '(no type)') === openTypeGroup.value),
+);
+
 function submitSearch(): void {
   const match = findSearchMatch(data.products, search.value);
   if (!match) {
@@ -252,11 +316,55 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
             class="ml-auto w-40 rounded-lg bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-emerald-500 sm:w-64"
             @keydown.enter="submitSearch"
           />
+          <div class="flex shrink-0 rounded-lg bg-slate-800 p-0.5 text-xs">
+            <button
+              class="rounded-md px-2.5 py-1.5"
+              :class="viewMode === 'flat' ? 'bg-slate-600 font-semibold' : 'text-slate-400'"
+              @click="setViewMode('flat')"
+            >
+              All
+            </button>
+            <button
+              class="rounded-md px-2.5 py-1.5"
+              :class="viewMode === 'grouped' ? 'bg-slate-600 font-semibold' : 'text-slate-400'"
+              @click="setViewMode('grouped')"
+            >
+              Types
+            </button>
+          </div>
         </header>
 
         <div class="grid flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto p-3 sm:grid-cols-3 lg:grid-cols-4">
+          <template v-for="e in gridEntries" :key="e.key">
+          <!-- Type card (grouped view) -->
           <button
-            v-for="p in filtered"
+            v-if="e.group"
+            class="relative flex flex-col items-start gap-1 rounded-xl bg-slate-900 p-3 text-left ring-1 ring-slate-800 transition active:scale-[0.98]"
+            :style="{ borderLeft: `3px solid ${typeColor(e.group.type)}` }"
+            :class="{ 'opacity-40': e.group.stock <= 0 }"
+            @click="openTypeGroup = e.group.type"
+          >
+            <span
+              v-if="e.group.inCart"
+              class="absolute -right-1.5 -top-1.5 flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-500 px-1 text-xs font-bold text-slate-950"
+            >
+              {{ e.group.inCart }}
+            </span>
+            <span class="line-clamp-2 text-sm font-bold" :style="{ color: typeColor(e.group.type) }">
+              {{ e.group.type }}
+            </span>
+            <span class="text-[11px] text-slate-500">{{ e.group.products.length }} products</span>
+            <span class="mt-auto flex w-full items-center justify-between pt-1 text-xs">
+              <span :class="e.group.stock <= 0 ? 'text-red-400' : 'text-slate-400'">
+                {{ e.group.stock <= 0 ? 'Out of stock' : `${e.group.stock} in stock` }}
+              </span>
+              <span class="font-semibold text-slate-200">⋯</span>
+            </span>
+          </button>
+          <!-- Product card -->
+          <template v-else>
+          <button
+            v-for="p in [e.product!]"
             :key="p.id"
             class="relative flex flex-col items-start gap-1 rounded-xl bg-slate-900 p-3 text-left ring-1 ring-slate-800 transition active:scale-[0.98]"
             :style="{ borderLeft: `3px solid ${typeColor(p.type)}` }"
@@ -281,6 +389,8 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
               </span>
             </span>
           </button>
+          </template>
+          </template>
         </div>
 
         <!-- Mobile cart bar -->
@@ -405,6 +515,37 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
         </footer>
       </aside>
     </template>
+
+    <!-- Type drill-down (grouped view) — stays open for multi-add -->
+    <ModalShell v-if="openTypeGroup" :title="openTypeGroup" @close="openTypeGroup = null">
+      <div class="grid grid-cols-2 gap-2">
+        <button
+          v-for="p in typeGroupProducts"
+          :key="p.id"
+          class="relative flex flex-col items-start gap-1 rounded-xl bg-slate-800 p-3 text-left ring-1 ring-slate-700"
+          :class="{ 'opacity-40': cart.remaining(p.id, null) <= 0 }"
+          @click="addToCart(p.id, null)"
+        >
+          <span
+            v-if="cart.inCart(p.id, null) || p.variants.some((v) => cart.inCart(p.id, v.id))"
+            class="absolute -right-1.5 -top-1.5 flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-500 px-1 text-xs font-bold text-slate-950"
+          >
+            {{ p.variants.length ? p.variants.reduce((s, v) => s + cart.inCart(p.id, v.id), 0) : cart.inCart(p.id, null) }}
+          </span>
+          <span class="flex w-full items-start gap-2">
+            <ProductThumb v-if="p.imageId" :image-id="p.imageId" :type="p.type" />
+            <span class="line-clamp-2 text-sm font-semibold">{{ p.title || '(untitled)' }}</span>
+          </span>
+          <span v-if="p.sku" class="text-[11px] text-slate-500">{{ p.sku }}</span>
+          <span class="mt-auto flex w-full items-center justify-between pt-1 text-xs">
+            <span :class="stockLabel(p.id, null).cls">{{ stockLabel(p.id, null).text }}</span>
+            <span class="font-semibold text-slate-200">
+              {{ p.variants.length ? '⋯' : fmtPrice(p.price, data.currency) }}
+            </span>
+          </span>
+        </button>
+      </div>
+    </ModalShell>
 
     <!-- Variant picker -->
     <ModalShell
