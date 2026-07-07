@@ -1,0 +1,11 @@
+node_modules
+**/node_modules
+app/dist
+android
+bridge
+www
+.git
+.github
+.codegraph
+server/data
+**/*.apk

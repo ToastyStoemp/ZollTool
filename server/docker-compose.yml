@@ -1,0 +1,17 @@
+# Run from the repo root:  docker compose -f server/docker-compose.yml up -d --build
+services:
+  zolltool:
+    build:
+      context: ..
+      dockerfile: server/Dockerfile
+    ports:
+      - '8787:8787'
+    volumes:
+      - ./data:/data
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      OWNER_EMAIL: ${OWNER_EMAIL:-}
+      OWNER_PASSWORD: ${OWNER_PASSWORD:-}
+      # Set to 1 to allow account creation without an invite code
+      REGISTRATION_OPEN: ${REGISTRATION_OPEN:-0}
+    restart: unless-stopped
