@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useDataStore } from '@/stores/data';
-import { upsertEvent } from '@/db/repo';
+import { getSetting, upsertEvent } from '@/db/repo';
 import { isNative } from '@/native/plugins';
 import { saveTextFile, shareTextFile } from '@/lib/download';
 import { showToast } from '@/lib/toast';
@@ -31,14 +31,22 @@ let loadedEventId: string | null = null;
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 let loading = false;
 
+/** Keep only filled-in fields so defaults aren't clobbered by empty strings. */
+function stripEmpty<T extends Record<string, unknown>>(obj: T | undefined): Partial<T> {
+  if (!obj) return {};
+  return Object.fromEntries(Object.entries(obj).filter(([, v]) => v !== '' && v != null)) as Partial<T>;
+}
+
 watch(
   () => data.activeEvent,
-  (event) => {
+  async (event) => {
     if (!event || event.id === loadedEventId) return;
     loadedEventId = event.id;
     loading = true;
     const blob = readCustomsBlob(event);
-    artist.value = { ...defaultCustomsArtist(), ...(blob.artist ?? {}) };
+    // Artist defaults from the setup guide pre-fill events without own data
+    const artistDefaults = await getSetting<Record<string, string>>('customs.artistDefaults');
+    artist.value = { ...defaultCustomsArtist(), ...stripEmpty(artistDefaults), ...stripEmpty(blob.artist) };
     edec.value = { ...defaultCustomsEdec(), ...(blob.edec ?? {}) };
     const f = { ...defaultCustomsForm1174(), ...(blob.form1174 ?? {}) };
     if (!Array.isArray(f.assignments)) f.assignments = [];

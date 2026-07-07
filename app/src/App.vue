@@ -1,8 +1,11 @@
 <script setup lang="ts">
 import { useRoute } from 'vue-router';
 import { toasts } from '@/lib/toast';
+import { useSettingsStore } from '@/stores/settings';
+import OnboardingWizard from '@/components/OnboardingWizard.vue';
 
 const route = useRoute();
+const settings = useSettingsStore();
 
 const nav = [
   { to: '/pos', label: 'Sell', icon: '🛒' },
@@ -53,6 +56,9 @@ const nav = [
         <span>{{ item.label }}</span>
       </RouterLink>
     </nav>
+
+    <!-- First-run setup guide -->
+    <OnboardingWizard v-if="settings.ready && !settings.onboardingDone" />
 
     <!-- Toasts -->
     <div class="pointer-events-none fixed inset-x-0 top-[calc(0.75rem_+_var(--safe-top))] z-[60] flex flex-col items-center gap-2">

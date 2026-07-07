@@ -157,6 +157,12 @@ async function onImportFile(e: Event): Promise<void> {
         />
       </label>
       <p class="mt-2 text-xs text-slate-500">Device ID: {{ settings.deviceId }}</p>
+      <button
+        class="mt-3 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700"
+        @click="settings.reopenOnboarding()"
+      >
+        Run setup guide
+      </button>
     </section>
 
     <!-- Payment provider -->

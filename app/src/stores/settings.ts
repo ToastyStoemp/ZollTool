@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 import type { AuthUser } from '@zolltool/shared';
+import { db } from '@/db/schema';
 import { ensureDeviceId, getSetting, setSetting } from '@/db/repo';
 import { migrateV1IfNeeded } from '@/db/migrate-v1';
 import type { PaymentProviderId } from '@/payments/provider';
@@ -17,6 +18,7 @@ export const useSettingsStore = defineStore('settings', () => {
   const migratedFromV1 = ref(false);
   const serverUrl = ref('');
   const syncUser = ref<AuthUser | null>(null);
+  const onboardingDone = ref(true);
 
   async function init(): Promise<void> {
     deviceId.value = await ensureDeviceId();
@@ -28,7 +30,27 @@ export const useSettingsStore = defineStore('settings', () => {
     serverUrl.value = (await api.getServerUrl()) ?? '';
     syncUser.value = (await api.getSyncUser()) ?? null;
     if (syncUser.value) void startSync();
+
+    // First-run setup guide: only on a truly fresh install — devices that
+    // already carry data (incl. migrated v1 data) skip it silently.
+    if (!(await getSetting<boolean>('onboardingDone'))) {
+      if ((await db.events.count()) > 0) {
+        await setSetting('onboardingDone', true);
+      } else {
+        onboardingDone.value = false;
+      }
+    }
     ready.value = true;
+  }
+
+  async function completeOnboarding(): Promise<void> {
+    onboardingDone.value = true;
+    await setSetting('onboardingDone', true);
+  }
+
+  /** Re-open the guide from Settings. */
+  function reopenOnboarding(): void {
+    onboardingDone.value = false;
   }
 
   async function loginToServer(url: string, email: string, password: string): Promise<void> {
@@ -77,6 +99,7 @@ export const useSettingsStore = defineStore('settings', () => {
     migratedFromV1,
     serverUrl,
     syncUser,
+    onboardingDone,
     init,
     setActiveEvent,
     setDeviceName,
@@ -84,5 +107,7 @@ export const useSettingsStore = defineStore('settings', () => {
     loginToServer,
     registerOnServer,
     logoutFromServer,
+    completeOnboarding,
+    reopenOnboarding,
   };
 });
