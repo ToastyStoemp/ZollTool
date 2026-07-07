@@ -1,4 +1,5 @@
 import type { DiscountRule } from '@zolltool/shared';
+import { round2 } from './money';
 
 /** A resolved cart line: variant lines carry vid, plain products vid=null. */
 export interface CartLine {
@@ -31,11 +32,16 @@ function ruleTargetsLine(rule: DiscountRule, line: CartLine): boolean {
 /**
  * Port of pos.html calculateDiscounts(): for each rule, collect the unit price
  * of every matching item (expanded per quantity), sort cheapest-first, and
- * apply the rule's math. Ported behavior is preserved exactly:
+ * apply the rule's math:
  * - bxgy: floor(n / (buy+free)) * free cheapest items go free
- * - nth_pct: every nth item (cheapest-first order) gets percent off
+ * - nth_pct: for every full group of nth items, the cheapest gets percent off
+ *   (v2 change: legacy discounted the nth-cheapest, which for a cart of
+ *   exactly n items was the most expensive one — inconsistent with bxgy)
  * - tiered: greedy largest-tier grouping; remainder at avg unit price, or at
  *   the best tier's unit price when tierContinue is set; needs >= 2 items
+ *   (v2 change: tierContinue only prices the remainder once at least one full
+ *   tier group is reached — legacy handed out the bundle unit price even when
+ *   the customer never hit any tier)
  */
 export function computeRuleDiscounts(lines: CartLine[], rules: DiscountRule[]): RuleDiscountResult[] {
   const results: RuleDiscountResult[] = [];
@@ -61,7 +67,8 @@ export function computeRuleDiscounts(lines: CartLine[], rules: DiscountRule[]): 
     } else if (rule.type === 'nth_pct') {
       const nth = rule.nth || 3;
       const pct = (rule.percent || 50) / 100;
-      for (let i = nth - 1; i < totalQty; i += nth) amount += (items[i] || 0) * pct;
+      const discountCount = Math.floor(totalQty / nth);
+      for (let i = 0; i < discountCount; i++) amount += (items[i] || 0) * pct;
     } else if (rule.type === 'tiered') {
       if (!rule.tiers || !rule.tiers.length) continue;
       if (totalQty < 2) continue;
@@ -70,15 +77,18 @@ export function computeRuleDiscounts(lines: CartLine[], rules: DiscountRule[]): 
       const sortedTiers = [...rule.tiers].sort((a, b) => b.qty - a.qty);
       let remaining = totalQty;
       let tieredTotal = 0;
+      let groupsFormed = 0;
       for (const tier of sortedTiers) {
         const groups = Math.floor(remaining / tier.qty);
         if (groups > 0) {
           tieredTotal += groups * tier.total;
           remaining -= groups * tier.qty;
+          groupsFormed += groups;
         }
       }
       const maxTier = sortedTiers[0]!;
-      const remainderUnit = rule.tierContinue ? maxTier.total / maxTier.qty : avgUnit;
+      // Continue-pricing only applies beyond a reached tier, never below it
+      const remainderUnit = rule.tierContinue && groupsFormed > 0 ? maxTier.total / maxTier.qty : avgUnit;
       tieredTotal += remaining * remainderUnit;
       amount = normalTotal - tieredTotal;
     }
@@ -107,18 +117,23 @@ export interface CartTotals {
   grandTotal: number;
 }
 
-/** Port of cartGrandTotal(): subtotal − rule discounts − custom discount, floored at 0. */
+/**
+ * Port of cartGrandTotal(): subtotal − rule discounts − custom discount,
+ * floored at 0. All amounts are rounded to cents here (v2 change: legacy kept
+ * fractional-cent totals from tiered/percentage math and only rounded the
+ * display, so the recorded total could differ from what was actually paid).
+ */
 export function computeCartTotals(
   lines: CartLine[],
   rules: DiscountRule[],
   custom: CustomDiscount | null,
 ): CartTotals {
-  const subtotal = lines.reduce((s, l) => s + (l.lineTotal || 0), 0);
-  const ruleDiscounts = computeRuleDiscounts(lines, rules);
-  const ruleDiscountTotal = ruleDiscounts.reduce((s, r) => s + r.amount, 0);
-  const afterRules = Math.max(0, subtotal - ruleDiscountTotal);
-  const customDiscountAmount = computeCustomDiscount(afterRules, custom);
-  const grandTotal = Math.max(0, afterRules - customDiscountAmount);
+  const subtotal = round2(lines.reduce((s, l) => s + (l.lineTotal || 0), 0));
+  const ruleDiscounts = computeRuleDiscounts(lines, rules).map((r) => ({ ...r, amount: round2(r.amount) }));
+  const ruleDiscountTotal = round2(ruleDiscounts.reduce((s, r) => s + r.amount, 0));
+  const afterRules = round2(Math.max(0, subtotal - ruleDiscountTotal));
+  const customDiscountAmount = round2(computeCustomDiscount(afterRules, custom));
+  const grandTotal = round2(Math.max(0, afterRules - customDiscountAmount));
   return { subtotal, ruleDiscounts, ruleDiscountTotal, customDiscountAmount, grandTotal };
 }
 

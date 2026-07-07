@@ -9,7 +9,9 @@ import {
 } from '../discounts';
 
 // Golden values hand-computed from the legacy pos.html calculateDiscounts()
-// implementation — these tests pin v1 behavior exactly.
+// implementation. Two deliberate v2 changes are pinned here instead of legacy:
+// nth_pct discounts the cheapest item per full group (legacy hit the priciest),
+// and tierContinue never prices items below the first reached tier.
 
 function line(pid: string, vid: string | null, qty: number, unitPrice: number): CartLine {
   return {
@@ -57,11 +59,36 @@ describe('computeRuleDiscounts', () => {
     expect(computeRuleDiscounts(lines, [r])[0]!.amount).toBe(11);
   });
 
-  it('nth_pct: every 3rd item (cheapest-first) gets 50% off', () => {
-    // sorted [4,6,8,10] → index 2 (8) at 50% → 4
+  it('nth_pct: one full group of 3 → cheapest item gets 50% off', () => {
+    // sorted [4,6,8,10] → floor(4/3)=1 group → cheapest (4) at 50% → 2
     const lines = [line('a', null, 1, 4), line('b', null, 1, 6), line('c', null, 1, 8), line('d', null, 1, 10)];
     const r = rule({ type: 'nth_pct', nth: 3, percent: 50, productIds: ['a', 'b', 'c', 'd'] });
-    expect(computeRuleDiscounts(lines, [r])[0]!.amount).toBe(4);
+    expect(computeRuleDiscounts(lines, [r])[0]!.amount).toBe(2);
+  });
+
+  it('nth_pct: two full groups discount the two cheapest items', () => {
+    // sorted [4,6,8,10,12,14] → floor(6/3)=2 → (4+6) at 50% → 5
+    const lines = [
+      line('a', null, 1, 4),
+      line('b', null, 1, 6),
+      line('c', null, 1, 8),
+      line('d', null, 1, 10),
+      line('e', null, 1, 12),
+      line('f', null, 1, 14),
+    ];
+    const r = rule({
+      type: 'nth_pct',
+      nth: 3,
+      percent: 50,
+      productIds: ['a', 'b', 'c', 'd', 'e', 'f'],
+    });
+    expect(computeRuleDiscounts(lines, [r])[0]!.amount).toBe(5);
+  });
+
+  it('nth_pct: below a full group there is no discount', () => {
+    const lines = [line('a', null, 1, 4), line('b', null, 1, 6)];
+    const r = rule({ type: 'nth_pct', nth: 3, percent: 50, productIds: ['a', 'b'] });
+    expect(computeRuleDiscounts(lines, [r])).toHaveLength(0);
   });
 
   it('tiered: greedy tier grouping, remainder at average unit price', () => {
@@ -86,6 +113,20 @@ describe('computeRuleDiscounts', () => {
   it('tiered: needs at least 2 matching items', () => {
     const lines = [line('a', null, 1, 10)];
     const r = rule({ type: 'tiered', tiers: [{ qty: 3, total: 25 }], productIds: ['a'] });
+    expect(computeRuleDiscounts(lines, [r])).toHaveLength(0);
+  });
+
+  it('tiered with tierContinue: 4 € items, "3 for 10", buying 4 → 4 × (10/3)', () => {
+    const lines = [line('a', null, 4, 4)];
+    const r = rule({ type: 'tiered', tiers: [{ qty: 3, total: 10 }], tierContinue: true, productIds: ['a'] });
+    // normal 16, tiered = 10 + 1×(10/3) = 13.333… → discount 2.666…
+    expect(computeRuleDiscounts(lines, [r])[0]!.amount).toBeCloseTo(16 - (10 + 10 / 3), 10);
+  });
+
+  it('tiered with tierContinue: no bundle pricing below the first tier', () => {
+    // 2 items never reach "3 for 25" — legacy wrongly priced them at 25/3 each
+    const lines = [line('a', null, 2, 10)];
+    const r = rule({ type: 'tiered', tiers: [{ qty: 3, total: 25 }], tierContinue: true, productIds: ['a'] });
     expect(computeRuleDiscounts(lines, [r])).toHaveLength(0);
   });
 
@@ -127,6 +168,17 @@ describe('computeCartTotals', () => {
     expect(t.ruleDiscountTotal).toBe(50);
     expect(t.customDiscountAmount).toBe(5);
     expect(t.grandTotal).toBe(45);
+  });
+
+  it('rounds fractional-cent discounts so the total matches what is charged', () => {
+    // 5×10 with "3 for 25" + continue: raw discount 8.333… → recorded 8.33, total 41.67
+    const lines = [line('a', null, 5, 10)];
+    const r = rule({ type: 'tiered', tiers: [{ qty: 3, total: 25 }], tierContinue: true, productIds: ['a'] });
+    const t = computeCartTotals(lines, [r], null);
+    expect(t.ruleDiscounts[0]!.amount).toBe(8.33);
+    expect(t.ruleDiscountTotal).toBe(8.33);
+    expect(t.grandTotal).toBe(41.67);
+    expect(Number.isInteger(Math.round(t.grandTotal * 100))).toBe(true);
   });
 });
 

@@ -181,6 +181,8 @@ const discountForm = reactive({
   name: '',
   type: 'bxgy' as DiscountRule['type'],
   productIds: [] as string[],
+  /** Specific variants as "pid:vid" — only relevant when the product itself isn't selected. */
+  variantIds: [] as string[],
   buyQty: '2',
   freeQty: '1',
   nth: '3',
@@ -189,8 +191,21 @@ const discountForm = reactive({
   tierContinue: false,
 });
 
+/** Other (non-deleted) rules that target any of the currently selected products/variants. */
+const overlappingRules = computed(() =>
+  data.discounts.filter(
+    (d) =>
+      d.id !== discountId.value &&
+      (d.productIds.some((id) => discountForm.productIds.includes(id)) ||
+        d.variantIds.some((id) => discountForm.variantIds.includes(id)) ||
+        d.productIds.some((id) => discountForm.variantIds.some((v) => v.startsWith(`${id}:`))) ||
+        d.variantIds.some((id) => discountForm.productIds.includes(id.split(':')[0]))),
+  ),
+);
+
 function openNewDiscount(): void {
   discountId.value = null;
+  discountForm.variantIds = [];
   Object.assign(discountForm, {
     name: '',
     type: 'bxgy',
@@ -207,6 +222,7 @@ function openNewDiscount(): void {
 
 function openEditDiscount(d: DiscountRule): void {
   discountId.value = d.id;
+  discountForm.variantIds = [...(d.variantIds ?? [])];
   Object.assign(discountForm, {
     name: d.name,
     type: d.type,
@@ -226,8 +242,8 @@ async function saveDiscount(): Promise<void> {
     showToast('Discount needs a name.', 'error');
     return;
   }
-  if (!discountForm.productIds.length) {
-    showToast('Select at least one product.', 'error');
+  if (!discountForm.productIds.length && !discountForm.variantIds.length) {
+    showToast('Select at least one product or variant.', 'error');
     return;
   }
   const rule: DiscountRule = {
@@ -235,7 +251,8 @@ async function saveDiscount(): Promise<void> {
     name: discountForm.name.trim(),
     type: discountForm.type,
     productIds: [...discountForm.productIds],
-    variantIds: [],
+    // Variant targets covered by a selected product are redundant — drop them
+    variantIds: discountForm.variantIds.filter((v) => !discountForm.productIds.includes(v.split(':')[0])),
     buyQty: parseInt(discountForm.buyQty) || 2,
     freeQty: parseInt(discountForm.freeQty) || 1,
     nth: parseInt(discountForm.nth) || 3,
@@ -253,7 +270,7 @@ async function saveDiscount(): Promise<void> {
 
 function discountSummary(d: DiscountRule): string {
   if (d.type === 'bxgy') return `Buy ${d.buyQty}, get ${d.freeQty} free`;
-  if (d.type === 'nth_pct') return `Every ${d.nth} items, last is ${d.percent}% off`;
+  if (d.type === 'nth_pct') return `Every ${d.nth} items, cheapest is ${d.percent}% off`;
   return (d.tiers ?? []).map((t) => `${t.qty} for ${t.total}`).join(' · ') || 'Tiered';
 }
 </script>
@@ -549,11 +566,26 @@ function discountSummary(d: DiscountRule): string {
         <div class="rounded-lg bg-slate-800/50 p-3">
           <span class="text-sm font-semibold">Applies to</span>
           <div class="mt-2 max-h-48 space-y-1 overflow-y-auto">
-            <label v-for="p in data.products" :key="p.id" class="flex items-center gap-2 text-sm">
-              <input v-model="discountForm.productIds" type="checkbox" :value="p.id" />
-              {{ p.title || '(untitled)' }}
-            </label>
+            <template v-for="p in data.products" :key="p.id">
+              <label class="flex items-center gap-2 text-sm">
+                <input v-model="discountForm.productIds" type="checkbox" :value="p.id" />
+                {{ p.title || '(untitled)' }}
+              </label>
+              <label
+                v-for="v in p.variants"
+                v-show="!discountForm.productIds.includes(p.id)"
+                :key="v.id"
+                class="ml-6 flex items-center gap-2 text-xs text-slate-400"
+              >
+                <input v-model="discountForm.variantIds" type="checkbox" :value="`${p.id}:${v.id}`" />
+                {{ v.name || v.id }}
+              </label>
+            </template>
           </div>
+          <p v-if="overlappingRules.length" class="mt-2 text-xs text-amber-400">
+            ⚠ Also targeted by
+            {{ overlappingRules.map((d) => `"${d.name}"`).join(', ') }} — discounts on the same items stack.
+          </p>
         </div>
       </div>
       <template #footer>
