@@ -297,7 +297,11 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
       <!-- Cart panel (desktop) / sheet (mobile) -->
       <aside
         class="border-slate-800 bg-slate-900 md:flex md:w-80 md:shrink-0 md:flex-col md:border-l"
-        :class="showCartSheet ? 'fixed inset-0 z-40 flex flex-col' : 'hidden'"
+        :class="
+          showCartSheet
+            ? 'fixed inset-0 z-40 flex flex-col pt-[var(--safe-top)] pb-[var(--safe-bottom)]'
+            : 'hidden'
+        "
       >
         <header class="flex items-center justify-between border-b border-slate-800 px-4 py-3">
           <h2 class="font-semibold">Cart</h2>

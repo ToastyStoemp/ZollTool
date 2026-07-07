@@ -9,7 +9,7 @@ const emit = defineEmits<{ close: [] }>();
     @click.self="emit('close')"
   >
     <div
-      class="flex max-h-[90dvh] w-full max-w-lg flex-col rounded-t-2xl bg-slate-900 shadow-xl ring-1 ring-slate-700 sm:rounded-2xl"
+      class="modal-card flex w-full max-w-lg flex-col rounded-t-2xl bg-slate-900 pb-[var(--safe-bottom)] shadow-xl ring-1 ring-slate-700 sm:rounded-2xl sm:pb-0"
     >
       <header class="flex items-center justify-between border-b border-slate-800 px-5 py-4">
         <h2 class="text-lg font-semibold">{{ title }}</h2>

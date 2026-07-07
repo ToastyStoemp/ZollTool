@@ -15,7 +15,7 @@ const nav = [
 </script>
 
 <template>
-  <div class="flex h-dvh flex-col md:flex-row">
+  <div class="app-shell flex flex-col md:flex-row md:pb-[var(--safe-bottom)]">
     <!-- Sidebar (tablet/desktop) -->
     <aside class="hidden w-52 shrink-0 flex-col border-r border-slate-800 bg-slate-900 md:flex">
       <div class="flex items-center gap-2 px-4 py-5">
@@ -40,8 +40,8 @@ const nav = [
       <RouterView />
     </main>
 
-    <!-- Bottom nav (phone) -->
-    <nav class="flex shrink-0 border-t border-slate-800 bg-slate-900 md:hidden">
+    <!-- Bottom nav (phone) — bottom padding keeps it above the gesture bar -->
+    <nav class="flex shrink-0 border-t border-slate-800 bg-slate-900 pb-[var(--safe-bottom)] md:hidden">
       <RouterLink
         v-for="item in nav"
         :key="item.to"
@@ -55,7 +55,7 @@ const nav = [
     </nav>
 
     <!-- Toasts -->
-    <div class="pointer-events-none fixed inset-x-0 top-3 z-[60] flex flex-col items-center gap-2">
+    <div class="pointer-events-none fixed inset-x-0 top-[calc(0.75rem_+_var(--safe-top))] z-[60] flex flex-col items-center gap-2">
       <TransitionGroup name="toast">
         <div
           v-for="t in toasts"

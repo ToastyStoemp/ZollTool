@@ -18,6 +18,10 @@ const config: CapacitorConfig = {
   },
   plugins: {
     MyPos: {},
+    // The app UI is always dark — force light system-bar icons regardless of device theme
+    SystemBars: {
+      style: 'DARK',
+    },
   },
 };
 
