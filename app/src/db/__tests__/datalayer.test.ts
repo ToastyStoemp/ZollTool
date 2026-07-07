@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { db } from '../schema';
 import { importV1State } from '../migrate-v1';
 import { recordTransaction, revertTransaction, setSetting } from '../repo';
+import { importBackup } from '@/lib/export/backup-json';
 import { uuidv7 } from '@/lib/uuid';
 import type { Transaction } from '@zolltool/shared';
 
@@ -146,6 +147,24 @@ describe('importV1State', () => {
 
   it('sets the imported event active', async () => {
     expect((await db.settings.get('activeEventId'))!.value).toBe(eventId);
+  });
+});
+
+describe('importBackup with a legacy v1 JSON file', () => {
+  it('detects the v1 shape and imports it as a new event', async () => {
+    const eventsBefore = await db.events.count();
+    const counts = await importBackup(JSON.stringify(V1_STATE));
+    expect(counts.events).toBe(1);
+    expect(counts.products).toBe(3);
+    expect(counts.transactions).toBe(2);
+    // A fresh event is created; products merge by id instead of duplicating
+    expect(await db.events.count()).toBe(eventsBefore + 1);
+    expect(await db.products.count()).toBe(3);
+  });
+
+  it('still rejects files that are neither v1 nor v2', async () => {
+    await expect(importBackup('{"foo":1}')).rejects.toThrow('Not a ZollTool backup file');
+    await expect(importBackup('not json')).rejects.toThrow('Not a valid JSON file');
   });
 });
 

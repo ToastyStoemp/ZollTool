@@ -1,5 +1,7 @@
 import type { DiscountRule, EventStock, Product, SalesEvent, Transaction } from '@zolltool/shared';
 import { db } from '@/db/schema';
+import { getSetting } from '@/db/repo';
+import { importV1State } from '@/db/migrate-v1';
 import { base64ToBlob, blobToBase64 } from '@/lib/images';
 
 /** Full-data backup: everything needed to rebuild the local database on another device. */
@@ -65,11 +67,21 @@ export interface ImportCounts {
   images: number;
 }
 
+/** Legacy save files are the raw v1 state object — no version field. */
+function looksLikeV1State(parsed: unknown): parsed is Record<string, unknown> {
+  if (!parsed || typeof parsed !== 'object') return false;
+  const p = parsed as Record<string, unknown>;
+  return !('version' in p) && (Array.isArray(p.products) || typeof p.meta === 'object');
+}
+
 /**
  * Merge a backup into the local database. Records are matched by id, so
  * re-importing the same file is safe; existing unrelated data is untouched.
  * Restored data is written directly (no ops appended) — a restore is not a
  * new local change to broadcast.
+ *
+ * Old ZollTool v1 JSON exports are accepted too: they run through the same
+ * converter as the automatic localStorage migration and become a new event.
  */
 export async function importBackup(json: string): Promise<ImportCounts> {
   let backup: BackupFile;
@@ -78,8 +90,23 @@ export async function importBackup(json: string): Promise<ImportCounts> {
   } catch {
     throw new Error('Not a valid JSON file');
   }
+
+  if (looksLikeV1State(backup)) {
+    const deviceId = (await getSetting<string>('deviceId')) ?? 'unknown-device';
+    const v1 = backup as { products?: unknown[]; transactions?: unknown[]; discounts?: unknown[] };
+    await importV1State(v1, deviceId);
+    return {
+      events: 1,
+      products: v1.products?.length ?? 0,
+      eventStock: v1.products?.length ?? 0,
+      transactions: v1.transactions?.length ?? 0,
+      discounts: v1.discounts?.length ?? 0,
+      images: 0,
+    };
+  }
+
   if (backup.version !== 2 || !Array.isArray(backup.events)) {
-    throw new Error('Not a ZollTool v2 backup file');
+    throw new Error('Not a ZollTool backup file');
   }
 
   await db.transaction('rw', [db.events, db.products, db.eventStock, db.transactions, db.discounts, db.images], async () => {

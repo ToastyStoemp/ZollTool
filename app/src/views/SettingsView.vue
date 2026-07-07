@@ -216,7 +216,8 @@ async function onImportFile(e: Event): Promise<void> {
       <h2 class="mb-2 text-sm font-semibold text-slate-300">Backup</h2>
       <p class="mb-3 text-xs text-slate-500">
         Export everything (events, products, sales, discounts, photos) as one JSON file, or restore
-        from a backup. Importing merges by id — it never deletes existing data.
+        from a backup. Importing merges by id — it never deletes existing data. JSON files saved by
+        the old ZollTool are accepted too and become a new event.
       </p>
       <div class="flex flex-wrap gap-2">
         <button
