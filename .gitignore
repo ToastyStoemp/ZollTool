@@ -17,3 +17,5 @@ server/data/
 data/
 *.tsbuildinfo
 .codegraph/
+.env
+**/.env
