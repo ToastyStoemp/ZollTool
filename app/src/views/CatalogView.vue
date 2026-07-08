@@ -566,7 +566,7 @@ function discountSummary(d: DiscountRule): string {
         </div>
         <div class="flex gap-4 text-sm">
           <label class="flex items-center gap-2"><input v-model="form.forSale" type="checkbox" /> For sale</label>
-          <label class="flex items-center gap-2"><input v-model="form.unlisted" type="checkbox" /> Unlisted</label>
+          <label class="flex items-center gap-2"><input v-model="form.unlisted" type="checkbox" /> Unlisted (left off customs documents)</label>
         </div>
 
         <!-- Variants -->

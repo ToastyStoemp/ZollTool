@@ -39,7 +39,7 @@ const nav = [
     </aside>
 
     <!-- Main content -->
-    <main class="min-h-0 flex-1 overflow-y-auto">
+    <main class="min-h-0 min-w-0 flex-1 overflow-y-auto">
       <RouterView />
     </main>
 

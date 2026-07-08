@@ -35,9 +35,8 @@ const payment = reactive({
   terminalError: '',
 });
 
-const sellable = computed(() =>
-  data.products.filter((p) => p.forSale !== false && !p.unlisted),
-);
+// "Unlisted" only excludes a product from customs documents — it stays sellable.
+const sellable = computed(() => data.products.filter((p) => p.forSale !== false));
 
 const filtered = computed(() => {
   const needle = search.value.trim().toLowerCase();
@@ -311,7 +310,7 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
 
     <template v-else>
       <!-- Product area -->
-      <section class="flex min-h-0 flex-1 flex-col">
+      <section class="flex min-h-0 min-w-0 flex-1 flex-col">
         <header class="flex items-center gap-2 border-b border-slate-800 px-4 py-3">
           <RouterLink to="/events" class="shrink-0 rounded-lg px-1.5 py-1 text-slate-400 hover:bg-slate-800">←</RouterLink>
           <div class="min-w-0">
@@ -341,7 +340,7 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
           </div>
         </header>
 
-        <div class="grid flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto p-3 sm:grid-cols-3 lg:grid-cols-4">
+        <div class="grid flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto overflow-x-hidden p-3 sm:grid-cols-3 lg:grid-cols-4">
           <template v-for="e in gridEntries" :key="e.key">
           <!-- Type card (grouped view) -->
           <button
@@ -572,7 +571,7 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
     >
       <div class="grid grid-cols-2 gap-2">
         <button
-          v-for="v in variantPickerProduct.variants.filter((v) => !v.unlisted)"
+          v-for="v in variantPickerProduct.variants"
           :key="v.id"
           class="flex flex-col items-start gap-1 rounded-xl bg-slate-800 p-3 text-left ring-1 ring-slate-700"
           :class="{ 'opacity-60': cart.remaining(variantPickerProduct.id, v.id) <= 0 }"

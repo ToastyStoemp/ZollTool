@@ -40,6 +40,11 @@ body {
   padding-top: var(--safe-top);
   padding-left: var(--safe-left);
   padding-right: var(--safe-right);
+  /* The app never scrolls sideways — a few px of accidental overflow must not
+     let Android pan the whole page. clip (where supported) avoids creating a
+     scroll container; hidden is the fallback for older WebViews. */
+  overflow-x: hidden;
+  overflow-x: clip;
 }
 
 /* Modal card height with dvh fallback */
