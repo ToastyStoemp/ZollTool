@@ -51,6 +51,20 @@ const filteredProducts = computed(() => {
   );
 });
 
+/** The product list is always grouped by type, matching the POS and bulk editor. */
+const productGroups = computed(() => {
+  const groups = new Map<string, Product[]>();
+  for (const p of filteredProducts.value) {
+    const type = p.type?.trim() || 'Other';
+    const list = groups.get(type) ?? [];
+    list.push(p);
+    groups.set(type, list);
+  }
+  return [...groups.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([type, products]) => ({ type, products }));
+});
+
 function pickImage(e: Event): void {
   const file = (e.target as HTMLInputElement).files?.[0];
   if (!file) return;
@@ -413,33 +427,40 @@ function discountSummary(d: DiscountRule): string {
       <p v-if="!data.activeEvent" class="mb-3 rounded-lg bg-amber-950/50 px-3 py-2 text-xs text-amber-400">
         No active event — stock quantities are per event, activate one under Events to edit them.
       </p>
-      <ul class="divide-y divide-slate-800 overflow-hidden rounded-xl bg-slate-900 ring-1 ring-slate-800">
-        <li
-          v-for="p in filteredProducts"
-          :key="p.id"
-          class="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-slate-800/60"
-          @click="openEdit(p)"
-        >
-          <span class="h-8 w-1.5 rounded-full" :style="{ background: typeColor(p.type) }" />
-          <ProductThumb :image-id="p.imageId" :type="p.type" />
-          <div class="min-w-0 flex-1">
-            <p class="truncate text-sm font-semibold">
-              {{ p.title || '(untitled)' }}
-              <span v-if="!p.forSale" class="ml-1 rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">not for sale</span>
-            </p>
-            <p class="truncate text-xs text-slate-500">
-              {{ p.sku }}<span v-if="p.type"> · {{ p.type }}</span>
-              <span v-if="p.variants.length"> · {{ p.variants.length }} variants</span>
-            </p>
+      <div class="space-y-4">
+        <section v-for="group in productGroups" :key="group.type">
+          <div class="mb-1.5 flex items-center gap-2">
+            <span class="h-4 w-1.5 rounded-full" :style="{ background: typeColor(group.type) }" />
+            <h2 class="text-sm font-semibold" :style="{ color: typeColor(group.type) }">{{ group.type }}</h2>
+            <span class="text-xs text-slate-500">{{ group.products.length }}</span>
           </div>
-          <div class="text-right text-sm">
-            <p class="font-semibold">{{ fmtPrice(p.price, data.currency) }}</p>
-            <p class="text-xs text-slate-500">
-              {{ data.stockLeft(p, null) }} left / {{ data.soldQty(p.id, null) + p.variants.reduce((s, v) => s + data.soldQty(p.id, v.id), 0) }} sold
-            </p>
-          </div>
-        </li>
-      </ul>
+          <ul class="divide-y divide-slate-800 overflow-hidden rounded-xl bg-slate-900 ring-1 ring-slate-800">
+            <li
+              v-for="p in group.products"
+              :key="p.id"
+              class="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-slate-800/60"
+              @click="openEdit(p)"
+            >
+              <ProductThumb :image-id="p.imageId" :type="p.type" />
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm font-semibold">
+                  {{ p.title || '(untitled)' }}
+                  <span v-if="!p.forSale" class="ml-1 rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">not for sale</span>
+                </p>
+                <p class="truncate text-xs text-slate-500">
+                  {{ p.sku }}<span v-if="p.variants.length"> · {{ p.variants.length }} variants</span>
+                </p>
+              </div>
+              <div class="text-right text-sm">
+                <p class="font-semibold">{{ fmtPrice(p.price, data.currency) }}</p>
+                <p class="text-xs text-slate-500">
+                  {{ data.stockLeft(p, null) }} left / {{ data.soldQty(p.id, null) + p.variants.reduce((s, v) => s + data.soldQty(p.id, v.id), 0) }} sold
+                </p>
+              </div>
+            </li>
+          </ul>
+        </section>
+      </div>
       <p v-if="!filteredProducts.length" class="rounded-xl bg-slate-900 p-6 text-center text-sm text-slate-400">
         No products yet.
       </p>
