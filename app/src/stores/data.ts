@@ -39,7 +39,7 @@ export const useDataStore = defineStore('data', () => {
     () => events.value.find((e) => e.id === settings.activeEventId) ?? null,
   );
 
-  const currency = computed(() => activeEvent.value?.currency ?? 'CHF');
+  const currency = computed(() => activeEvent.value?.currency ?? settings.defaultCurrency);
 
   const eventTransactions = computed(() =>
     allTransactions.value

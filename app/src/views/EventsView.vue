@@ -10,6 +10,7 @@ import { uuidv7 } from '@/lib/uuid';
 import { fmtPrice } from '@/lib/money';
 import { EVENT_PRESETS } from '@/data/event-presets';
 import ModalShell from '@/components/ModalShell.vue';
+import CountryPicker from '@/components/CountryPicker.vue';
 
 const data = useDataStore();
 const settings = useSettingsStore();
@@ -78,7 +79,7 @@ function openCreate(): void {
     city: '',
     country: 'Switzerland',
     tin: '',
-    currency: 'CHF',
+    currency: settings.defaultCurrency,
     copyStockFrom: '',
   });
   showCreate.value = true;
@@ -317,7 +318,7 @@ function fmtDates(e: SalesEvent): string {
           </label>
           <label class="block text-sm">
             <span class="text-slate-400">Country</span>
-            <input v-model="form.country" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+            <CountryPicker v-model="form.country" mode="name" class="mt-1" />
           </label>
           <label class="block text-sm">
             <span class="text-slate-400">Currency</span>

@@ -15,6 +15,7 @@ import { buildAllVersionsHtml } from '@/customs/all-versions';
 import { buildProformaHtml } from '@/customs/proforma';
 import { build1174Html } from '@/customs/form1174';
 import { build1187Html } from '@/customs/form1187';
+import CountryPicker from '@/components/CountryPicker.vue';
 
 const data = useDataStore();
 const route = useRoute();
@@ -307,7 +308,7 @@ const TRANSPORT_MODES = [
           </label>
           <label class="block text-sm">
             <span class="text-xs text-slate-400">Country of origin</span>
-            <input v-model="artist.countryOfOrigin" placeholder="Belgium" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+            <CountryPicker v-model="artist.countryOfOrigin" mode="name" placeholder="Belgium" class="mt-1" />
           </label>
           <label class="block text-sm">
             <span class="text-xs text-slate-400">Phone</span>
@@ -371,7 +372,7 @@ const TRANSPORT_MODES = [
           </label>
           <label class="block text-sm">
             <span class="text-xs text-slate-400">Vehicle country</span>
-            <input v-model="edec.transportationCountry" placeholder="BE" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+            <CountryPicker v-model="edec.transportationCountry" mode="code" placeholder="BE" class="mt-1" />
           </label>
           <label class="block text-sm">
             <span class="text-xs text-slate-400">Vehicle / plate number</span>

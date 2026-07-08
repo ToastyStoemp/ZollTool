@@ -21,6 +21,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const onboardingDone = ref(true);
   /** User-defined manual payment methods (e.g. TWINT, PayPal QR). */
   const customPaymentMethods = ref<string[]>([]);
+  /** Prefill for new events (each event still carries its own currency). */
+  const defaultCurrency = ref('CHF');
 
   async function init(): Promise<void> {
     deviceId.value = await ensureDeviceId();
@@ -32,6 +34,7 @@ export const useSettingsStore = defineStore('settings', () => {
     serverUrl.value = (await api.getServerUrl()) ?? '';
     syncUser.value = (await api.getSyncUser()) ?? null;
     customPaymentMethods.value = (await getSetting<string[]>('customPaymentMethods')) ?? [];
+    defaultCurrency.value = (await getSetting<string>('defaultCurrency')) ?? 'CHF';
     if (syncUser.value) void startSync();
 
     // First-run setup guide: only on a truly fresh install — devices that
@@ -99,6 +102,12 @@ export const useSettingsStore = defineStore('settings', () => {
     await setSetting('deviceName', name);
   }
 
+  async function setDefaultCurrency(currency: string): Promise<void> {
+    const normalized = currency.trim().toUpperCase() || 'CHF';
+    defaultCurrency.value = normalized;
+    await setSetting('defaultCurrency', normalized);
+  }
+
   async function setPaymentProvider(id: PaymentProviderId): Promise<void> {
     paymentProviderId.value = id;
     await setSetting('paymentProviderId', id);
@@ -116,9 +125,11 @@ export const useSettingsStore = defineStore('settings', () => {
     syncUser,
     onboardingDone,
     customPaymentMethods,
+    defaultCurrency,
     init,
     setActiveEvent,
     setDeviceName,
+    setDefaultCurrency,
     setPaymentProvider,
     loginToServer,
     registerOnServer,

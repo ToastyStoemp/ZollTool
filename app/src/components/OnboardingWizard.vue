@@ -8,6 +8,7 @@ import { importBackup } from '@/lib/export/backup-json';
 import { uuidv7 } from '@/lib/uuid';
 import { showToast } from '@/lib/toast';
 import { syncNow, syncState } from '@/sync/engine';
+import CountryPicker from '@/components/CountryPicker.vue';
 
 const settings = useSettingsStore();
 const data = useDataStore();
@@ -77,7 +78,7 @@ async function onImportFile(e: Event): Promise<void> {
 }
 
 // ── Event step ───────────────────────────────────────────────────────────────
-const eventForm = reactive({ name: '', dateStart: '', dateEnd: '', currency: 'CHF' });
+const eventForm = reactive({ name: '', dateStart: '', dateEnd: '', currency: '' });
 
 async function createEventIfNamed(): Promise<void> {
   if (data.activeEvent || !eventForm.name.trim()) return;
@@ -87,7 +88,7 @@ async function createEventIfNamed(): Promise<void> {
     dateStart: eventForm.dateStart || undefined,
     dateEnd: eventForm.dateEnd || undefined,
     venue: {},
-    currency: eventForm.currency.trim().toUpperCase() || 'CHF',
+    currency: eventForm.currency.trim().toUpperCase() || settings.defaultCurrency,
     status: 'active',
     updatedAt: Date.now(),
   };
@@ -125,6 +126,7 @@ onMounted(async () => {
 
 // ── Sync step ────────────────────────────────────────────────────────────────
 const deviceNameForm = ref(settings.deviceName);
+const currencyForm = ref(settings.defaultCurrency);
 const authMode = ref<'login' | 'register'>('login');
 const auth = reactive({ url: '', email: '', password: '', inviteCode: '', accountName: '' });
 const authBusy = ref(false);
@@ -133,6 +135,9 @@ const authError = ref('');
 async function saveDeviceName(): Promise<void> {
   if (deviceNameForm.value.trim() && deviceNameForm.value !== settings.deviceName) {
     await settings.setDeviceName(deviceNameForm.value.trim());
+  }
+  if (currencyForm.value.trim().toUpperCase() !== settings.defaultCurrency) {
+    await settings.setDefaultCurrency(currencyForm.value);
   }
 }
 
@@ -254,7 +259,7 @@ async function connect(): Promise<void> {
             </div>
             <label class="block text-sm">
               <span class="text-xs text-slate-400">Currency</span>
-              <input v-model="eventForm.currency" class="mt-1 w-24 rounded-lg bg-slate-800 px-3 py-2" />
+              <input v-model="eventForm.currency" :placeholder="settings.defaultCurrency" class="mt-1 w-24 rounded-lg bg-slate-800 px-3 py-2 uppercase" />
             </label>
           </div>
           <p class="mt-4 text-xs text-slate-500">Leave the name empty to skip — events live under the Events tab.</p>
@@ -286,7 +291,7 @@ async function connect(): Promise<void> {
               </label>
               <label class="block text-sm">
                 <span class="text-xs text-slate-400">Country</span>
-                <input v-model="artistForm.countryOfOrigin" placeholder="Belgium" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+                <CountryPicker v-model="artistForm.countryOfOrigin" mode="name" placeholder="Belgium" class="mt-1" />
               </label>
             </div>
             <div class="grid grid-cols-2 gap-3">
@@ -304,9 +309,13 @@ async function connect(): Promise<void> {
 
         <!-- Sync -->
         <template v-else-if="step === 'sync'">
-          <label class="mb-4 block text-sm">
+          <label class="mb-3 block text-sm">
             <span class="text-xs text-slate-400">Name this device (shown when several devices sell together)</span>
             <input v-model="deviceNameForm" placeholder="e.g. Wolf's tablet" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          </label>
+          <label class="mb-4 block text-sm">
+            <span class="text-xs text-slate-400">Default currency (prefilled for new events)</span>
+            <input v-model="currencyForm" placeholder="CHF" class="mt-1 w-24 rounded-lg bg-slate-800 px-3 py-2 uppercase" />
           </label>
 
           <template v-if="settings.syncUser">

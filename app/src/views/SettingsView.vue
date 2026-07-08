@@ -164,6 +164,15 @@ async function onImportFile(e: Event): Promise<void> {
           @change="settings.setDeviceName(($event.target as HTMLInputElement).value)"
         />
       </label>
+      <label class="mt-3 block text-sm">
+        <span class="text-slate-400">Default currency (prefilled for new events)</span>
+        <input
+          :value="settings.defaultCurrency"
+          placeholder="CHF"
+          class="mt-1 w-24 rounded-lg bg-slate-800 px-3 py-2 uppercase"
+          @change="settings.setDefaultCurrency(($event.target as HTMLInputElement).value)"
+        />
+      </label>
       <p class="mt-2 text-xs text-slate-500">Device ID: {{ settings.deviceId }}</p>
       <button
         class="mt-3 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700"

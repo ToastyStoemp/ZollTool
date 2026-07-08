@@ -11,6 +11,8 @@ import { showToast } from '@/lib/toast';
 import { saveProductImage } from '@/lib/images';
 import ModalShell from '@/components/ModalShell.vue';
 import ProductThumb from '@/components/ProductThumb.vue';
+import CountryPicker from '@/components/CountryPicker.vue';
+import TariffPicker from '@/components/TariffPicker.vue';
 
 const data = useDataStore();
 const settings = useSettingsStore();
@@ -510,6 +512,11 @@ function discountSummary(d: DiscountRule): string {
           </div>
           <div class="flex flex-col gap-1.5">
             <label class="cursor-pointer rounded-lg bg-slate-800 px-3 py-1.5 text-center text-xs font-medium hover:bg-slate-700">
+              📷 Take photo
+              <!-- capture opens the camera directly on Android/iOS; ignored on desktop -->
+              <input type="file" accept="image/*" capture="environment" class="hidden" @change="pickImage" />
+            </label>
+            <label class="cursor-pointer rounded-lg bg-slate-800 px-3 py-1.5 text-center text-xs font-medium hover:bg-slate-700">
               {{ imagePreview || (editId && data.products.find((p) => p.id === editId)?.imageId && !removeImage) ? 'Replace photo' : 'Add photo' }}
               <input type="file" accept="image/*" class="hidden" @change="pickImage" />
             </label>
@@ -562,6 +569,16 @@ function discountSummary(d: DiscountRule): string {
               :disabled="!settings.activeEventId"
               class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2 disabled:opacity-40"
             />
+          </label>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block text-sm">
+            <span class="text-slate-400">Tariff no. (HS code)</span>
+            <TariffPicker v-model="form.tariffNo" placeholder="e.g. 4911.9100" class="mt-1" />
+          </label>
+          <label class="block text-sm">
+            <span class="text-slate-400">Origin country</span>
+            <CountryPicker v-model="form.originCountry" mode="code" placeholder="Artist's country" class="mt-1" />
           </label>
         </div>
         <div class="flex gap-4 text-sm">
