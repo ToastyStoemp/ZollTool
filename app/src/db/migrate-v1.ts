@@ -173,6 +173,12 @@ export async function importV1State(state: V1State, deviceId: string): Promise<s
     updatedAt: now,
   }));
 
+  // The v1 artist block becomes the saved artist defaults too, so the setup
+  // guide and every new event's Customs page start prefilled.
+  const artistDefaults = Object.fromEntries(
+    Object.entries(state.artist || {}).filter(([, v]) => v !== '' && v != null),
+  );
+
   await db.transaction(
     'rw',
     [db.events, db.products, db.eventStock, db.transactions, db.discounts, db.settings, db.ops],
@@ -183,6 +189,16 @@ export async function importV1State(state: V1State, deviceId: string): Promise<s
       await db.transactions.bulkPut(transactions);
       await db.discounts.bulkPut(discounts);
       await db.settings.put({ key: 'activeEventId', value: event.id });
+      if (Object.keys(artistDefaults).length) {
+        const existing = (await db.settings.get('customs.artistDefaults'))?.value as
+          | Record<string, unknown>
+          | undefined;
+        // Imported values win over previously saved defaults; untouched keys survive.
+        await db.settings.put({
+          key: 'customs.artistDefaults',
+          value: { ...(existing ?? {}), ...artistDefaults },
+        });
+      }
       // Queue everything for sync so the imported data reaches other devices
       await appendOps([
         { type: 'event.upsert' as OpType, payload: event },

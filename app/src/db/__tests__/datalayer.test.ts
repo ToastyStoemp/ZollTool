@@ -148,6 +148,11 @@ describe('importV1State', () => {
   it('sets the imported event active', async () => {
     expect((await db.settings.get('activeEventId'))!.value).toBe(eventId);
   });
+
+  it('saves the v1 artist block as the artist defaults', async () => {
+    const defaults = (await db.settings.get('customs.artistDefaults'))!.value as Record<string, unknown>;
+    expect(defaults.companyName).toBe('GET UP GAMES');
+  });
 });
 
 describe('importBackup with a legacy v1 JSON file', () => {
