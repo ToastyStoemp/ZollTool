@@ -366,9 +366,17 @@ function discountSummary(d: DiscountRule): string {
 
 <template>
   <div class="mx-auto max-w-4xl p-4 md:p-6">
-    <div class="mb-4 flex flex-wrap items-center gap-3">
-      <h1 class="text-xl font-bold">Catalog</h1>
-      <div class="flex rounded-lg bg-slate-900 p-1 text-sm ring-1 ring-slate-800">
+    <div class="mb-4 space-y-3">
+      <div class="flex items-center justify-between gap-3">
+        <h1 class="text-xl font-bold">Catalog</h1>
+        <button
+          class="shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+          @click="tab === 'products' ? openNew() : openNewDiscount()"
+        >
+          + New {{ tab === 'products' ? 'product' : 'discount' }}
+        </button>
+      </div>
+      <div class="flex w-fit rounded-lg bg-slate-900 p-1 text-sm ring-1 ring-slate-800">
         <button
           class="rounded-md px-3 py-1"
           :class="tab === 'products' ? 'bg-slate-700 font-semibold' : 'text-slate-400'"
@@ -384,12 +392,6 @@ function discountSummary(d: DiscountRule): string {
           Discounts
         </button>
       </div>
-      <button
-        class="ml-auto rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
-        @click="tab === 'products' ? openNew() : openNewDiscount()"
-      >
-        + New {{ tab === 'products' ? 'product' : 'discount' }}
-      </button>
     </div>
 
     <!-- Products tab -->
