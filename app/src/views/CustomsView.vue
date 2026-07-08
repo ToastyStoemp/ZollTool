@@ -102,6 +102,21 @@ watch([artist, edec, form1174, companyCode, documentNumber, venueName, eventLoca
   deep: true,
 });
 
+/** Auto company code from the artist name initials, e.g. "Get Up Games" → "GUG". */
+const autoCompanyCode = computed(() => {
+  const name = (artist.value.companyName || artist.value.fullName || '').trim();
+  if (!name) return '';
+  const words = name.split(/\s+/).filter(Boolean);
+  const raw = words.length > 1 ? words.map((w) => w[0]).join('') : name.slice(0, 3);
+  return raw
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '')
+    .slice(0, 6);
+});
+
+/** The code actually used for LRP: the user's custom code, or the auto one. */
+const effectiveCompanyCode = computed(() => companyCode.value.trim() || autoCompanyCode.value);
+
 // ── Live customs state for the generators ────────────────────────────────────
 const customsState = computed(() => {
   if (!currentEvent.value) return null;
@@ -112,7 +127,7 @@ const customsState = computed(() => {
       edec: edec.value,
       form1174: form1174.value,
       meta: {
-        companyCode: companyCode.value,
+        companyCode: effectiveCompanyCode.value,
         documentNumber: documentNumber.value,
         venueName: venueName.value,
         eventLocation: eventLocation.value,
@@ -310,8 +325,17 @@ const TRANSPORT_MODES = [
         <h2 class="mb-3 text-sm font-semibold text-slate-300">Declaration details</h2>
         <div class="grid gap-3 sm:grid-cols-2">
           <label class="block text-sm">
-            <span class="text-xs text-slate-400">Company code (for LRP)</span>
-            <input v-model="companyCode" placeholder="e.g. GUG" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+            <span class="text-xs text-slate-400">
+              Company code (for LRP)
+              <span v-if="!companyCode.trim() && autoCompanyCode" class="text-emerald-500">
+                — auto: {{ autoCompanyCode }}
+              </span>
+            </span>
+            <input
+              v-model="companyCode"
+              :placeholder="autoCompanyCode || 'e.g. GUG'"
+              class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2"
+            />
           </label>
           <label class="block text-sm">
             <span class="text-xs text-slate-400">Document number</span>

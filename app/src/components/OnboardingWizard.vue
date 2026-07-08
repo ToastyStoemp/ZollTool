@@ -7,30 +7,34 @@ import { getSetting, setSetting, upsertEvent } from '@/db/repo';
 import { importBackup } from '@/lib/export/backup-json';
 import { uuidv7 } from '@/lib/uuid';
 import { showToast } from '@/lib/toast';
+import { syncNow, syncState } from '@/sync/engine';
 
 const settings = useSettingsStore();
 const data = useDataStore();
 
-type StepId = 'welcome' | 'data' | 'event' | 'artist' | 'sync' | 'done';
+type StepId = 'welcome' | 'sync' | 'data' | 'event' | 'artist' | 'done';
 
 const stepIndex = ref(0);
 const imported = ref(false);
 
-/** The event step disappears once an active event exists (e.g. after import). */
+/**
+ * Sync comes first: connecting pulls the account's existing data before the
+ * remaining steps, which then adapt (event step disappears once events exist).
+ */
 const steps = computed<StepId[]>(() => {
-  const list: StepId[] = ['welcome', 'data'];
-  if (!data.activeEvent) list.push('event');
-  list.push('artist', 'sync', 'done');
+  const list: StepId[] = ['welcome', 'sync', 'data'];
+  if (!data.events.length) list.push('event');
+  list.push('artist', 'done');
   return list;
 });
 const step = computed<StepId>(() => steps.value[Math.min(stepIndex.value, steps.value.length - 1)]!);
 
 const STEP_TITLES: Record<StepId, string> = {
   welcome: 'Welcome to ZollTool',
+  sync: 'Devices & sync',
   data: 'Bring your data',
   event: 'Your first event',
   artist: 'Artist details',
-  sync: 'Devices & sync',
   done: 'All set!',
 };
 
@@ -47,6 +51,8 @@ async function next(): Promise<void> {
 
 function finish(): void {
   void settings.completeOnboarding();
+  // Push whatever the guide created (event, artist defaults, imports) right away.
+  if (syncState.enabled) void syncNow();
 }
 
 // ── Data step ────────────────────────────────────────────────────────────────
@@ -195,6 +201,13 @@ async function connect(): Promise<void> {
 
         <!-- Data -->
         <template v-else-if="step === 'data'">
+          <p
+            v-if="data.events.length || data.products.length"
+            class="mb-3 rounded-lg bg-emerald-950/50 px-3 py-2 text-xs text-emerald-300"
+          >
+            ✓ Sync already brought {{ data.events.length }} event(s) and
+            {{ data.products.length }} product(s) — importing is only needed for old local backups.
+          </p>
           <p class="mb-4 text-sm text-slate-400">
             Already used ZollTool before? Restore a backup — v2 backups and JSON files saved by the old
             ZollTool both work. Otherwise just start fresh.
@@ -299,12 +312,17 @@ async function connect(): Promise<void> {
           <template v-if="settings.syncUser">
             <p class="rounded-lg bg-emerald-950/50 px-3 py-2 text-sm text-emerald-300">
               ✓ Connected as {{ settings.syncUser.email }} — sync is on.
+              <span v-if="data.events.length || data.products.length" class="mt-1 block">
+                Fetched {{ data.events.length }} event(s) and {{ data.products.length }} product(s)
+                from your account.
+              </span>
             </p>
           </template>
           <template v-else>
             <p class="mb-3 text-sm text-slate-400">
-              Optional: connect to a ZollTool server so several devices share the same catalog and sales.
-              The app keeps working fully offline either way.
+              Optional: connect to a ZollTool server so several devices share the same catalog and
+              sales. Connecting now pulls your existing data before the next steps — and the app
+              keeps working fully offline either way.
             </p>
             <div class="mb-3 flex rounded-lg bg-slate-800 p-1 text-sm">
               <button
@@ -347,12 +365,10 @@ async function connect(): Promise<void> {
         <template v-else>
           <p class="mb-4 text-sm text-slate-400">You're ready to sell. A quick map of the app:</p>
           <ul class="space-y-3 text-sm text-slate-300">
-            <li class="flex gap-3"><span>📦</span><span><strong>Catalog</strong> — add products, photos, prices and discount rules</span></li>
-            <li class="flex gap-3"><span>📅</span><span><strong>Events</strong> — set per-event stock, activate or close events</span></li>
-            <li class="flex gap-3"><span>🛒</span><span><strong>Sell</strong> — the register: tap products, take cash or card</span></li>
-            <li class="flex gap-3"><span>📈</span><span><strong>History</strong> — stats, reverts, CSV & PDF exports</span></li>
-            <li class="flex gap-3"><span>🛃</span><span><strong>Customs</strong> — goods lists, forms and e-dec XML per event</span></li>
-            <li class="flex gap-3"><span>⚙️</span><span><strong>Settings</strong> — card terminals, sync, backups (and this guide)</span></li>
+            <li class="flex gap-3"><span>📅</span><span><strong>Events</strong> — the heart of the app: sell, view history and generate customs documents from each event's card</span></li>
+            <li class="flex gap-3"><span>📦</span><span><strong>Catalog</strong> — products, photos, prices, discounts and bulk stock</span></li>
+            <li class="flex gap-3"><span>📈</span><span><strong>History</strong> — stats per event or overall, reverts, CSV & PDF exports</span></li>
+            <li class="flex gap-3"><span>⚙️</span><span><strong>Settings</strong> — card terminals, payment methods, sync, backups (and this guide)</span></li>
           </ul>
         </template>
       </div>

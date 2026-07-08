@@ -166,6 +166,95 @@ async function saveProduct(): Promise<void> {
 
 const confirmDeleteId = ref<string | null>(null);
 
+// ── Bulk stock editor (per-event brought quantities, grouped by type) ──────
+interface BulkRow {
+  pid: string;
+  /** '' for products without variants (matches the eventStock compound key). */
+  vid: string;
+  label: string;
+  sku?: string;
+  sold: number;
+  qty: number;
+  orig: number;
+}
+
+interface BulkGroup {
+  type: string;
+  rows: BulkRow[];
+  setAll: string;
+}
+
+const showBulk = ref(false);
+const bulkGroups = ref<BulkGroup[]>([]);
+
+function openBulk(): void {
+  const groups = new Map<string, BulkRow[]>();
+  for (const p of data.products) {
+    const type = p.type?.trim() || 'Other';
+    const rows = groups.get(type) ?? [];
+    if (p.variants.length) {
+      for (const v of p.variants) {
+        const qty = data.broughtQty(p.id, v.id);
+        rows.push({
+          pid: p.id,
+          vid: v.id,
+          label: `${p.title || '(untitled)'} · ${v.name || v.id}`,
+          sku: v.sku ?? p.sku,
+          sold: data.soldQty(p.id, v.id),
+          qty,
+          orig: qty,
+        });
+      }
+    } else {
+      const qty = data.broughtQty(p.id, null);
+      rows.push({
+        pid: p.id,
+        vid: '',
+        label: p.title || '(untitled)',
+        sku: p.sku,
+        sold: data.soldQty(p.id, null),
+        qty,
+        orig: qty,
+      });
+    }
+    groups.set(type, rows);
+  }
+  bulkGroups.value = [...groups.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([type, rows]) => ({ type, rows, setAll: '' }));
+  showBulk.value = true;
+}
+
+function bulkSetAll(group: BulkGroup): void {
+  const n = Math.max(0, Math.floor(parseFloat(group.setAll)));
+  if (Number.isNaN(n)) return;
+  for (const row of group.rows) row.qty = n;
+  group.setAll = '';
+}
+
+const bulkChanges = computed(() =>
+  bulkGroups.value.reduce(
+    (s, g) => s + g.rows.filter((r) => (Math.max(0, Math.floor(Number(r.qty)) || 0)) !== r.orig).length,
+    0,
+  ),
+);
+
+async function saveBulk(): Promise<void> {
+  const eventId = settings.activeEventId;
+  if (!eventId) return;
+  let changed = 0;
+  for (const group of bulkGroups.value) {
+    for (const row of group.rows) {
+      const qty = Math.max(0, Math.floor(Number(row.qty)) || 0);
+      if (qty === row.orig) continue;
+      await setStock(eventId, row.pid, row.vid, qty);
+      changed++;
+    }
+  }
+  showBulk.value = false;
+  showToast(`Stock updated — ${changed} change${changed === 1 ? '' : 's'}`, 'success');
+}
+
 async function doDeleteProduct(): Promise<void> {
   if (!confirmDeleteId.value) return;
   await deleteProduct(confirmDeleteId.value);
@@ -305,11 +394,20 @@ function discountSummary(d: DiscountRule): string {
 
     <!-- Products tab -->
     <template v-if="tab === 'products'">
-      <input
-        v-model="search"
-        placeholder="Search products…"
-        class="mb-3 w-full rounded-lg bg-slate-900 px-3 py-2 text-sm ring-1 ring-slate-800"
-      />
+      <div class="mb-3 flex gap-2">
+        <input
+          v-model="search"
+          placeholder="Search products…"
+          class="min-w-0 flex-1 rounded-lg bg-slate-900 px-3 py-2 text-sm ring-1 ring-slate-800"
+        />
+        <button
+          class="shrink-0 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium ring-1 ring-slate-800 hover:bg-slate-800 disabled:opacity-40"
+          :disabled="!settings.activeEventId || !data.products.length"
+          @click="openBulk"
+        >
+          📦 Bulk stock
+        </button>
+      </div>
       <p v-if="!data.activeEvent" class="mb-3 rounded-lg bg-amber-950/50 px-3 py-2 text-xs text-amber-400">
         No active event — stock quantities are per event, activate one under Events to edit them.
       </p>
@@ -486,6 +584,76 @@ function discountSummary(d: DiscountRule): string {
               Save
             </button>
           </div>
+        </div>
+      </template>
+    </ModalShell>
+
+    <!-- Bulk stock editor -->
+    <ModalShell v-if="showBulk" title="Bulk stock" @close="showBulk = false">
+      <p class="mb-3 text-xs text-slate-400">
+        Brought quantities for <b>{{ data.activeEvent?.name }}</b>, grouped by type. "Set all" fills
+        every row of a group at once.
+      </p>
+      <div class="space-y-4">
+        <div v-for="group in bulkGroups" :key="group.type">
+          <div class="mb-1.5 flex items-center gap-2">
+            <span class="h-4 w-1.5 rounded-full" :style="{ background: typeColor(group.type) }" />
+            <span class="text-sm font-semibold">{{ group.type }}</span>
+            <span class="text-xs text-slate-500">{{ group.rows.length }}</span>
+            <div class="ml-auto flex items-center gap-1">
+              <input
+                v-model="group.setAll"
+                type="number"
+                min="0"
+                placeholder="Set all"
+                class="w-20 rounded-md bg-slate-800 px-2 py-1 text-sm"
+                @keydown.enter="bulkSetAll(group)"
+              />
+              <button
+                class="rounded-md bg-slate-800 px-2 py-1 text-xs font-medium hover:bg-slate-700 disabled:opacity-40"
+                :disabled="!group.setAll"
+                @click="bulkSetAll(group)"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+          <ul class="divide-y divide-slate-800 overflow-hidden rounded-lg bg-slate-800/40 ring-1 ring-slate-800">
+            <li
+              v-for="row in group.rows"
+              :key="row.pid + ':' + row.vid"
+              class="flex items-center gap-2 px-3 py-2"
+            >
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm">{{ row.label }}</p>
+                <p class="text-[11px] text-slate-500">
+                  <span v-if="row.sku">{{ row.sku }} · </span>{{ row.sold }} sold
+                </p>
+              </div>
+              <input
+                v-model.number="row.qty"
+                type="number"
+                min="0"
+                class="w-20 rounded-md px-2 py-1.5 text-right text-sm"
+                :class="(Math.max(0, Math.floor(Number(row.qty)) || 0)) !== row.orig ? 'bg-emerald-950 ring-1 ring-emerald-600' : 'bg-slate-800'"
+              />
+            </li>
+          </ul>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex items-center justify-end gap-2">
+          <span v-if="bulkChanges" class="mr-auto text-xs text-slate-400">
+            {{ bulkChanges }} change{{ bulkChanges === 1 ? '' : 's' }}
+          </span>
+          <button class="rounded-lg bg-slate-800 px-4 py-2 text-sm" @click="showBulk = false">Cancel</button>
+          <button
+            class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+            :disabled="!bulkChanges"
+            @click="saveBulk"
+          >
+            Save stock
+          </button>
         </div>
       </template>
     </ModalShell>

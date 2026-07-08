@@ -6,6 +6,7 @@ import type {
   SalesEvent,
   Transaction,
 } from '@zolltool/shared';
+import { toRaw } from 'vue';
 import { db } from './schema';
 import { uuidv7 } from '@/lib/uuid';
 
@@ -14,6 +15,23 @@ import { uuidv7 } from '@/lib/uuid';
  * op to the outbox in the same transaction, so the app is sync-ready even
  * before a server is configured.
  */
+
+/**
+ * IndexedDB structured-clones what it stores, and that throws DataCloneError
+ * on Vue reactive proxies. Records handed to the repo often come straight out
+ * of a Pinia store (e.g. `{ ...event }` keeps the nested `venue` proxy), so
+ * unwrap proxies deeply before writing.
+ */
+function plain<T>(value: T): T {
+  const raw = toRaw(value) as T;
+  if (Array.isArray(raw)) return raw.map((v) => plain(v)) as T;
+  if (raw && typeof raw === 'object' && (raw as object).constructor === Object) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(raw)) out[k] = plain(v);
+    return out as T;
+  }
+  return raw;
+}
 
 async function getSettingRaw(key: string): Promise<unknown> {
   return (await db.settings.get(key))?.value;
@@ -56,9 +74,10 @@ export async function appendOps(entries: { type: OpType; payload: unknown }[]): 
 // ── Events ────────────────────────────────────────────────────────────────
 
 export async function upsertEvent(event: SalesEvent): Promise<void> {
+  const record = plain(event);
   await db.transaction('rw', [db.events, db.ops, db.settings], async () => {
-    await db.events.put(event);
-    await appendOp('event.upsert', event);
+    await db.events.put(record);
+    await appendOp('event.upsert', record);
   });
 }
 
@@ -75,9 +94,10 @@ export async function closeEvent(eventId: string): Promise<void> {
 // ── Products / stock / discounts ──────────────────────────────────────────
 
 export async function upsertProduct(product: Product): Promise<void> {
+  const record = plain(product);
   await db.transaction('rw', [db.products, db.ops, db.settings], async () => {
-    await db.products.put(product);
-    await appendOp('product.upsert', product);
+    await db.products.put(record);
+    await appendOp('product.upsert', record);
   });
 }
 
@@ -105,9 +125,10 @@ export async function setStock(
 }
 
 export async function upsertDiscount(rule: DiscountRule): Promise<void> {
+  const record = plain(rule);
   await db.transaction('rw', [db.discounts, db.ops, db.settings], async () => {
-    await db.discounts.put(rule);
-    await appendOp('discount.upsert', rule);
+    await db.discounts.put(record);
+    await appendOp('discount.upsert', record);
   });
 }
 
@@ -124,9 +145,10 @@ export async function deleteDiscount(ruleId: string): Promise<void> {
 // ── Transactions ──────────────────────────────────────────────────────────
 
 export async function recordTransaction(tx: Transaction): Promise<void> {
+  const record = plain(tx);
   await db.transaction('rw', [db.transactions, db.ops, db.settings], async () => {
-    await db.transactions.add(tx);
-    await appendOp('tx.create', tx);
+    await db.transactions.add(record);
+    await appendOp('tx.create', record);
   });
 }
 

@@ -137,16 +137,15 @@ function addToCart(pid: string, vid: string | null): void {
     variantPickerProduct.value = product;
     return;
   }
-  if (cart.remaining(pid, vid) <= 0) {
-    showToast('Out of stock', 'error');
-    return;
-  }
+  // Out-of-stock products stay sellable — brought counts are often estimates,
+  // so the seller is warned but never blocked.
   cart.add(pid, vid);
 }
 
 function stockLabel(pid: string, vid: string | null): { text: string; cls: string } {
   const left = cart.remaining(pid, vid);
-  if (left <= 0) return { text: 'Out of stock', cls: 'text-red-400' };
+  if (left < 0) return { text: `${-left} over stock`, cls: 'text-red-400' };
+  if (left === 0) return { text: 'Out of stock', cls: 'text-red-400' };
   if (left <= 3) return { text: `${left} left`, cls: 'text-amber-400' };
   return { text: `${left} in stock`, cls: 'text-slate-400' };
 }
@@ -349,7 +348,7 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
             v-if="e.group"
             class="relative flex flex-col items-start gap-1 rounded-xl bg-slate-900 p-3 text-left ring-1 ring-slate-800 transition active:scale-[0.98]"
             :style="{ borderLeft: `3px solid ${typeColor(e.group.type)}` }"
-            :class="{ 'opacity-40': e.group.stock <= 0 }"
+            :class="{ 'opacity-60': e.group.stock <= 0 }"
             @click="openTypeGroup = e.group.type"
           >
             <span
@@ -376,7 +375,7 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
             :key="p.id"
             class="relative flex flex-col items-start gap-1 rounded-xl bg-slate-900 p-3 text-left ring-1 ring-slate-800 transition active:scale-[0.98]"
             :style="{ borderLeft: `3px solid ${typeColor(p.type)}` }"
-            :class="{ 'opacity-40': cart.remaining(p.id, null) <= 0 }"
+            :class="{ 'opacity-60': cart.remaining(p.id, null) <= 0 }"
             @click="addToCart(p.id, null)"
           >
             <span
@@ -458,8 +457,7 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
                 </button>
                 <span class="w-6 text-center text-sm">{{ l.qty }}</span>
                 <button
-                  class="h-7 w-7 rounded-md bg-slate-700 text-sm font-bold disabled:opacity-30"
-                  :disabled="cart.remaining(l.pid, l.vid) <= 0"
+                  class="h-7 w-7 rounded-md bg-slate-700 text-sm font-bold"
                   @click="cart.setQty(l.vid ? `${l.pid}:${l.vid}` : l.pid, l.qty + 1)"
                 >
                   +
@@ -542,7 +540,7 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
           v-for="p in typeGroupProducts"
           :key="p.id"
           class="relative flex flex-col items-start gap-1 rounded-xl bg-slate-800 p-3 text-left ring-1 ring-slate-700"
-          :class="{ 'opacity-40': cart.remaining(p.id, null) <= 0 }"
+          :class="{ 'opacity-60': cart.remaining(p.id, null) <= 0 }"
           @click="addToCart(p.id, null)"
         >
           <span
@@ -576,8 +574,8 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
         <button
           v-for="v in variantPickerProduct.variants.filter((v) => !v.unlisted)"
           :key="v.id"
-          class="flex flex-col items-start gap-1 rounded-xl bg-slate-800 p-3 text-left ring-1 ring-slate-700 disabled:opacity-40"
-          :disabled="cart.remaining(variantPickerProduct.id, v.id) <= 0"
+          class="flex flex-col items-start gap-1 rounded-xl bg-slate-800 p-3 text-left ring-1 ring-slate-700"
+          :class="{ 'opacity-60': cart.remaining(variantPickerProduct.id, v.id) <= 0 }"
           @click="
             addToCart(variantPickerProduct!.id, v.id);
             variantPickerProduct = null;

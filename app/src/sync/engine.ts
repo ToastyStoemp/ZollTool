@@ -51,7 +51,9 @@ export async function startSync(): Promise<void> {
 
   pollTimer = setInterval(() => void syncNow(), POLL_MS);
   connectWs();
-  void syncNow();
+  // Await the first round so callers (login, setup guide) continue with the
+  // account's data already pulled.
+  await syncNow();
 }
 
 export function stopSync(): void {
