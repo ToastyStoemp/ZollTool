@@ -11,14 +11,14 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(CarbonPaymentPlugin.class);
         registerPlugin(WsServerPlugin.class);
         registerPlugin(FileSharePlugin.class);
-        registerPlugin(SumUpPlugin.class);
+        PaymentSdks.INSTANCE.registerPlugins(this);
         super.onCreate(savedInstanceState);
     }
 
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        // The SumUp SDK launches its own activities against this one.
-        if (SumUpPlugin.Companion.handleActivityResult(requestCode, data)) return;
+        // Flavor-provided payment SDKs may launch their own activities against this one.
+        if (PaymentSdks.INSTANCE.handleActivityResult(requestCode, data)) return;
         super.onActivityResult(requestCode, resultCode, data);
     }
 }

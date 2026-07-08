@@ -23,6 +23,20 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    // "full" ships the SumUp SDK (whose whole dependency tree declares minSdk 26).
+    // "compat" leaves SumUp out so the app installs on Android 7 (API 24) tablets;
+    // every other provider (manual, MyPOS Go2/Carbon, bridge) still works there.
+    flavorDimensions = ["device"]
+    productFlavors {
+        full {
+            dimension "device"
+            minSdkVersion 26
+        }
+        compat {
+            dimension "device"
+            minSdkVersion 24
+        }
+    }
     compileOptions {
         // Required by the SumUp merchant SDK (java.time etc. on older Android)
         coreLibraryDesugaringEnabled true
@@ -47,7 +61,7 @@ dependencies {
     implementation project(':capacitor-cordova-android-plugins')
     implementation 'com.mypos:slavesdk:2.1.8'
     implementation 'org.java-websocket:Java-WebSocket:1.5.4'
-    implementation 'com.sumup:merchant-sdk:7.1.0'
+    fullImplementation 'com.sumup:merchant-sdk:7.1.0'
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 }
 
