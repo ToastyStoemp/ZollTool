@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { useDataStore } from '@/stores/data';
 import { getSetting, upsertEvent } from '@/db/repo';
 import { isNative } from '@/native/plugins';
@@ -16,6 +17,12 @@ import { build1174Html } from '@/customs/form1174';
 import { build1187Html } from '@/customs/form1187';
 
 const data = useDataStore();
+const route = useRoute();
+
+/** The event this customs page belongs to: route param first, active event as fallback. */
+const currentEvent = computed(
+  () => data.events.find((e) => e.id === route.params.eventId) ?? data.activeEvent,
+);
 
 // ── Editable customs settings (persisted into event.customs) ────────────────
 const artist = ref(defaultCustomsArtist());
@@ -38,7 +45,7 @@ function stripEmpty<T extends Record<string, unknown>>(obj: T | undefined): Part
 }
 
 watch(
-  () => data.activeEvent,
+  () => currentEvent.value,
   async (event) => {
     if (!event || event.id === loadedEventId) return;
     loadedEventId = event.id;
@@ -62,13 +69,13 @@ watch(
 );
 
 function scheduleSave(): void {
-  if (loading || !data.activeEvent) return;
+  if (loading || !currentEvent.value) return;
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(saveCustoms, 600);
 }
 
 async function saveCustoms(): Promise<void> {
-  const event = data.activeEvent;
+  const event = currentEvent.value;
   if (!event) return;
   const blob = readCustomsBlob(event);
   await upsertEvent({
@@ -97,9 +104,9 @@ watch([artist, edec, form1174, companyCode, documentNumber, venueName, eventLoca
 
 // ── Live customs state for the generators ────────────────────────────────────
 const customsState = computed(() => {
-  if (!data.activeEvent) return null;
+  if (!currentEvent.value) return null;
   const event = {
-    ...data.activeEvent,
+    ...currentEvent.value,
     customs: {
       artist: artist.value,
       edec: edec.value,
@@ -157,7 +164,7 @@ watch(hasVariantProducts, (has) => {
 });
 
 function safeName(suffix: string): string {
-  return `${(data.activeEvent?.name || 'event').replace(/[^\w-]+/g, '_')}_${suffix}`;
+  return `${(currentEvent.value?.name || 'event').replace(/[^\w-]+/g, '_')}_${suffix}`;
 }
 
 async function openHtml(filename: string, html: string): Promise<void> {
@@ -201,12 +208,13 @@ const TRANSPORT_MODES = [
 <template>
   <div class="mx-auto max-w-4xl space-y-4 p-4 md:p-6">
     <div class="flex flex-wrap items-center gap-3">
+      <RouterLink to="/events" class="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-800">←</RouterLink>
       <h1 class="text-xl font-bold">Customs</h1>
-      <span v-if="data.activeEvent" class="text-sm text-slate-400">{{ data.activeEvent.name }}</span>
+      <span v-if="currentEvent" class="text-sm text-slate-400">{{ currentEvent.name }}</span>
     </div>
 
-    <p v-if="!data.activeEvent" class="rounded-xl bg-slate-900 p-6 text-center text-sm text-slate-400">
-      No active event selected — activate one under Events first. Customs data is stored per event.
+    <p v-if="!currentEvent" class="rounded-xl bg-slate-900 p-6 text-center text-sm text-slate-400">
+      Event not found — open Customs from an event card under Events. Customs data is stored per event.
     </p>
 
     <template v-else>
@@ -377,14 +385,14 @@ const TRANSPORT_MODES = [
             <p class="mb-1 font-semibold text-slate-300">Group 1 · {{ groups.g1.tariffNo }}</p>
             <p class="text-slate-400">
               {{ groups.g1.qty }} items · {{ fmtWeightKg(groups.g1.weightKg) }} ·
-              {{ Math.floor(groups.g1.value) }} {{ data.currency }}
+              {{ Math.floor(groups.g1.value) }} {{ currentEvent?.currency }}
             </p>
           </div>
           <div class="rounded-lg bg-slate-800/60 p-3 text-xs" :class="{ 'opacity-40': !groups.hasG2 }">
             <p class="mb-1 font-semibold text-slate-300">Group 2 · {{ groups.g2.tariffNo }}</p>
             <p class="text-slate-400">
               {{ groups.g2.qty }} items · {{ fmtWeightKg(groups.g2.weightKg) }} ·
-              {{ Math.floor(groups.g2.value) }} {{ data.currency }}
+              {{ Math.floor(groups.g2.value) }} {{ currentEvent?.currency }}
             </p>
           </div>
         </div>

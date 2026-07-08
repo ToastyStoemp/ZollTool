@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
+import { useRouter } from 'vue-router';
 import type { SalesEvent } from '@zolltool/shared';
 import { useDataStore } from '@/stores/data';
 import { useSettingsStore } from '@/stores/settings';
@@ -12,8 +13,10 @@ import ModalShell from '@/components/ModalShell.vue';
 
 const data = useDataStore();
 const settings = useSettingsStore();
+const router = useRouter();
 
 const showCreate = ref(false);
+const editingId = ref<string | null>(null);
 const confirmCloseId = ref<string | null>(null);
 
 const form = reactive({
@@ -119,6 +122,50 @@ async function activate(event: SalesEvent): Promise<void> {
   await settings.setActiveEvent(event.id);
 }
 
+/** Selling always goes through the event, so it's clear what you're selling for. */
+async function sell(event: SalesEvent): Promise<void> {
+  await activate(event);
+  await router.push('/pos');
+}
+
+function openEdit(event: SalesEvent): void {
+  Object.assign(form, {
+    preset: '',
+    name: event.name,
+    dateStart: event.dateStart ?? '',
+    dateEnd: event.dateEnd ?? '',
+    street: event.venue.street ?? '',
+    postcode: event.venue.postcode ?? '',
+    city: event.venue.city ?? '',
+    country: event.venue.country ?? '',
+    tin: event.venue.tin ?? '',
+    currency: event.currency,
+    copyStockFrom: '',
+  });
+  editingId.value = event.id;
+}
+
+async function saveEdit(): Promise<void> {
+  const event = data.events.find((e) => e.id === editingId.value);
+  if (!event || !form.name.trim()) return;
+  await upsertEvent({
+    ...event,
+    name: form.name.trim(),
+    dateStart: form.dateStart || undefined,
+    dateEnd: form.dateEnd || undefined,
+    venue: {
+      street: form.street || undefined,
+      postcode: form.postcode || undefined,
+      city: form.city || undefined,
+      country: form.country || undefined,
+      tin: form.tin || undefined,
+    },
+    currency: form.currency || 'CHF',
+    updatedAt: Date.now(),
+  });
+  editingId.value = null;
+}
+
 async function doClose(eventId: string): Promise<void> {
   await closeEvent(eventId);
   if (settings.activeEventId === eventId) await settings.setActiveEvent(null);
@@ -174,13 +221,13 @@ function fmtDates(e: SalesEvent): string {
           {{ eventStats(event.id).count }} sales ·
           {{ fmtPrice(eventStats(event.id).revenue, eventStats(event.id).currency) }}
         </p>
-        <div class="mt-3 flex gap-2">
+        <div class="mt-3 flex flex-wrap gap-2">
           <button
-            v-if="event.id !== settings.activeEventId && event.status !== 'closed'"
+            v-if="event.status !== 'closed'"
             class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
-            @click="activate(event)"
+            @click="sell(event)"
           >
-            Start selling
+            🛒 Sell
           </button>
           <button
             v-if="event.status === 'closed'"
@@ -189,21 +236,46 @@ function fmtDates(e: SalesEvent): string {
           >
             Reopen
           </button>
+          <RouterLink
+            :to="{ path: '/history', query: { event: event.id } }"
+            class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
+          >
+            📈 History
+          </RouterLink>
+          <RouterLink
+            :to="`/customs/${event.id}`"
+            class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
+          >
+            🛃 Customs
+          </RouterLink>
+          <button
+            class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
+            @click="openEdit(event)"
+          >
+            ✏️ Edit
+          </button>
           <button
             v-if="event.status !== 'closed'"
-            class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
+            class="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-400 hover:bg-slate-800"
             @click="confirmCloseId = event.id"
           >
-            Close event
+            Close
           </button>
         </div>
       </li>
     </ul>
 
-    <!-- Create modal -->
-    <ModalShell v-if="showCreate" title="New event" @close="showCreate = false">
+    <!-- Create / edit modal -->
+    <ModalShell
+      v-if="showCreate || editingId"
+      :title="editingId ? 'Edit event' : 'New event'"
+      @close="
+        showCreate = false;
+        editingId = null;
+      "
+    >
       <div class="space-y-3">
-        <label class="block text-sm">
+        <label v-if="!editingId" class="block text-sm">
           <span class="text-slate-400">From preset</span>
           <select
             v-model="form.preset"
@@ -252,7 +324,7 @@ function fmtDates(e: SalesEvent): string {
             <input v-model="form.currency" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
           </label>
         </div>
-        <label class="block text-sm">
+        <label v-if="!editingId" class="block text-sm">
           <span class="text-slate-400">Copy stock from</span>
           <select v-model="form.copyStockFrom" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2">
             <option value="">— don't copy —</option>
@@ -262,13 +334,21 @@ function fmtDates(e: SalesEvent): string {
       </div>
       <template #footer>
         <div class="flex justify-end gap-2">
-          <button class="rounded-lg bg-slate-800 px-4 py-2 text-sm" @click="showCreate = false">Cancel</button>
+          <button
+            class="rounded-lg bg-slate-800 px-4 py-2 text-sm"
+            @click="
+              showCreate = false;
+              editingId = null;
+            "
+          >
+            Cancel
+          </button>
           <button
             class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
             :disabled="!form.name.trim()"
-            @click="createEvent"
+            @click="editingId ? saveEdit() : createEvent()"
           >
-            Create
+            {{ editingId ? 'Save' : 'Create' }}
           </button>
         </div>
       </template>

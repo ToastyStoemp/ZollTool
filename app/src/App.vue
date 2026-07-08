@@ -7,12 +7,12 @@ import OnboardingWizard from '@/components/OnboardingWizard.vue';
 const route = useRoute();
 const settings = useSettingsStore();
 
+// Selling and customs are reached through an event (Events tab) so it's
+// always clear which event they apply to.
 const nav = [
-  { to: '/pos', label: 'Sell', icon: '🛒' },
   { to: '/events', label: 'Events', icon: '📅' },
   { to: '/catalog', label: 'Catalog', icon: '📦' },
   { to: '/history', label: 'History', icon: '📈' },
-  { to: '/customs', label: 'Customs', icon: '🛃' },
   { to: '/settings', label: 'Settings', icon: '⚙️' },
 ];
 </script>

@@ -5,12 +5,13 @@ import { createRouter, createWebHashHistory } from 'vue-router';
 export const router = createRouter({
   history: createWebHashHistory(),
   routes: [
-    { path: '/', redirect: '/pos' },
-    { path: '/pos', name: 'pos', component: () => import('@/views/PosView.vue') },
+    { path: '/', redirect: '/events' },
     { path: '/events', name: 'events', component: () => import('@/views/EventsView.vue') },
+    // Selling and customs are opened from an event, not from the main nav
+    { path: '/pos', name: 'pos', component: () => import('@/views/PosView.vue') },
+    { path: '/customs/:eventId?', name: 'customs', component: () => import('@/views/CustomsView.vue') },
     { path: '/catalog', name: 'catalog', component: () => import('@/views/CatalogView.vue') },
     { path: '/history', name: 'history', component: () => import('@/views/HistoryView.vue') },
-    { path: '/customs', name: 'customs', component: () => import('@/views/CustomsView.vue') },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
     { path: '/admin', name: 'admin', component: () => import('@/views/AdminView.vue') },
   ],

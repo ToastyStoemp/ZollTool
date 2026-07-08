@@ -19,6 +19,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const serverUrl = ref('');
   const syncUser = ref<AuthUser | null>(null);
   const onboardingDone = ref(true);
+  /** User-defined manual payment methods (e.g. TWINT, PayPal QR). */
+  const customPaymentMethods = ref<string[]>([]);
 
   async function init(): Promise<void> {
     deviceId.value = await ensureDeviceId();
@@ -29,6 +31,7 @@ export const useSettingsStore = defineStore('settings', () => {
     onActiveProviderChanged(paymentProviderId.value);
     serverUrl.value = (await api.getServerUrl()) ?? '';
     syncUser.value = (await api.getSyncUser()) ?? null;
+    customPaymentMethods.value = (await getSetting<string[]>('customPaymentMethods')) ?? [];
     if (syncUser.value) void startSync();
 
     // First-run setup guide: only on a truly fresh install — devices that
@@ -41,6 +44,18 @@ export const useSettingsStore = defineStore('settings', () => {
       }
     }
     ready.value = true;
+  }
+
+  async function addCustomPaymentMethod(name: string): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed || customPaymentMethods.value.some((m) => m.toLowerCase() === trimmed.toLowerCase())) return;
+    customPaymentMethods.value = [...customPaymentMethods.value, trimmed];
+    await setSetting('customPaymentMethods', [...customPaymentMethods.value]);
+  }
+
+  async function removeCustomPaymentMethod(name: string): Promise<void> {
+    customPaymentMethods.value = customPaymentMethods.value.filter((m) => m !== name);
+    await setSetting('customPaymentMethods', [...customPaymentMethods.value]);
   }
 
   async function completeOnboarding(): Promise<void> {
@@ -100,6 +115,7 @@ export const useSettingsStore = defineStore('settings', () => {
     serverUrl,
     syncUser,
     onboardingDone,
+    customPaymentMethods,
     init,
     setActiveEvent,
     setDeviceName,
@@ -109,5 +125,7 @@ export const useSettingsStore = defineStore('settings', () => {
     logoutFromServer,
     completeOnboarding,
     reopenOnboarding,
+    addCustomPaymentMethod,
+    removeCustomPaymentMethod,
   };
 });

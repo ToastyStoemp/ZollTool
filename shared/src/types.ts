@@ -91,7 +91,8 @@ export interface DiscountRule {
   deletedAt?: number;
 }
 
-export type PaymentMethod = 'cash' | 'card' | 'split';
+/** Built-in methods plus user-defined ones (e.g. "TWINT", "PayPal QR"). */
+export type PaymentMethod = 'cash' | 'card' | 'split' | (string & {});
 
 export interface PaymentLeg {
   kind: 'cash' | 'card';

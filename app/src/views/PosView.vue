@@ -274,8 +274,15 @@ async function confirmPayment(): Promise<void> {
       { kind: 'cash' as const, amount: Math.max(0, parseFloat(payment.splitCash) || 0) },
       { kind: 'card' as const, amount: Math.max(0, parseFloat(payment.splitCard) || 0) },
     ].filter((l) => l.amount > 0);
+  } else if (isCustomMethod(payment.method)) {
+    // Custom methods (TWINT, PayPal QR, …) count as non-cash money
+    legs = [{ kind: 'card', amount: payment.total, provider: payment.method }];
   }
   await finishSale(legs);
+}
+
+function isCustomMethod(method: PaymentMethod): boolean {
+  return method !== 'cash' && method !== 'card' && method !== 'split';
 }
 
 async function finishSale(legs: PaymentLeg[]): Promise<void> {
@@ -306,7 +313,8 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
     <template v-else>
       <!-- Product area -->
       <section class="flex min-h-0 flex-1 flex-col">
-        <header class="flex items-center gap-3 border-b border-slate-800 px-4 py-3">
+        <header class="flex items-center gap-2 border-b border-slate-800 px-4 py-3">
+          <RouterLink to="/events" class="shrink-0 rounded-lg px-1.5 py-1 text-slate-400 hover:bg-slate-800">←</RouterLink>
           <div class="min-w-0">
             <h1 class="truncate text-sm font-semibold text-emerald-400">{{ data.activeEvent.name }}</h1>
           </div>
@@ -512,6 +520,17 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
               Split
             </button>
           </div>
+          <div v-if="settings.customPaymentMethods.length" class="grid grid-cols-2 gap-2">
+            <button
+              v-for="m in settings.customPaymentMethods"
+              :key="m"
+              class="truncate rounded-lg bg-violet-700 px-2 py-2 text-sm font-bold text-white disabled:opacity-40"
+              :disabled="!cart.itemCount"
+              @click="startPayment(m)"
+            >
+              {{ m }}
+            </button>
+          </div>
         </footer>
       </aside>
     </template>
@@ -641,7 +660,15 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
     <!-- Payment modal -->
     <ModalShell
       v-if="payment.phase !== 'idle'"
-      :title="payment.method === 'cash' ? 'Cash payment' : payment.method === 'card' ? 'Card payment' : 'Split payment'"
+      :title="
+        payment.method === 'cash'
+          ? 'Cash payment'
+          : payment.method === 'card'
+            ? 'Card payment'
+            : payment.method === 'split'
+              ? 'Split payment'
+              : `${payment.method} payment`
+      "
       @close="cancelPayment"
     >
       <div class="space-y-4 text-center">
@@ -741,10 +768,11 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
           </p>
         </template>
 
-        <!-- Card manual confirm -->
+        <!-- Card / custom method manual confirm -->
         <template v-else>
           <p class="text-sm text-slate-300">
-            Confirm the card payment was completed{{ activeProvider.id === 'manual' ? ' (no terminal configured)' : '' }}.
+            Confirm the {{ payment.method === 'card' ? 'card' : payment.method }} payment was
+            completed{{ payment.method === 'card' && activeProvider.id === 'manual' ? ' (no terminal configured)' : '' }}.
           </p>
         </template>
       </div>
@@ -755,7 +783,15 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
           <button
             v-if="payment.phase === 'confirm'"
             class="rounded-lg px-5 py-2 text-sm font-bold text-white disabled:opacity-40"
-            :class="payment.method === 'cash' ? 'bg-emerald-600' : payment.method === 'card' ? 'bg-sky-600' : 'bg-amber-600'"
+            :class="
+              payment.method === 'cash'
+                ? 'bg-emerald-600'
+                : payment.method === 'card'
+                  ? 'bg-sky-600'
+                  : payment.method === 'split'
+                    ? 'bg-amber-600'
+                    : 'bg-violet-700'
+            "
             :disabled="confirmDisabled"
             @click="confirmPayment"
           >

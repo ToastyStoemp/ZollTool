@@ -57,6 +57,14 @@ async function configureProvider(id: PaymentProviderId): Promise<void> {
   setTimeout(refreshStatuses, 1500);
 }
 
+// ── Custom payment methods ──────────────────────────────────────────────────
+const newMethod = ref('');
+
+async function addMethod(): Promise<void> {
+  await settings.addCustomPaymentMethod(newMethod.value);
+  newMethod.value = '';
+}
+
 // ── Server sync ─────────────────────────────────────────────────────────────
 const authMode = ref<'login' | 'register'>('login');
 const authUrl = ref(settings.serverUrl);
@@ -215,6 +223,45 @@ async function onImportFile(e: Event): Promise<void> {
           @change="saveSumupKey"
         />
       </label>
+    </section>
+
+    <!-- Custom payment methods -->
+    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+      <h2 class="mb-2 text-sm font-semibold text-slate-300">Extra payment methods</h2>
+      <p class="mb-3 text-xs text-slate-500">
+        Extra buttons on the sell screen for payments handled outside the app, e.g. TWINT or a
+        PayPal QR code. Sales made with them count as non-cash in the history.
+      </p>
+      <ul v-if="settings.customPaymentMethods.length" class="mb-3 space-y-2">
+        <li
+          v-for="m in settings.customPaymentMethods"
+          :key="m"
+          class="flex items-center justify-between rounded-lg bg-slate-800/50 px-3 py-2 text-sm ring-1 ring-slate-700"
+        >
+          <span class="truncate">{{ m }}</span>
+          <button
+            class="rounded-lg px-2 py-1 text-xs text-red-400 hover:bg-red-950"
+            @click="settings.removeCustomPaymentMethod(m)"
+          >
+            Remove
+          </button>
+        </li>
+      </ul>
+      <form class="flex gap-2" @submit.prevent="addMethod">
+        <input
+          v-model="newMethod"
+          type="text"
+          placeholder="e.g. TWINT"
+          class="min-w-0 flex-1 rounded-lg bg-slate-800 px-3 py-2 text-sm"
+        />
+        <button
+          type="submit"
+          class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
+          :disabled="!newMethod.trim()"
+        >
+          Add
+        </button>
+      </form>
     </section>
 
     <!-- Backup -->

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import type { SalesEvent } from '@zolltool/shared';
 import { useSettingsStore } from '@/stores/settings';
 import { useDataStore } from '@/stores/data';
-import { setSetting, upsertEvent } from '@/db/repo';
+import { getSetting, setSetting, upsertEvent } from '@/db/repo';
 import { importBackup } from '@/lib/export/backup-json';
 import { uuidv7 } from '@/lib/uuid';
 import { showToast } from '@/lib/toast';
@@ -105,6 +105,17 @@ async function saveArtistDefaults(): Promise<void> {
   if (Object.values(artistForm).every((v) => !v.trim())) return;
   await setSetting('customs.artistDefaults', { ...artistForm });
 }
+
+// Prefill from data that already exists (saved artist defaults, known server).
+onMounted(async () => {
+  const saved = await getSetting<Partial<typeof artistForm>>('customs.artistDefaults');
+  if (saved) {
+    for (const key of Object.keys(artistForm) as (keyof typeof artistForm)[]) {
+      if (typeof saved[key] === 'string' && saved[key]) artistForm[key] = saved[key];
+    }
+  }
+  if (!auth.url && settings.serverUrl) auth.url = settings.serverUrl;
+});
 
 // ── Sync step ────────────────────────────────────────────────────────────────
 const deviceNameForm = ref(settings.deviceName);
