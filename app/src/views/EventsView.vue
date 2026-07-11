@@ -175,6 +175,11 @@ async function doClose(eventId: string): Promise<void> {
 }
 
 async function doDelete(eventId: string): Promise<void> {
+  const event = data.events.find((e) => e.id === eventId);
+  if (event && event.status !== 'closed') {
+    confirmDeleteId.value = null;
+    return; // only closed events can be deleted (button is hidden otherwise)
+  }
   await deleteEvent(eventId);
   if (settings.activeEventId === eventId) await settings.setActiveEvent(null);
   confirmDeleteId.value = null;
@@ -269,7 +274,9 @@ function fmtDates(e: SalesEvent): string {
           >
             Close
           </button>
+          <!-- Deleting is a two-step act on purpose: close the event first, then delete. -->
           <button
+            v-if="event.status === 'closed'"
             class="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-400/80 hover:bg-red-950 hover:text-red-400"
             @click="confirmDeleteId = event.id"
           >
