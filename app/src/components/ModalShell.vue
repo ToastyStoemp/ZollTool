@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { X } from 'lucide-vue-next';
+
 defineProps<{ title: string }>();
 const emit = defineEmits<{ close: [] }>();
 </script>
@@ -17,7 +19,7 @@ const emit = defineEmits<{ close: [] }>();
           class="rounded-lg px-2 py-1 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
           @click="emit('close')"
         >
-          ✕
+          <X class="h-5 w-5" />
         </button>
       </header>
       <div class="min-h-0 flex-1 overflow-y-auto p-5">

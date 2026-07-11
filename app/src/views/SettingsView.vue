@@ -20,6 +20,7 @@ import {
   type ReceiptLine,
 } from '@/lib/receipt';
 import { ThermalPrinter, hasNativePlugin } from '@/native/plugins';
+import { Camera, QrCode } from 'lucide-vue-next';
 import ModalShell from '@/components/ModalShell.vue';
 
 const settings = useSettingsStore();
@@ -638,7 +639,7 @@ async function onImportFile(e: Event): Promise<void> {
       </div>
 
       <div class="mt-3 flex flex-wrap items-center gap-3">
-        <!-- Receipts print on request (History 🖨) by default; auto-print is opt-in. -->
+        <!-- Receipts print on request (History's print button) by default; auto-print is opt-in. -->
         <label v-if="canPrint" class="flex items-center gap-2 text-sm text-slate-300">
           <input type="checkbox" :checked="receiptAutoPrint" @change="toggleAutoPrint" />
           Print a receipt after every sale
@@ -744,7 +745,7 @@ async function onImportFile(e: Event): Promise<void> {
             class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700"
             @click="openShareQr"
           >
-            📱 Share login (QR)
+            <span class="flex items-center gap-1.5"><QrCode class="h-4 w-4" /> Share login (QR)</span>
           </button>
           <RouterLink
             v-if="settings.syncUser.role === 'owner'"
@@ -831,7 +832,7 @@ async function onImportFile(e: Event): Promise<void> {
             :disabled="authBusy"
             @click="scanInput?.click()"
           >
-            📷 Scan connect QR from another device
+            <span class="flex items-center justify-center gap-1.5"><Camera class="h-4 w-4" /> Scan connect QR from another device</span>
           </button>
           <input ref="scanInput" type="file" accept="image/*" capture="environment" class="hidden" @change="onScanFile" />
         </form>

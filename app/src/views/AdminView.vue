@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { Copy } from 'lucide-vue-next';
 import type { AdminAccount, AdminAccountDetail, AdminMetricRow, AdminOverview } from '@zolltool/shared';
 import { useSettingsStore } from '@/stores/settings';
 import { apiJson } from '@/sync/api';
@@ -180,7 +181,7 @@ const tiles = computed(() =>
             title="Copy to clipboard"
             @click="copyInvite"
           >
-            {{ inviteCode }} 📋
+            <span class="flex items-center gap-1.5">{{ inviteCode }} <Copy class="h-3.5 w-3.5" /></span>
           </button>
         </div>
         <p class="mt-2 text-xs text-slate-500">Codes are single-use and valid for 14 days.</p>

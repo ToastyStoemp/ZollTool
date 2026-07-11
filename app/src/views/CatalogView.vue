@@ -7,6 +7,7 @@ import { deleteDiscount, deleteProduct, setStock, upsertDiscount, upsertProduct 
 import { uuidv7 } from '@/lib/uuid';
 import { fmtPrice } from '@/lib/money';
 import { typeColor } from '@/lib/search';
+import { Boxes, Camera, Image as ImageIcon, TriangleAlert, X } from 'lucide-vue-next';
 import { showToast } from '@/lib/toast';
 import { saveProductImage } from '@/lib/images';
 import ModalShell from '@/components/ModalShell.vue';
@@ -514,7 +515,7 @@ function discountTargets(d: DiscountRule): string {
           :disabled="!settings.activeEventId || !data.products.length"
           @click="openBulk"
         >
-          📦 Bulk stock
+          <span class="flex items-center gap-1.5"><Boxes class="h-4 w-4" /> Bulk stock</span>
         </button>
       </div>
       <p v-if="!data.activeEvent" class="mb-3 rounded-lg bg-amber-950/50 px-3 py-2 text-xs text-amber-400">
@@ -599,11 +600,11 @@ function discountTargets(d: DiscountRule): string {
               size="lg"
               class="!h-20 !w-20"
             />
-            <div v-else class="flex h-full w-full items-center justify-center text-2xl">🖼️</div>
+            <div v-else class="flex h-full w-full items-center justify-center text-slate-500"><ImageIcon class="h-7 w-7" /></div>
           </div>
           <div class="flex flex-col gap-1.5">
-            <label class="cursor-pointer rounded-lg bg-slate-800 px-3 py-1.5 text-center text-xs font-medium hover:bg-slate-700">
-              📷 Take photo
+            <label class="flex cursor-pointer items-center justify-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-center text-xs font-medium hover:bg-slate-700">
+              <Camera class="h-3.5 w-3.5" /> Take photo
               <!-- capture opens the camera directly on Android/iOS; ignored on desktop -->
               <input type="file" accept="image/*" capture="environment" class="hidden" @change="pickImage" />
             </label>
@@ -688,15 +689,15 @@ function discountTargets(d: DiscountRule): string {
             <label class="relative h-10 w-10 cursor-pointer">
               <img v-if="v.previewUrl" :src="v.previewUrl" class="h-10 w-10 rounded-lg object-cover" />
               <ProductThumb v-else-if="v.imageId && !v.removeImage" :image-id="v.imageId" :type="form.type" />
-              <div v-else class="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-800 text-sm">📷</div>
+              <div v-else class="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-800 text-slate-400"><Camera class="h-4 w-4" /></div>
               <input type="file" accept="image/*" class="hidden" @change="pickVariantImage(v, $event)" />
               <button
                 v-if="v.previewUrl || (v.imageId && !v.removeImage)"
-                class="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white"
+                class="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-white"
                 title="Remove photo"
                 @click.prevent.stop="removeVariantImage(v)"
               >
-                ✕
+                <X class="h-2.5 w-2.5" />
               </button>
             </label>
             <input v-model="v.name" placeholder="Name" class="rounded-md bg-slate-800 px-2 py-1.5 text-sm" />
@@ -710,7 +711,7 @@ function discountTargets(d: DiscountRule): string {
               :disabled="!settings.activeEventId"
               class="rounded-md bg-slate-800 px-2 py-1.5 text-sm disabled:opacity-40"
             />
-            <button class="text-red-400" @click="form.variants.splice(i, 1)">✕</button>
+            <button class="text-red-400" @click="form.variants.splice(i, 1)"><X class="h-4 w-4" /></button>
           </div>
           <p v-if="!form.variants.length" class="text-xs text-slate-500">No variants — the product sells as-is.</p>
         </div>
@@ -866,7 +867,7 @@ function discountTargets(d: DiscountRule): string {
             <input v-model="t.qty" type="number" min="2" placeholder="Qty" class="w-20 rounded-lg bg-slate-800 px-3 py-2" />
             <span class="text-slate-400">for</span>
             <input v-model="t.total" type="number" step="0.05" placeholder="Total" class="w-24 rounded-lg bg-slate-800 px-3 py-2" />
-            <button class="text-red-400" @click="discountForm.tiers.splice(i, 1)">✕</button>
+            <button class="text-red-400" @click="discountForm.tiers.splice(i, 1)"><X class="h-4 w-4" /></button>
           </div>
           <button class="text-xs text-emerald-400" @click="discountForm.tiers.push({ qty: '', total: '' })">
             + Add tier
@@ -925,9 +926,12 @@ function discountTargets(d: DiscountRule): string {
               </label>
             </template>
           </div>
-          <p v-if="overlappingRules.length" class="mt-2 text-xs text-amber-400">
-            ⚠ Also targeted by
-            {{ overlappingRules.map((d) => `"${d.name}"`).join(', ') }} — discounts on the same items stack.
+          <p v-if="overlappingRules.length" class="mt-2 flex items-start gap-1.5 text-xs text-amber-400">
+            <TriangleAlert class="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>
+              Also targeted by {{ overlappingRules.map((d) => `"${d.name}"`).join(', ') }} — discounts
+              on the same items stack.
+            </span>
           </p>
         </div>
       </div>

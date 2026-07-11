@@ -11,6 +11,7 @@ import { showToast } from '@/lib/toast';
 import { getProvider } from '@/payments/registry';
 import { MyPos, hasNativePlugin } from '@/native/plugins';
 import { buildReceiptLines, loadReceiptConfig, printReceipt, printingAvailable } from '@/lib/receipt';
+import { ArrowLeft, ChartLine, CreditCard, ShoppingCart, X } from 'lucide-vue-next';
 import ModalShell from '@/components/ModalShell.vue';
 import ProductThumb from '@/components/ProductThumb.vue';
 
@@ -421,16 +422,18 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
       <!-- Product area -->
       <section class="flex min-h-0 min-w-0 flex-1 flex-col">
         <header class="flex items-center gap-2 border-b border-slate-800 px-4 py-3">
-          <RouterLink to="/events" class="shrink-0 rounded-lg px-1.5 py-1 text-slate-400 hover:bg-slate-800">←</RouterLink>
+          <RouterLink to="/events" class="shrink-0 rounded-lg px-1.5 py-1.5 text-slate-400 hover:bg-slate-800" title="Back to events">
+            <ArrowLeft class="h-4 w-4" />
+          </RouterLink>
           <div class="min-w-0">
             <h1 class="truncate text-sm font-semibold text-emerald-400">{{ data.activeEvent.name }}</h1>
           </div>
           <RouterLink
             :to="{ path: '/history', query: { event: data.activeEvent.id, from: 'pos' } }"
-            class="shrink-0 rounded-lg px-1.5 py-1 text-slate-400 hover:bg-slate-800"
+            class="shrink-0 rounded-lg px-1.5 py-1.5 text-slate-400 hover:bg-slate-800"
             title="Sales history"
           >
-            📈
+            <ChartLine class="h-4 w-4" />
           </RouterLink>
           <!-- Card reader connection state (hidden for manual entry) -->
           <button
@@ -439,7 +442,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
             :title="`${activeProvider.label} — tap to re-check`"
             @click="tapTerminalState"
           >
-            💳
+            <CreditCard class="h-4 w-4 text-slate-300" />
             <span
               class="h-2 w-2 rounded-full"
               :class="{
@@ -550,7 +553,10 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
           class="m-3 flex items-center justify-between rounded-xl bg-emerald-600 px-4 py-3 font-semibold text-white md:hidden"
           @click="showCartSheet = true"
         >
-          <span>🛒 {{ cart.itemCount }} item{{ cart.itemCount !== 1 ? 's' : '' }}</span>
+          <span class="flex items-center gap-2">
+            <ShoppingCart class="h-4.5 w-4.5" />
+            {{ cart.itemCount }} item{{ cart.itemCount !== 1 ? 's' : '' }}
+          </span>
           <span>{{ fmtPrice(cart.totals.grandTotal, data.currency) }}</span>
         </button>
       </section>
@@ -574,7 +580,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
             >
               Clear
             </button>
-            <button class="text-slate-400 md:hidden" @click="showCartSheet = false">✕</button>
+            <button class="text-slate-400 md:hidden" @click="showCartSheet = false"><X class="h-5 w-5" /></button>
           </div>
         </header>
 

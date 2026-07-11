@@ -9,6 +9,7 @@ import { db } from '@/db/schema';
 import { uuidv7 } from '@/lib/uuid';
 import { fmtPrice } from '@/lib/money';
 import { EVENT_PRESETS } from '@/data/event-presets';
+import { ChartLine, Pencil, ShoppingCart, Stamp, Trash2 } from 'lucide-vue-next';
 import ModalShell from '@/components/ModalShell.vue';
 import CountryPicker from '@/components/CountryPicker.vue';
 
@@ -241,7 +242,7 @@ function fmtDates(e: SalesEvent): string {
             class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
             @click="sell(event)"
           >
-            🛒 Sell
+            <span class="flex items-center gap-1.5"><ShoppingCart class="h-3.5 w-3.5" /> Sell</span>
           </button>
           <button
             v-if="event.status === 'closed'"
@@ -252,21 +253,21 @@ function fmtDates(e: SalesEvent): string {
           </button>
           <RouterLink
             :to="{ path: '/history', query: { event: event.id } }"
-            class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
+            class="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
           >
-            📈 History
+            <ChartLine class="h-3.5 w-3.5" /> History
           </RouterLink>
           <RouterLink
             :to="`/customs/${event.id}`"
-            class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
+            class="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
           >
-            🛃 Customs
+            <Stamp class="h-3.5 w-3.5" /> Customs
           </RouterLink>
           <button
-            class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
+            class="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
             @click="openEdit(event)"
           >
-            ✏️ Edit
+            <Pencil class="h-3.5 w-3.5" /> Edit
           </button>
           <button
             v-if="event.status !== 'closed'"
@@ -278,10 +279,10 @@ function fmtDates(e: SalesEvent): string {
           <!-- Deleting is a two-step act on purpose: close the event first, then delete. -->
           <button
             v-if="event.status === 'closed'"
-            class="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-400/80 hover:bg-red-950 hover:text-red-400"
+            class="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-red-400/80 hover:bg-red-950 hover:text-red-400"
             @click="confirmDeleteId = event.id"
           >
-            🗑 Delete
+            <Trash2 class="h-3.5 w-3.5" /> Delete
           </button>
         </div>
       </li>

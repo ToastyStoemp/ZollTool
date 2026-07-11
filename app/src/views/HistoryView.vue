@@ -14,6 +14,8 @@ import {
   printReceipt as printReceiptLines,
   printingAvailable,
 } from '@/lib/receipt';
+import { ArrowLeft, Banknote, CreditCard, Printer, Smartphone, Zap } from 'lucide-vue-next';
+import type { Component } from 'vue';
 import ModalShell from '@/components/ModalShell.vue';
 
 const data = useDataStore();
@@ -172,8 +174,8 @@ function fmtTime(ts: number): string {
   });
 }
 
-const methodIcons: Record<string, string> = { cash: '💵', card: '💳', split: '⚡' };
-const methodIcon = (method: string): string => methodIcons[method] ?? '📱';
+const methodIcons: Record<string, Component> = { cash: Banknote, card: CreditCard, split: Zap };
+const methodIcon = (method: string): Component => methodIcons[method] ?? Smartphone;
 
 // ── Receipt reprint (Carbon built-in printer or paired thermal printer) ─────
 const canPrintReceipts = ref(false);
@@ -197,9 +199,9 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
       <RouterLink
         v-if="fromPos"
         to="/pos"
-        class="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-500"
+        class="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-500"
       >
-        ← POS
+        <ArrowLeft class="h-4 w-4" /> POS
       </RouterLink>
       <h1 class="text-xl font-bold">Sales history</h1>
       <select v-model="scope" class="rounded-lg bg-slate-800 px-3 py-1.5 text-sm">
@@ -328,7 +330,7 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
         :class="{ 'opacity-50': tx.revertedBy }"
       >
         <div class="flex items-center gap-2">
-          <span>{{ methodIcon(tx.method) }}</span>
+          <component :is="methodIcon(tx.method)" class="h-4 w-4 shrink-0 text-slate-400" />
           <span class="text-sm font-semibold">{{ fmtPrice(tx.total, tx.currency) }}</span>
           <span v-if="allMode" class="truncate rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">
             {{ eventName(tx.eventId) }}
@@ -343,7 +345,7 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
             title="Print receipt"
             @click="printReceipt(tx)"
           >
-            🖨
+            <Printer class="h-4 w-4" />
           </button>
           <button
             v-if="!tx.revertedBy"

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
+import { CalendarDays, ChartLine, Package, Settings } from 'lucide-vue-next';
 import { toasts } from '@/lib/toast';
 import { useSettingsStore } from '@/stores/settings';
 import OnboardingWizard from '@/components/OnboardingWizard.vue';
@@ -11,10 +12,10 @@ const settings = useSettingsStore();
 // Selling and customs are reached through an event (Events tab) so it's
 // always clear which event they apply to.
 const nav = [
-  { to: '/events', label: 'Events', icon: '📅' },
-  { to: '/catalog', label: 'Catalog', icon: '📦' },
-  { to: '/history', label: 'History', icon: '📈' },
-  { to: '/settings', label: 'Settings', icon: '⚙️' },
+  { to: '/events', label: 'Events', icon: CalendarDays },
+  { to: '/catalog', label: 'Catalog', icon: Package },
+  { to: '/history', label: 'History', icon: ChartLine },
+  { to: '/settings', label: 'Settings', icon: Settings },
 ];
 
 // POS is a focused fullscreen mode: hide the app nav so the whole screen
@@ -38,7 +39,7 @@ const chromeHidden = computed(() => route.name === 'pos');
           class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-800"
           :class="{ 'bg-slate-800 text-emerald-400': route.path.startsWith(item.to) }"
         >
-          <span>{{ item.icon }}</span>
+          <component :is="item.icon" class="h-4.5 w-4.5" />
           <span>{{ item.label }}</span>
         </RouterLink>
       </nav>
@@ -58,7 +59,7 @@ const chromeHidden = computed(() => route.name === 'pos');
         class="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] text-slate-400"
         :class="{ 'text-emerald-400': route.path.startsWith(item.to) }"
       >
-        <span class="text-lg leading-none">{{ item.icon }}</span>
+        <component :is="item.icon" class="h-5 w-5" />
         <span>{{ item.label }}</span>
       </RouterLink>
     </nav>

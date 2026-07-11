@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import {
+  ClipboardList,
+  Coins,
+  Download,
+  FileInput,
+  FileOutput,
+  FolderArchive,
+  Receipt,
+} from 'lucide-vue-next';
 import { useDataStore } from '@/stores/data';
 import { getSetting, upsertEvent } from '@/db/repo';
 import { isNative } from '@/native/plugins';
@@ -256,32 +265,32 @@ const TRANSPORT_MODES = [
           </div>
         </div>
         <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
-          <button class="rounded-lg bg-slate-800 px-3 py-2.5 text-sm font-medium hover:bg-slate-700" @click="openGoodsList(1)">
-            📥 Import list
+          <button class="flex items-center justify-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2.5 text-sm font-medium hover:bg-slate-700" @click="openGoodsList(1)">
+            <FileInput class="h-4 w-4 shrink-0" /> Import list
           </button>
-          <button class="rounded-lg bg-slate-800 px-3 py-2.5 text-sm font-medium hover:bg-slate-700" @click="openGoodsList(2)">
-            💰 Sold goods list
+          <button class="flex items-center justify-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2.5 text-sm font-medium hover:bg-slate-700" @click="openGoodsList(2)">
+            <Coins class="h-4 w-4 shrink-0" /> Sold goods list
           </button>
-          <button class="rounded-lg bg-slate-800 px-3 py-2.5 text-sm font-medium hover:bg-slate-700" @click="openGoodsList(3)">
-            📤 Return goods list
+          <button class="flex items-center justify-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2.5 text-sm font-medium hover:bg-slate-700" @click="openGoodsList(3)">
+            <FileOutput class="h-4 w-4 shrink-0" /> Return goods list
           </button>
-          <button class="rounded-lg bg-slate-800 px-3 py-2.5 text-sm font-medium hover:bg-slate-700" @click="openAllFormats">
-            🗂️ All formats bundle
+          <button class="flex items-center justify-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2.5 text-sm font-medium hover:bg-slate-700" @click="openAllFormats">
+            <FolderArchive class="h-4 w-4 shrink-0" /> All formats bundle
           </button>
-          <button class="rounded-lg bg-slate-800 px-3 py-2.5 text-sm font-medium hover:bg-slate-700" @click="openProforma">
-            🧾 Proforma invoice
+          <button class="flex items-center justify-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2.5 text-sm font-medium hover:bg-slate-700" @click="openProforma">
+            <Receipt class="h-4 w-4 shrink-0" /> Proforma invoice
           </button>
-          <button class="rounded-lg bg-slate-800 px-3 py-2.5 text-sm font-medium hover:bg-slate-700" @click="open1174">
-            📋 Form 11.74
+          <button class="flex items-center justify-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2.5 text-sm font-medium hover:bg-slate-700" @click="open1174">
+            <ClipboardList class="h-4 w-4 shrink-0" /> Form 11.74
           </button>
-          <button class="rounded-lg bg-slate-800 px-3 py-2.5 text-sm font-medium hover:bg-slate-700" @click="open1187">
-            📋 Form 11.87
+          <button class="flex items-center justify-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2.5 text-sm font-medium hover:bg-slate-700" @click="open1187">
+            <ClipboardList class="h-4 w-4 shrink-0" /> Form 11.87
           </button>
           <button
-            class="rounded-lg bg-emerald-700 px-3 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600"
+            class="flex items-center justify-center gap-1.5 rounded-lg bg-emerald-700 px-3 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600"
             @click="exportEdec"
           >
-            ⬇️ e-dec XML
+            <Download class="h-4 w-4 shrink-0" /> e-dec XML
           </button>
         </div>
       </section>

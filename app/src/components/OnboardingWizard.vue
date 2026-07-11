@@ -1,5 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
+import {
+  CalendarDays,
+  Camera,
+  ChartLine,
+  FolderOpen,
+  Package,
+  RefreshCw,
+  Settings,
+  ShoppingCart,
+  Stamp,
+} from 'lucide-vue-next';
 import type { SalesEvent } from '@zolltool/shared';
 import { useSettingsStore } from '@/stores/settings';
 import { useDataStore } from '@/stores/data';
@@ -225,10 +236,10 @@ async function connect(): Promise<void> {
             Point of sale and Swiss customs paperwork for conventions — built to work fully offline.
           </p>
           <ul class="space-y-3 text-sm text-slate-300">
-            <li class="flex gap-3"><span>🛒</span><span>Sell with tap-to-cart, discounts, cash & card terminals</span></li>
-            <li class="flex gap-3"><span>📅</span><span>Organise sales per event with per-event stock</span></li>
-            <li class="flex gap-3"><span>🛃</span><span>Generate e-dec XML, forms 11.74 / 11.87 and goods lists</span></li>
-            <li class="flex gap-3"><span>🔄</span><span>Optionally sync several devices through your own server</span></li>
+            <li class="flex gap-3"><ShoppingCart class="h-4.5 w-4.5 shrink-0 text-emerald-400" /><span>Sell with tap-to-cart, discounts, cash & card terminals</span></li>
+            <li class="flex gap-3"><CalendarDays class="h-4.5 w-4.5 shrink-0 text-emerald-400" /><span>Organise sales per event with per-event stock</span></li>
+            <li class="flex gap-3"><Stamp class="h-4.5 w-4.5 shrink-0 text-emerald-400" /><span>Generate e-dec XML, forms 11.74 / 11.87 and goods lists</span></li>
+            <li class="flex gap-3"><RefreshCw class="h-4.5 w-4.5 shrink-0 text-emerald-400" /><span>Optionally sync several devices through your own server</span></li>
           </ul>
           <p class="mt-4 text-xs text-slate-500">This takes about two minutes — you can skip any step.</p>
         </template>
@@ -252,7 +263,7 @@ async function connect(): Promise<void> {
               :disabled="importing"
               @click="importInput?.click()"
             >
-              📂 Import a backup or old JSON file
+              <span class="flex items-center gap-1.5"><FolderOpen class="h-4 w-4" /> Import a backup or old JSON file</span>
               <span class="mt-0.5 block text-xs font-normal text-slate-500">
                 {{ importing ? 'Importing…' : 'Products, sales, discounts and customs data come along' }}
               </span>
@@ -399,7 +410,7 @@ async function connect(): Promise<void> {
                 :disabled="authBusy"
                 @click="scanInput?.click()"
               >
-                📷 Scan connect QR from another device
+                <span class="flex items-center justify-center gap-1.5"><Camera class="h-4 w-4" /> Scan connect QR from another device</span>
               </button>
               <input ref="scanInput" type="file" accept="image/*" capture="environment" class="hidden" @change="onScanFile" />
             </div>
@@ -411,10 +422,10 @@ async function connect(): Promise<void> {
         <template v-else>
           <p class="mb-4 text-sm text-slate-400">You're ready to sell. A quick map of the app:</p>
           <ul class="space-y-3 text-sm text-slate-300">
-            <li class="flex gap-3"><span>📅</span><span><strong>Events</strong> — the heart of the app: sell, view history and generate customs documents from each event's card</span></li>
-            <li class="flex gap-3"><span>📦</span><span><strong>Catalog</strong> — products, photos, prices, discounts and bulk stock</span></li>
-            <li class="flex gap-3"><span>📈</span><span><strong>History</strong> — stats per event or overall, reverts, CSV & PDF exports</span></li>
-            <li class="flex gap-3"><span>⚙️</span><span><strong>Settings</strong> — card terminals, payment methods, sync, backups (and this guide)</span></li>
+            <li class="flex gap-3"><CalendarDays class="h-4.5 w-4.5 shrink-0 text-emerald-400" /><span><strong>Events</strong> — the heart of the app: sell, view history and generate customs documents from each event's card</span></li>
+            <li class="flex gap-3"><Package class="h-4.5 w-4.5 shrink-0 text-emerald-400" /><span><strong>Catalog</strong> — products, photos, prices, discounts and bulk stock</span></li>
+            <li class="flex gap-3"><ChartLine class="h-4.5 w-4.5 shrink-0 text-emerald-400" /><span><strong>History</strong> — stats per event or overall, reverts, CSV & PDF exports</span></li>
+            <li class="flex gap-3"><Settings class="h-4.5 w-4.5 shrink-0 text-emerald-400" /><span><strong>Settings</strong> — card terminals, payment methods, sync, backups (and this guide)</span></li>
           </ul>
         </template>
       </div>

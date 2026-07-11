@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, watchEffect } from 'vue';
+import { Image as ImageIcon } from 'lucide-vue-next';
 import { imageUrl } from '@/lib/images';
 import { typeColor } from '@/lib/search';
 
@@ -24,10 +25,10 @@ watchEffect(async () => {
     <img v-if="url" :src="url" class="h-full w-full object-cover" />
     <div
       v-else
-      class="flex h-full w-full items-center justify-center text-xs font-bold text-slate-950/60"
+      class="flex h-full w-full items-center justify-center text-slate-400/70"
       :style="{ background: typeColor(type) + '33' }"
     >
-      <span :class="size === 'lg' ? 'text-3xl' : ''">🖼️</span>
+      <ImageIcon :class="size === 'lg' ? 'h-8 w-8' : 'h-4 w-4'" />
     </div>
   </div>
 </template>
