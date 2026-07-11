@@ -67,6 +67,77 @@ class FileSharePlugin : Plugin() {
         startActivityForResult(call, intent, "saveDocumentResult")
     }
 
+    // ── Streamed save (large files, e.g. ZIP backups) ─────────────────────────
+    // saveToDevice ships the whole payload across the JS bridge in one message,
+    // which OOMs old WebViews on multi-MB backups. This variant opens the SAF
+    // document once and appends base64 chunks, so peak memory stays at one chunk.
+
+    private var streamOut: java.io.OutputStream? = null
+
+    @PluginMethod
+    fun beginSave(call: PluginCall) {
+        val filename = call.getString("filename") ?: run { call.reject("filename required"); return }
+        val mimeType = call.getString("mimeType") ?: "application/octet-stream"
+        if (streamOut != null) { try { streamOut?.close() } catch (_: Exception) {}; streamOut = null }
+
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = mimeType
+            putExtra(Intent.EXTRA_TITLE, filename)
+        }
+        startActivityForResult(call, intent, "beginSaveResult")
+    }
+
+    @ActivityCallback
+    private fun beginSaveResult(call: PluginCall?, result: ActivityResult) {
+        val c = call ?: return
+        if (result.resultCode != Activity.RESULT_OK) {
+            c.resolve(JSObject().apply { put("opened", false); put("cancelled", true) })
+            return
+        }
+        val uri = result.data?.data ?: run { c.reject("No URI returned"); return }
+        try {
+            streamOut = activity.contentResolver.openOutputStream(uri)
+            c.resolve(JSObject().apply { put("opened", true) })
+        } catch (e: Exception) {
+            c.reject("Open failed: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun writeChunk(call: PluginCall) {
+        val out  = streamOut ?: run { call.reject("No save in progress"); return }
+        val data = call.getString("data") ?: run { call.reject("data required"); return }
+        try {
+            out.write(Base64.decode(data, Base64.DEFAULT))
+            call.resolve()
+        } catch (e: Exception) {
+            try { out.close() } catch (_: Exception) {}
+            streamOut = null
+            call.reject("Write failed: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun endSave(call: PluginCall) {
+        val out = streamOut
+        streamOut = null
+        if (out == null) { call.reject("No save in progress"); return }
+        try {
+            out.flush(); out.close()
+            call.resolve(JSObject().apply { put("saved", true) })
+        } catch (e: Exception) {
+            call.reject("Close failed: ${e.message}")
+        }
+    }
+
+    @PluginMethod
+    fun abortSave(call: PluginCall) {
+        try { streamOut?.close() } catch (_: Exception) {}
+        streamOut = null
+        call.resolve()
+    }
+
     @ActivityCallback
     private fun saveDocumentResult(call: PluginCall?, result: ActivityResult) {
         val c = call ?: return

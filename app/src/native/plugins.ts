@@ -11,9 +11,12 @@ interface NativePaymentResult {
 }
 
 export interface MyPosPluginApi {
-  connectTerminal(): Promise<void>;
+  /** granted=false means the user denied the Bluetooth/location permission. */
+  connectTerminal(): Promise<{ granted: boolean }>;
   getStatus(): Promise<{ connected: boolean }>;
   startPayment(options: { amount: number; currency: string }): Promise<NativePaymentResult>;
+  /** Abort the in-flight payment and reset the native state; safe to call when idle. */
+  cancelPayment(): Promise<void>;
   addListener(
     eventName: 'terminalStatus',
     listener: (status: { connected: boolean }) => void,
@@ -39,6 +42,11 @@ export interface FileSharePluginApi {
     mimeType?: string;
     encoding?: 'base64';
   }): Promise<{ saved: boolean; cancelled?: boolean }>;
+  /** Streamed save for large files: open SAF document, append base64 chunks, close. */
+  beginSave(options: { filename: string; mimeType?: string }): Promise<{ opened: boolean; cancelled?: boolean }>;
+  writeChunk(options: { data: string }): Promise<void>;
+  endSave(): Promise<{ saved: boolean }>;
+  abortSave(): Promise<void>;
 }
 
 export interface SumUpPluginApi {

@@ -15,14 +15,18 @@
     "@zolltool/shared": "*",
     "chart.js": "^4.5.0",
     "dexie": "^4.2.0",
+    "fflate": "^0.8.2",
     "jspdf": "^3.0.0",
     "jspdf-autotable": "^5.0.0",
+    "jsqr": "^1.4.0",
     "pinia": "^3.0.0",
+    "qrcode": "^1.5.4",
     "vue": "^3.5.0",
     "vue-router": "^4.5.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.1.0",
+    "@types/qrcode": "^1.5.6",
     "@vitejs/plugin-vue": "^6.0.0",
     "fake-indexeddb": "^6.2.5",
     "tailwindcss": "^4.1.0",
