@@ -23,6 +23,10 @@ const search = ref('');
 // ── Product editor ─────────────────────────────────────────────────────────
 interface VariantForm extends Variant {
   broughtQty: number;
+  /** Transient photo pick-state — stripped on save (see saveProduct). */
+  newImage?: File;
+  previewUrl?: string;
+  removeImage?: boolean;
 }
 
 const editing = ref(false);
@@ -124,6 +128,24 @@ function addVariant(): void {
   form.variants.push({ id: uuidv7(), name: '', sku: '', price: undefined, broughtQty: 0 });
 }
 
+// ── Variant photos ──────────────────────────────────────────────────────────
+function pickVariantImage(v: VariantForm, e: Event): void {
+  const file = (e.target as HTMLInputElement).files?.[0];
+  (e.target as HTMLInputElement).value = '';
+  if (!file) return;
+  if (v.previewUrl) URL.revokeObjectURL(v.previewUrl);
+  v.newImage = file;
+  v.previewUrl = URL.createObjectURL(file);
+  v.removeImage = false;
+}
+
+function removeVariantImage(v: VariantForm): void {
+  if (v.previewUrl) URL.revokeObjectURL(v.previewUrl);
+  v.newImage = undefined;
+  v.previewUrl = undefined;
+  v.removeImage = true;
+}
+
 async function saveProduct(): Promise<void> {
   if (!form.title.trim()) {
     showToast('Product needs a title.', 'error');
@@ -152,12 +174,19 @@ async function saveProduct(): Promise<void> {
     vatRate: existing?.vatRate,
     packagingType: existing?.packagingType,
     originCountry: form.originCountry.trim() || undefined,
-    variants: form.variants.map(({ broughtQty, ...v }) => ({
-      ...v,
-      name: v.name.trim(),
-      sku: v.sku?.trim() || undefined,
-      price: v.price != null && String(v.price) !== '' ? Number(v.price) : undefined,
-    })),
+    variants: await Promise.all(
+      form.variants.map(async ({ broughtQty, newImage, previewUrl, removeImage: rmImage, ...v }) => ({
+        ...v,
+        name: v.name.trim(),
+        sku: v.sku?.trim() || undefined,
+        price: v.price != null && String(v.price) !== '' ? Number(v.price) : undefined,
+        imageId: rmImage
+          ? undefined
+          : newImage
+            ? await saveProductImage(productId, newImage)
+            : v.imageId,
+      })),
+    ),
     imageId,
     sortOrder: existing?.sortOrder ?? data.products.length,
     updatedAt: Date.now(),
@@ -303,6 +332,24 @@ const discountableTypes = computed(() =>
   [...new Set(data.products.map((p) => p.type).filter((t): t is string => !!t))].sort(),
 );
 
+/** Search filter for the target list — long catalogs are painful to scroll. */
+const discountSearch = ref('');
+const discountProductList = computed(() => {
+  const needle = discountSearch.value.trim().toLowerCase();
+  if (!needle) return data.products;
+  return data.products.filter((p) =>
+    [p.title, p.sku, p.type, ...p.variants.flatMap((v) => [v.name, v.sku])]
+      .filter(Boolean)
+      .join(' ')
+      .toLowerCase()
+      .includes(needle),
+  );
+});
+
+const discountTargetCount = computed(
+  () => discountForm.productTypes.length + discountForm.productIds.length + discountForm.variantIds.length,
+);
+
 function typeOf(pid: string): string | undefined {
   return data.products.find((p) => p.id === pid)?.type;
 }
@@ -333,6 +380,7 @@ const overlappingRules = computed(() =>
 
 function openNewDiscount(): void {
   discountId.value = null;
+  discountSearch.value = '';
   discountForm.variantIds = [];
   Object.assign(discountForm, {
     name: '',
@@ -351,6 +399,7 @@ function openNewDiscount(): void {
 
 function openEditDiscount(d: DiscountRule): void {
   discountId.value = d.id;
+  discountSearch.value = '';
   discountForm.variantIds = [...(d.variantIds ?? [])];
   Object.assign(discountForm, {
     name: d.name,
@@ -630,7 +679,22 @@ function discountTargets(d: DiscountRule): string {
             <span class="text-sm font-semibold">Variants</span>
             <button class="text-xs text-emerald-400" @click="addVariant">+ Add variant</button>
           </div>
-          <div v-for="(v, i) in form.variants" :key="v.id" class="mb-2 grid grid-cols-[1fr_5rem_4rem_4rem_2rem] items-center gap-2">
+          <div v-for="(v, i) in form.variants" :key="v.id" class="mb-2 grid grid-cols-[2.5rem_1fr_5rem_4rem_4rem_2rem] items-center gap-2">
+            <!-- Variant photo: tap to pick/replace; ✕ removes. Falls back to the product photo when unset. -->
+            <label class="relative h-10 w-10 cursor-pointer">
+              <img v-if="v.previewUrl" :src="v.previewUrl" class="h-10 w-10 rounded-lg object-cover" />
+              <ProductThumb v-else-if="v.imageId && !v.removeImage" :image-id="v.imageId" :type="form.type" />
+              <div v-else class="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-800 text-sm">📷</div>
+              <input type="file" accept="image/*" class="hidden" @change="pickVariantImage(v, $event)" />
+              <button
+                v-if="v.previewUrl || (v.imageId && !v.removeImage)"
+                class="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-600 text-[9px] font-bold text-white"
+                title="Remove photo"
+                @click.prevent.stop="removeVariantImage(v)"
+              >
+                ✕
+              </button>
+            </label>
             <input v-model="v.name" placeholder="Name" class="rounded-md bg-slate-800 px-2 py-1.5 text-sm" />
             <input v-model="v.sku" placeholder="SKU" class="rounded-md bg-slate-800 px-2 py-1.5 text-sm" />
             <input v-model="v.price" placeholder="Price" type="number" step="0.05" class="rounded-md bg-slate-800 px-2 py-1.5 text-sm" />
@@ -810,7 +874,10 @@ function discountTargets(d: DiscountRule): string {
         </div>
 
         <div class="rounded-lg bg-slate-800/50 p-3">
-          <span class="text-sm font-semibold">Applies to</span>
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-semibold">Applies to</span>
+            <span v-if="discountTargetCount" class="text-xs text-emerald-400">{{ discountTargetCount }} selected</span>
+          </div>
 
           <!-- Whole product types (covers current and future products of that type) -->
           <div v-if="discountableTypes.length" class="mt-2 space-y-1 border-b border-slate-700 pb-2">
@@ -823,20 +890,27 @@ function discountTargets(d: DiscountRule): string {
             </label>
           </div>
 
-          <div class="mt-2 max-h-48 space-y-1 overflow-y-auto">
-            <template v-for="p in data.products" :key="p.id">
+          <input
+            v-model="discountSearch"
+            placeholder="Search products…"
+            class="mt-2 w-full rounded-lg bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-emerald-500"
+          />
+          <div class="mt-2 max-h-[45vh] space-y-1 overflow-y-auto">
+            <p v-if="!discountProductList.length" class="text-xs text-slate-500">No products match.</p>
+            <template v-for="p in discountProductList" :key="p.id">
               <label
                 v-show="!(p.type && discountForm.productTypes.includes(p.type))"
-                class="flex items-center gap-2 text-sm"
+                class="flex items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-slate-800"
               >
                 <input v-model="discountForm.productIds" type="checkbox" :value="p.id" />
-                {{ p.title || '(untitled)' }}
+                <span class="min-w-0 flex-1 truncate">{{ p.title || '(untitled)' }}</span>
+                <span v-if="p.type" class="shrink-0 text-[10px]" :style="{ color: typeColor(p.type) }">{{ p.type }}</span>
               </label>
               <label
                 v-for="v in p.variants"
                 v-show="!formCoversProduct(p.id)"
                 :key="v.id"
-                class="ml-6 flex items-center gap-2 text-xs text-slate-400"
+                class="ml-6 flex items-center gap-2 rounded px-1 py-0.5 text-xs text-slate-400 hover:bg-slate-800"
               >
                 <input v-model="discountForm.variantIds" type="checkbox" :value="`${p.id}:${v.id}`" />
                 {{ v.name || v.id }}

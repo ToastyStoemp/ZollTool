@@ -31,6 +31,8 @@ export interface Variant {
   price?: number;
   weightG?: number;
   unlisted?: boolean;
+  /** Variant-specific photo; falls back to the product photo in the UI. */
+  imageId?: string;
 }
 
 export interface Product {
