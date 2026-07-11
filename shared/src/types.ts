@@ -91,6 +91,8 @@ export interface DiscountRule {
   percent?: number;
   tiers?: DiscountTier[];
   tierContinue?: boolean;
+  /** Don't show the derived "+N" quick-add chips on POS product cards. */
+  hideQuickAdd?: boolean;
   updatedAt: number;
   deletedAt?: number;
 }

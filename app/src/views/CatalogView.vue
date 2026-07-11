@@ -325,6 +325,7 @@ const discountForm = reactive({
   percent: '50',
   tiers: [] as { qty: string; total: string }[],
   tierContinue: false,
+  hideQuickAdd: false,
 });
 
 /** Distinct product types available as discount targets. */
@@ -393,6 +394,7 @@ function openNewDiscount(): void {
     percent: '50',
     tiers: [{ qty: '3', total: '' }],
     tierContinue: false,
+    hideQuickAdd: false,
   });
   editingDiscount.value = true;
 }
@@ -412,6 +414,7 @@ function openEditDiscount(d: DiscountRule): void {
     percent: String(d.percent ?? 50),
     tiers: (d.tiers ?? []).map((t) => ({ qty: String(t.qty), total: String(t.total) })),
     tierContinue: !!d.tierContinue,
+    hideQuickAdd: !!d.hideQuickAdd,
   });
   editingDiscount.value = true;
 }
@@ -445,6 +448,7 @@ async function saveDiscount(): Promise<void> {
       .map((t) => ({ qty: parseInt(t.qty) || 0, total: parseFloat(t.total) || 0 }))
       .filter((t) => t.qty > 1 && t.total > 0),
     tierContinue: discountForm.tierContinue,
+    hideQuickAdd: discountForm.hideQuickAdd || undefined,
     updatedAt: Date.now(),
   };
   await upsertDiscount(rule);
@@ -870,6 +874,10 @@ function discountTargets(d: DiscountRule): string {
           <label class="flex items-center gap-2 text-sm">
             <input v-model="discountForm.tierContinue" type="checkbox" />
             Continue tier price for remainder items
+          </label>
+          <label class="flex items-center gap-2 text-sm">
+            <input v-model="discountForm.hideQuickAdd" type="checkbox" />
+            Hide the +N quick-add buttons on the POS cards
           </label>
         </div>
 

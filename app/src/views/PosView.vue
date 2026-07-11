@@ -151,7 +151,7 @@ function addToCart(pid: string, vid: string | null): void {
 function bundleQtys(p: Product, vid: string | null = null): number[] {
   const qtys = new Set<number>();
   for (const rule of data.discounts) {
-    if (rule.type !== 'tiered' || !rule.tiers?.length) continue;
+    if (rule.type !== 'tiered' || !rule.tiers?.length || rule.hideQuickAdd) continue;
     const matches =
       rule.productIds.includes(p.id) ||
       (!!p.type && (rule.productTypes ?? []).includes(p.type)) ||
