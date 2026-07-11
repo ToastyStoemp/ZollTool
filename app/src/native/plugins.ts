@@ -24,7 +24,7 @@ export interface MyPosPluginApi {
 }
 
 export interface CarbonPaymentPluginApi {
-  getStatus(): Promise<{ connected: boolean }>;
+  getStatus(): Promise<{ connected: boolean; detail?: string }>;
   startPayment(options: { amount: number; currency: string }): Promise<NativePaymentResult>;
 }
 

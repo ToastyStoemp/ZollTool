@@ -13,8 +13,8 @@ export const myposCarbonProvider: PaymentProvider = {
   async getStatus(): Promise<ProviderStatus> {
     if (!hasNativePlugin('CarbonPayment')) return { connected: false, detail: 'MyPOS device only' };
     try {
-      const { connected } = await CarbonPayment.getStatus();
-      return { connected };
+      const { connected, detail } = await CarbonPayment.getStatus();
+      return { connected, detail: detail ?? (connected ? 'Terminal ready' : undefined) };
     } catch (err) {
       return { connected: false, detail: String(err) };
     }

@@ -8,9 +8,9 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(MyPosPlugin.class);
-        registerPlugin(CarbonPaymentPlugin.class);
         registerPlugin(WsServerPlugin.class);
         registerPlugin(FileSharePlugin.class);
+        // Flavor-specific payment plugins (SumUp on "full", CarbonPayment on "carbon")
         PaymentSdks.INSTANCE.registerPlugins(this);
         super.onCreate(savedInstanceState);
     }
@@ -18,7 +18,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         // Flavor-provided payment SDKs may launch their own activities against this one.
-        if (PaymentSdks.INSTANCE.handleActivityResult(requestCode, data)) return;
+        if (PaymentSdks.INSTANCE.handleActivityResult(requestCode, resultCode, data)) return;
         super.onActivityResult(requestCode, resultCode, data);
     }
 }

@@ -26,6 +26,9 @@ android {
     // "full" ships the SumUp SDK (whose whole dependency tree declares minSdk 26).
     // "compat" leaves SumUp out so the app installs on Android 7 (API 24) tablets;
     // every other provider (manual, MyPOS Go2/Carbon, bridge) still works there.
+    // "carbon" runs ON a myPOS Carbon/Ultra smart terminal (Android 9; myPOS
+    // AppMarket requires minSdk 28): on-device payments via the myPOS Smart SDK,
+    // no SumUp.
     flavorDimensions = ["device"]
     productFlavors {
         full {
@@ -35,6 +38,10 @@ android {
         compat {
             dimension "device"
             minSdkVersion 24
+        }
+        carbon {
+            dimension "device"
+            minSdkVersion 28
         }
     }
     compileOptions {
@@ -62,6 +69,7 @@ dependencies {
     implementation 'com.mypos:slavesdk:2.1.8'
     implementation 'org.java-websocket:Java-WebSocket:1.5.4'
     fullImplementation 'com.sumup:merchant-sdk:7.1.0'
+    carbonImplementation 'com.mypos:mypossmartsdk:1.0.8'
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 }
 

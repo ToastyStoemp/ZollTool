@@ -14,5 +14,5 @@ object PaymentSdks {
 
     fun registerPlugins(activity: BridgeActivity) {}
 
-    fun handleActivityResult(requestCode: Int, data: Intent?): Boolean = false
+    fun handleActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean = false
 }

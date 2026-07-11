@@ -15,6 +15,6 @@ object PaymentSdks {
         activity.registerPlugin(SumUpPlugin::class.java)
     }
 
-    fun handleActivityResult(requestCode: Int, data: Intent?): Boolean =
+    fun handleActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean =
         SumUpPlugin.handleActivityResult(requestCode, data)
 }
