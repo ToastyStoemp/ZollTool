@@ -47,6 +47,30 @@ describe('computeRuleDiscounts', () => {
     expect(res[0]!.amount).toBe(5);
   });
 
+  it('productTypes: rule targets every line of the type, ignoring others', () => {
+    const lines = [
+      { ...line('a', null, 2, 10), type: 'Print' },
+      { ...line('b', null, 1, 8), type: 'Print' },
+      { ...line('c', null, 3, 5), type: 'Sticker' },
+    ];
+    // Buy 2 get 1 on Prints only: items [8,10,10] → 1 group → cheapest (8) free
+    const r = rule({ type: 'bxgy', buyQty: 2, freeQty: 1, productTypes: ['Print'] });
+    const res = computeRuleDiscounts(lines, [r]);
+    expect(res).toHaveLength(1);
+    expect(res[0]!.amount).toBe(8);
+  });
+
+  it('productTypes: combines with explicit product targets without double counting', () => {
+    const lines = [
+      { ...line('a', null, 1, 10), type: 'Print' },
+      { ...line('b', null, 1, 6), type: 'Sticker' },
+      { ...line('c', null, 1, 12), type: 'Print' },
+    ];
+    // Type Print + product b → all three items [6,10,12] → 1 group → 6 free
+    const r = rule({ type: 'bxgy', buyQty: 2, freeQty: 1, productTypes: ['Print'], productIds: ['b'] });
+    expect(computeRuleDiscounts(lines, [r])[0]!.amount).toBe(6);
+  });
+
   it('bxgy: two full groups discount the two cheapest items', () => {
     // 6 items [5,6,10,10,10,12] → 2 groups → 2 free = 5 + 6
     const lines = [

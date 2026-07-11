@@ -45,6 +45,7 @@ export const useCartStore = defineStore('cart', () => {
         vid,
         title: product.title || '(untitled)',
         variantLabel,
+        type: product.type,
         qty,
         unitPrice,
         lineTotal: unitPrice * qty,

@@ -81,6 +81,8 @@ export interface DiscountRule {
   productIds: string[];
   /** Specific variants, as "productId:variantId" keys. */
   variantIds: string[];
+  /** Product types (Product.type) the rule applies to — matches every product of that type. */
+  productTypes?: string[];
   buyQty?: number;
   freeQty?: number;
   nth?: number;
