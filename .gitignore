@@ -1,6 +1,8 @@
 **/WorkingData.json
 *.pdf
 *.xml
+# ...but the Android platform's manifest and resources are real source, not data exports
+!android/**/*.xml
 node_modules/
 android/local.properties
 android/.gradle/
@@ -14,7 +16,7 @@ bridge/obj
 bridge/bin
 app/dist/
 server/data/
-data/
+/data/
 *.tsbuildinfo
 .codegraph/
 .env
