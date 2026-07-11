@@ -5,6 +5,7 @@ import { useDataStore } from '@/stores/data';
 import { revertTransaction } from '@/db/repo';
 import { fmtPrice } from '@/lib/money';
 import { transactionsToCsv } from '@/lib/export/csv';
+import { typeColor } from '@/lib/search';
 import { saveBinaryFile, saveTextFile } from '@/lib/download';
 import { showToast } from '@/lib/toast';
 import {
@@ -79,21 +80,51 @@ const stats = computed(() => {
   return { count: active.length, revenue, items, cash, card };
 });
 
-const bestSellers = computed(() => {
-  const map = new Map<string, { label: string; qty: number; value: number }>();
+// ── Best sellers: by product (qty), by product type, or by revenue ──────────
+type BestMode = 'products' | 'types' | 'revenue';
+const bestMode = ref<BestMode>('products');
+const bestExpanded = ref(false);
+const bestModes: Array<{ id: BestMode; label: string }> = [
+  { id: 'products', label: 'Products' },
+  { id: 'types', label: 'Types' },
+  { id: 'revenue', label: 'Revenue' },
+];
+
+/** pid → product type, resolved from the catalog (sold items don't store it). */
+const typeByPid = computed(() => {
+  const map = new Map<string, string>();
+  for (const p of data.products) if (p.type) map.set(p.id, p.type);
+  return map;
+});
+
+const bestAll = computed(() => {
+  const map = new Map<string, { label: string; type?: string; qty: number; value: number }>();
+  const byType = bestMode.value === 'types';
   for (const tx of scopedTransactions.value) {
     if (tx.revertedBy) continue;
     for (const item of tx.items) {
-      const key = `${item.pid}:${item.vid ?? ''}`;
-      const label = item.variantLabel ? `${item.title} · ${item.variantLabel}` : item.title;
-      const cur = map.get(key) ?? { label, qty: 0, value: 0 };
+      let key: string;
+      let label: string;
+      let type: string | undefined;
+      if (byType) {
+        key = label = typeByPid.value.get(item.pid) ?? '(no type)';
+        type = key;
+      } else {
+        key = `${item.pid}:${item.vid ?? ''}`;
+        label = item.variantLabel ? `${item.title} · ${item.variantLabel}` : item.title;
+      }
+      const cur = map.get(key) ?? { label, type, qty: 0, value: 0 };
       cur.qty += item.qty;
       cur.value += item.lineTotal;
       map.set(key, cur);
     }
   }
-  return [...map.values()].sort((a, b) => b.qty - a.qty).slice(0, 8);
+  const list = [...map.values()];
+  list.sort(bestMode.value === 'revenue' ? (a, b) => b.value - a.value : (a, b) => b.qty - a.qty);
+  return list;
 });
+
+const bestSellers = computed(() => (bestExpanded.value ? bestAll.value : bestAll.value.slice(0, 8)));
 
 /** Revenue per day for a simple bar chart (divs — no chart lib needed here). */
 const daily = computed(() => {
@@ -217,16 +248,41 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
     <div class="mb-4 grid gap-3 md:grid-cols-2">
       <!-- Best sellers -->
       <div class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <h2 class="mb-2 text-sm font-semibold text-slate-300">Best sellers</h2>
+        <div class="mb-2 flex flex-wrap items-center gap-2">
+          <h2 class="text-sm font-semibold text-slate-300">Best sellers</h2>
+          <div class="ml-auto flex rounded-lg bg-slate-800 p-0.5 text-[11px]">
+            <button
+              v-for="m in bestModes"
+              :key="m.id"
+              class="rounded-md px-2 py-1"
+              :class="bestMode === m.id ? 'bg-slate-600 font-semibold' : 'text-slate-400'"
+              @click="bestMode = m.id"
+            >
+              {{ m.label }}
+            </button>
+          </div>
+        </div>
         <p v-if="!bestSellers.length" class="text-xs text-slate-500">No sales yet.</p>
         <ol class="space-y-1.5">
           <li v-for="(b, i) in bestSellers" :key="b.label" class="flex items-center gap-2 text-sm">
             <span class="w-5 text-right text-xs text-slate-500">{{ i + 1 }}.</span>
-            <span class="min-w-0 flex-1 truncate">{{ b.label }}</span>
+            <span
+              class="min-w-0 flex-1 truncate"
+              :style="b.type ? { color: typeColor(b.type) } : undefined"
+            >
+              {{ b.label }}
+            </span>
             <span class="text-xs text-slate-400">{{ b.qty }}×</span>
             <span class="w-20 text-right font-medium">{{ fmtPrice(b.value, currency) }}</span>
           </li>
         </ol>
+        <button
+          v-if="bestAll.length > 8"
+          class="mt-2 text-xs text-emerald-400 hover:underline"
+          @click="bestExpanded = !bestExpanded"
+        >
+          {{ bestExpanded ? 'Show less' : `Show all ${bestAll.length}` }}
+        </button>
       </div>
 
       <!-- Daily chart -->
