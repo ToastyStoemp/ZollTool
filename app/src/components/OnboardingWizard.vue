@@ -110,7 +110,10 @@ const artistForm = reactive({
 
 async function saveArtistDefaults(): Promise<void> {
   if (Object.values(artistForm).every((v) => !v.trim())) return;
-  await setSetting('customs.artistDefaults', { ...artistForm });
+  // Merge: Settings may have stored extra fields here (e.g. the receipt VAT
+  // number) that this shorter wizard form must not wipe.
+  const existing = (await getSetting<Record<string, string>>('customs.artistDefaults')) ?? {};
+  await setSetting('customs.artistDefaults', { ...existing, ...artistForm });
 }
 
 // Prefill from data that already exists (saved artist defaults, known server).

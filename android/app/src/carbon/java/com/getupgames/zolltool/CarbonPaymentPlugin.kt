@@ -1,16 +1,27 @@
 package com.getupgames.zolltool
 
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.graphics.BitmapFactory
+import android.os.Handler
+import android.os.Looper
+import android.util.Base64
+import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.google.gson.Gson
 import com.mypos.smartsdk.Currency
 import com.mypos.smartsdk.MyPOSAPI
 import com.mypos.smartsdk.MyPOSPayment
 import com.mypos.smartsdk.MyPOSUtil
 import com.mypos.smartsdk.TransactionProcessingResult
+import com.mypos.smartsdk.print.PrinterCommand
+import com.mypos.smartsdk.print.PrinterStatus
 import java.util.UUID
 
 /**
@@ -95,6 +106,99 @@ class CarbonPaymentPlugin : Plugin() {
             pendingCall = null
             call.reject("Payment app not available: ${e.message}")
         }
+    }
+
+    // ── Receipt printing ──────────────────────────────────────────────────────
+    // Lines come from the web app pre-formatted for the 32-char thermal printer:
+    //   { kind: 'text',  text, align?: 'left'|'center'|'right', doubleHeight?: bool }
+    //   { kind: 'image', imageB64 }   (PNG, printer is 384px wide)
+    //   { kind: 'space' }
+    // They map to Smart-SDK PrinterCommands, serialized with Gson and broadcast
+    // to the myPOS print service; PRINTING_DONE reports the printer status.
+
+    private var printCall: PluginCall? = null
+    private var printReceiver: BroadcastReceiver? = null
+    private val printTimeout = Handler(Looper.getMainLooper())
+
+    @PluginMethod
+    fun printReceipt(call: PluginCall) {
+        if (printCall != null) { call.reject("A print is already in progress"); return }
+        val lines = call.getArray("lines") ?: run { call.reject("lines required"); return }
+
+        val commands = ArrayList<PrinterCommand>()
+        for (i in 0 until lines.length()) {
+            val line = lines.getJSONObject(i)
+            when (line.optString("kind")) {
+                "image" -> {
+                    val b64 = line.optString("imageB64")
+                    if (b64.isNotEmpty()) {
+                        val bytes = Base64.decode(b64, Base64.DEFAULT)
+                        val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                        if (bmp != null) commands.add(PrinterCommand(PrinterCommand.CommandType.IMAGE, bmp))
+                    }
+                }
+                "space" -> commands.add(PrinterCommand(PrinterCommand.CommandType.TEXT, "\n"))
+                else -> {
+                    var text = line.optString("text", "")
+                    if (!text.endsWith("\n")) text += "\n"
+                    var cmd = PrinterCommand(PrinterCommand.CommandType.TEXT, text)
+                        .setAlignment(
+                            when (line.optString("align")) {
+                                "center" -> PrinterCommand.Alignment.ALIGN_CENTER
+                                "right"  -> PrinterCommand.Alignment.ALIGN_RIGHT
+                                else     -> PrinterCommand.Alignment.ALIGN_LEFT
+                            },
+                        )
+                    if (line.optBoolean("doubleHeight")) cmd = cmd.setDoubleHeight(true)
+                    commands.add(cmd)
+                }
+            }
+        }
+        if (commands.isEmpty()) { call.reject("Nothing to print"); return }
+
+        printCall = call
+        registerPrintReceiver()
+        // Give slow thermal prints time, but never leave the call hanging.
+        printTimeout.postDelayed({ finishPrint(false, -1, "Printer did not respond") }, 30_000)
+
+        val intent = Intent(MyPOSUtil.PRINT_BROADCAST)
+        intent.putExtra("commands", Gson().toJson(commands))
+        MyPOSAPI.sendExplicitBroadcast(activity, intent)
+    }
+
+    private fun registerPrintReceiver() {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(ctx: Context, intent: Intent) {
+                val status = intent.getIntExtra("printer_status", PrinterStatus.PRINTER_STATUS_UNKNOWN_ERROR)
+                finishPrint(status == PrinterStatus.PRINTER_STATUS_SUCCESS, status, printerStatusText(status))
+            }
+        }
+        printReceiver = receiver
+        ContextCompat.registerReceiver(
+            activity, receiver,
+            IntentFilter(MyPOSUtil.PRINTING_DONE_BROADCAST), ContextCompat.RECEIVER_EXPORTED,
+        )
+    }
+
+    private fun finishPrint(printed: Boolean, status: Int, detail: String) {
+        printTimeout.removeCallbacksAndMessages(null)
+        printReceiver?.let { try { activity.unregisterReceiver(it) } catch (_: Exception) {} }
+        printReceiver = null
+        val call = printCall ?: return
+        printCall = null
+        call.resolve(JSObject().apply {
+            put("printed", printed)
+            put("status", status)
+            if (!printed) put("error", detail)
+        })
+    }
+
+    private fun printerStatusText(status: Int): String = when (status) {
+        PrinterStatus.PRINTER_STATUS_SUCCESS          -> "OK"
+        PrinterStatus.PRINTER_STATUS_PRINTER_BUSY     -> "Printer busy"
+        PrinterStatus.PRINTER_STATUS_OUT_OF_PAPER     -> "Out of paper"
+        PrinterStatus.PRINTER_STATUS_PRINTER_OVERHEATING -> "Printer overheating"
+        else -> "Print failed (status $status)"
     }
 
     /** Connected = the myPOS payment core is present (i.e. we run on a myPOS device). */

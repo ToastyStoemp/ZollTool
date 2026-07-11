@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue';
+import { onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { getSetting, setSetting } from '@/db/repo';
 import { allProviders } from '@/payments/registry';
@@ -10,6 +10,8 @@ import { exportBackupJson, exportBackupZipTo, importBackup, importBackupZip } fr
 import { saveTextFile, createFileWriter } from '@/lib/download';
 import { syncState, syncNow } from '@/sync/engine';
 import { connectQrDataUrl, decodeConnectQr } from '@/lib/qr';
+import { RECEIPT_KEYS, processLogoFile, type ArtistInfo } from '@/lib/receipt';
+import { hasNativePlugin } from '@/native/plugins';
 import ModalShell from '@/components/ModalShell.vue';
 
 const settings = useSettingsStore();
@@ -187,6 +189,68 @@ async function onScanFile(e: Event): Promise<void> {
 
 function fmtSyncTime(ts: number): string {
   return ts ? new Date(ts).toLocaleTimeString() : 'never';
+}
+
+// ── Artist & receipt info ────────────────────────────────────────────────────
+// Used to prefill customs documents and, on the myPOS Carbon, printed as the
+// receipt header. Saved as one block via the Save button (drafts, same reason
+// as the device fields above).
+const artistDraft = reactive<Required<ArtistInfo>>({
+  companyName: '',
+  fullName: '',
+  street: '',
+  postCodeCity: '',
+  countryOfOrigin: '',
+  phone: '',
+  email: '',
+  vatNumber: '',
+});
+const receiptLogo = ref('');
+const receiptFooterDraft = ref('');
+const receiptAutoPrint = ref(false);
+const artistSaved = ref(false);
+const logoInput = ref<HTMLInputElement | null>(null);
+/** Receipt printing only exists on the Carbon terminal build. */
+const canPrintReceipts = hasNativePlugin('CarbonPayment');
+
+onMounted(async () => {
+  const artist = (await getSetting<ArtistInfo>(RECEIPT_KEYS.artist)) ?? {};
+  for (const key of Object.keys(artistDraft) as (keyof ArtistInfo)[]) {
+    if (typeof artist[key] === 'string') artistDraft[key] = artist[key];
+  }
+  receiptLogo.value = (await getSetting<string>(RECEIPT_KEYS.logoB64)) ?? '';
+  receiptFooterDraft.value = (await getSetting<string>(RECEIPT_KEYS.footerText)) ?? '';
+  receiptAutoPrint.value = (await getSetting<boolean>(RECEIPT_KEYS.autoPrint)) ?? false;
+});
+
+async function saveArtistInfo(): Promise<void> {
+  await setSetting(RECEIPT_KEYS.artist, { ...artistDraft });
+  await setSetting(RECEIPT_KEYS.footerText, receiptFooterDraft.value);
+  artistSaved.value = true;
+  setTimeout(() => (artistSaved.value = false), 2000);
+}
+
+async function onLogoFile(e: Event): Promise<void> {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  try {
+    receiptLogo.value = await processLogoFile(file);
+    await setSetting(RECEIPT_KEYS.logoB64, receiptLogo.value);
+  } catch (err) {
+    showToast(`Logo failed: ${err}`, 'error');
+  }
+}
+
+async function removeLogo(): Promise<void> {
+  receiptLogo.value = '';
+  await setSetting(RECEIPT_KEYS.logoB64, '');
+}
+
+async function toggleAutoPrint(): Promise<void> {
+  receiptAutoPrint.value = !receiptAutoPrint.value;
+  await setSetting(RECEIPT_KEYS.autoPrint, receiptAutoPrint.value);
 }
 
 // ── Backup ──────────────────────────────────────────────────────────────────
@@ -376,6 +440,102 @@ async function onImportFile(e: Event): Promise<void> {
           Add
         </button>
       </form>
+    </section>
+
+    <!-- Artist & receipt -->
+    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+      <h2 class="mb-2 text-sm font-semibold text-slate-300">Artist info &amp; receipts</h2>
+      <p class="mb-3 text-xs text-slate-500">
+        Prefills customs documents<template v-if="canPrintReceipts"> and is printed as the header on
+        receipts from this terminal</template>.
+      </p>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="block text-sm">
+          <span class="text-slate-400">Company / artist name</span>
+          <input v-model="artistDraft.companyName" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+        </label>
+        <label class="block text-sm">
+          <span class="text-slate-400">Full name</span>
+          <input v-model="artistDraft.fullName" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+        </label>
+        <label class="block text-sm">
+          <span class="text-slate-400">Street</span>
+          <input v-model="artistDraft.street" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+        </label>
+        <label class="block text-sm">
+          <span class="text-slate-400">Postcode + city</span>
+          <input v-model="artistDraft.postCodeCity" placeholder="9000 Gent" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+        </label>
+        <label class="block text-sm">
+          <span class="text-slate-400">Country</span>
+          <input v-model="artistDraft.countryOfOrigin" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+        </label>
+        <label class="block text-sm">
+          <span class="text-slate-400">VAT / UID number</span>
+          <input v-model="artistDraft.vatNumber" placeholder="CHE-123.456.789 MWST" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+        </label>
+        <label class="block text-sm">
+          <span class="text-slate-400">Phone</span>
+          <input v-model="artistDraft.phone" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+        </label>
+        <label class="block text-sm">
+          <span class="text-slate-400">Email</span>
+          <input v-model="artistDraft.email" type="email" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+        </label>
+      </div>
+
+      <label class="mt-3 block text-sm">
+        <span class="text-slate-400">Receipt footer (e.g. thank-you note, return policy)</span>
+        <textarea
+          v-model="receiptFooterDraft"
+          rows="2"
+          class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2"
+          placeholder="Thank you for your purchase!"
+        ></textarea>
+      </label>
+
+      <!-- Receipt logo -->
+      <div class="mt-3 flex items-center gap-3">
+        <div>
+          <span class="text-sm text-slate-400">Receipt logo</span>
+          <p class="text-xs text-slate-500">Printed on top; scaled to the 384px paper width.</p>
+        </div>
+        <div class="ml-auto flex items-center gap-2">
+          <img
+            v-if="receiptLogo"
+            :src="`data:image/png;base64,${receiptLogo}`"
+            alt="Receipt logo"
+            class="h-10 max-w-32 rounded bg-white object-contain p-0.5"
+          />
+          <button
+            class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium hover:bg-slate-700"
+            @click="logoInput?.click()"
+          >
+            {{ receiptLogo ? 'Replace' : 'Choose…' }}
+          </button>
+          <button
+            v-if="receiptLogo"
+            class="rounded-lg px-3 py-1.5 text-xs text-red-400 hover:bg-red-950"
+            @click="removeLogo"
+          >
+            Remove
+          </button>
+          <input ref="logoInput" type="file" accept="image/*" class="hidden" @change="onLogoFile" />
+        </div>
+      </div>
+
+      <div class="mt-3 flex items-center gap-3">
+        <label v-if="canPrintReceipts" class="flex items-center gap-2 text-sm text-slate-300">
+          <input type="checkbox" :checked="receiptAutoPrint" @change="toggleAutoPrint" />
+          Print a receipt after every sale
+        </label>
+        <button
+          class="ml-auto rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+          @click="saveArtistInfo"
+        >
+          {{ artistSaved ? 'Saved ✓' : 'Save' }}
+        </button>
+      </div>
     </section>
 
     <!-- Backup -->

@@ -26,6 +26,16 @@ export interface MyPosPluginApi {
 export interface CarbonPaymentPluginApi {
   getStatus(): Promise<{ connected: boolean; detail?: string }>;
   startPayment(options: { amount: number; currency: string }): Promise<NativePaymentResult>;
+  /** Print pre-formatted lines on the terminal's built-in printer (see lib/receipt.ts). */
+  printReceipt(options: {
+    lines: Array<{
+      kind: 'text' | 'image' | 'space';
+      text?: string;
+      align?: 'left' | 'center' | 'right';
+      doubleHeight?: boolean;
+      imageB64?: string;
+    }>;
+  }): Promise<{ printed: boolean; status: number; error?: string }>;
 }
 
 export interface FileSharePluginApi {

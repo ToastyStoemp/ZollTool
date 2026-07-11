@@ -70,6 +70,8 @@ dependencies {
     implementation 'org.java-websocket:Java-WebSocket:1.5.4'
     fullImplementation 'com.sumup:merchant-sdk:7.1.0'
     carbonImplementation 'com.mypos:mypossmartsdk:1.0.8'
+    // Receipt printing: PrinterCommand lists are serialized to JSON for the myPOS print broadcast
+    carbonImplementation 'com.google.code.gson:gson:2.11.0'
     coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.5'
 }
 

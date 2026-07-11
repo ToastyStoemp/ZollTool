@@ -7,6 +7,8 @@ import { fmtPrice } from '@/lib/money';
 import { transactionsToCsv } from '@/lib/export/csv';
 import { saveBinaryFile, saveTextFile } from '@/lib/download';
 import { showToast } from '@/lib/toast';
+import { buildReceiptLines, loadReceiptConfig } from '@/lib/receipt';
+import { CarbonPayment, hasNativePlugin } from '@/native/plugins';
 import ModalShell from '@/components/ModalShell.vue';
 
 const data = useDataStore();
@@ -137,6 +139,20 @@ function fmtTime(ts: number): string {
 
 const methodIcons: Record<string, string> = { cash: '💵', card: '💳', split: '⚡' };
 const methodIcon = (method: string): string => methodIcons[method] ?? '📱';
+
+// ── Receipt reprint (Carbon terminal only) ──────────────────────────────────
+const canPrintReceipts = hasNativePlugin('CarbonPayment');
+
+async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
+  try {
+    const config = await loadReceiptConfig();
+    const lines = buildReceiptLines(tx, eventName(tx.eventId), config);
+    const result = await CarbonPayment.printReceipt({ lines });
+    if (!result.printed) showToast(`Receipt: ${result.error ?? 'print failed'}`, 'error');
+  } catch (err) {
+    showToast(`Receipt: ${err instanceof Error ? err.message : err}`, 'error');
+  }
+}
 </script>
 
 <template>
@@ -260,6 +276,14 @@ const methodIcon = (method: string): string => methodIcons[method] ?? '📱';
             reverted
           </span>
           <span class="ml-auto text-xs text-slate-500">{{ fmtTime(tx.timestamp) }}</span>
+          <button
+            v-if="canPrintReceipts"
+            class="rounded-lg px-2 py-1 text-xs text-slate-300 hover:bg-slate-800"
+            title="Print receipt"
+            @click="printReceipt(tx)"
+          >
+            🖨
+          </button>
           <button
             v-if="!tx.revertedBy"
             class="rounded-lg px-2 py-1 text-xs text-red-400 hover:bg-red-950"
