@@ -144,6 +144,32 @@ async function saveDeviceName(): Promise<void> {
   }
 }
 
+// Quick connect: scan the QR another logged-in device shows in its sync
+// settings (photo capture + jsQR, same flow as SettingsView).
+const scanInput = ref<HTMLInputElement | null>(null);
+
+async function onScanFile(e: Event): Promise<void> {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  try {
+    const { decodeConnectQr } = await import('@/lib/qr');
+    const payload = await decodeConnectQr(file);
+    if (!payload) {
+      authError.value = 'No ZollTool connect code found in the photo';
+      return;
+    }
+    authMode.value = 'login';
+    auth.url = payload.url;
+    auth.email = payload.email;
+    auth.password = payload.password;
+    await connect();
+  } catch (err) {
+    authError.value = err instanceof Error ? err.message : String(err);
+  }
+}
+
 async function connect(): Promise<void> {
   if (!auth.url.trim() || !auth.email.trim() || !auth.password) {
     authError.value = 'Server, email and password are required';
@@ -368,6 +394,14 @@ async function connect(): Promise<void> {
               >
                 {{ authBusy ? 'Connecting…' : authMode === 'login' ? 'Log in' : 'Create account' }}
               </button>
+              <button
+                class="w-full rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
+                :disabled="authBusy"
+                @click="scanInput?.click()"
+              >
+                📷 Scan connect QR from another device
+              </button>
+              <input ref="scanInput" type="file" accept="image/*" capture="environment" class="hidden" @change="onScanFile" />
             </div>
             <p class="mt-3 text-xs text-slate-500">No server? Skip this — you can connect any time under Settings.</p>
           </template>
