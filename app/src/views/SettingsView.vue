@@ -392,11 +392,13 @@ async function onImportFile(e: Event): Promise<void> {
 </script>
 
 <template>
-  <div class="mx-auto max-w-2xl space-y-6 p-4 md:p-6">
-    <h1 class="text-xl font-bold">Settings</h1>
+  <!-- Wide screens (tablet landscape, desktop): two-column masonry via CSS columns -->
+  <div class="mx-auto max-w-2xl p-4 md:p-6 xl:max-w-5xl">
+    <h1 class="mb-6 text-xl font-bold">Settings</h1>
+    <div class="space-y-6 xl:columns-2 xl:gap-6 xl:space-y-0">
 
     <!-- Device -->
-    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800 xl:mb-6 xl:break-inside-avoid">
       <h2 class="mb-3 text-sm font-semibold text-slate-300">This device</h2>
       <label class="block text-sm">
         <span class="text-slate-400">Device name</span>
@@ -426,7 +428,7 @@ async function onImportFile(e: Event): Promise<void> {
     </section>
 
     <!-- Payment provider -->
-    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800 xl:mb-6 xl:break-inside-avoid">
       <h2 class="mb-3 text-sm font-semibold text-slate-300">Card payment terminal</h2>
       <div class="space-y-2">
         <div
@@ -478,7 +480,7 @@ async function onImportFile(e: Event): Promise<void> {
     </section>
 
     <!-- Custom payment methods -->
-    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800 xl:mb-6 xl:break-inside-avoid">
       <h2 class="mb-2 text-sm font-semibold text-slate-300">Extra payment methods</h2>
       <p class="mb-3 text-xs text-slate-500">
         Extra buttons on the sell screen for payments handled outside the app, e.g. TWINT or a
@@ -517,7 +519,7 @@ async function onImportFile(e: Event): Promise<void> {
     </section>
 
     <!-- Artist & receipt -->
-    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800 xl:mb-6 xl:break-inside-avoid">
       <h2 class="mb-2 text-sm font-semibold text-slate-300">Artist info &amp; receipts</h2>
       <p class="mb-3 text-xs text-slate-500">
         Prefills customs documents<template v-if="canPrint"> and is printed as the header on
@@ -661,7 +663,7 @@ async function onImportFile(e: Event): Promise<void> {
     </section>
 
     <!-- Backup -->
-    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800 xl:mb-6 xl:break-inside-avoid">
       <h2 class="mb-2 text-sm font-semibold text-slate-300">Backup</h2>
       <p class="mb-3 text-xs text-slate-500">
         Export your data as a <strong>JSON</strong> file (events, products, sales, discounts — small
@@ -702,7 +704,7 @@ async function onImportFile(e: Event): Promise<void> {
     </section>
 
     <!-- Server sync -->
-    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800 xl:mb-6 xl:break-inside-avoid">
       <h2 class="mb-2 text-sm font-semibold text-slate-300">Server sync</h2>
 
       <!-- Logged in -->
@@ -837,7 +839,7 @@ async function onImportFile(e: Event): Promise<void> {
     </section>
 
     <!-- Legacy -->
-    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800 xl:mb-6 xl:break-inside-avoid">
       <h2 class="mb-2 text-sm font-semibold text-slate-300">Legacy app</h2>
       <p class="mb-3 text-xs text-slate-500">
         The previous version (incl. the customs tool) ships alongside until every feature is ported.
@@ -850,6 +852,7 @@ async function onImportFile(e: Event): Promise<void> {
         Open legacy ZollTool
       </a>
     </section>
+    </div>
 
     <!-- Quick-connect QR modal -->
     <ModalShell v-if="showShareQr" title="Share login via QR" @close="showShareQr = false">

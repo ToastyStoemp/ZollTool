@@ -468,7 +468,7 @@ function discountTargets(d: DiscountRule): string {
 </script>
 
 <template>
-  <div class="mx-auto max-w-4xl p-4 md:p-6">
+  <div class="mx-auto max-w-4xl p-4 md:p-6 xl:max-w-6xl">
     <div class="mb-4 space-y-3">
       <div class="flex items-center justify-between gap-3">
         <h1 class="text-xl font-bold">Catalog</h1>

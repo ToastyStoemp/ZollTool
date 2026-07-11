@@ -685,11 +685,8 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
           >
             {{ cart.inCart(variantPickerProduct.id, v.id) }}
           </span>
-          <ProductThumb
-            v-if="v.imageId || variantPickerProduct.imageId"
-            :image-id="v.imageId ?? variantPickerProduct.imageId"
-            :type="variantPickerProduct.type"
-          />
+          <!-- Only the variant's own photo — a product-level fallback would misrepresent the variant -->
+          <ProductThumb v-if="v.imageId" :image-id="v.imageId" :type="variantPickerProduct.type" />
           <span class="text-sm font-semibold">{{ v.name || '(untitled)' }}</span>
           <span v-if="v.sku" class="text-[11px] text-slate-500">{{ v.sku }}</span>
           <span class="flex w-full items-center justify-between pt-1 text-xs">

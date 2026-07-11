@@ -192,7 +192,7 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
 </script>
 
 <template>
-  <div class="mx-auto max-w-4xl p-4 md:p-6">
+  <div class="mx-auto max-w-4xl p-4 md:p-6 xl:max-w-6xl">
     <div class="mb-4 flex flex-wrap items-center gap-3">
       <RouterLink
         v-if="fromPos"

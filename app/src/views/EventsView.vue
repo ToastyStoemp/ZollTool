@@ -192,7 +192,7 @@ function fmtDates(e: SalesEvent): string {
 </script>
 
 <template>
-  <div class="mx-auto max-w-3xl p-4 md:p-6">
+  <div class="mx-auto max-w-3xl p-4 md:p-6 xl:max-w-6xl">
     <div class="mb-5 flex items-center justify-between">
       <h1 class="text-xl font-bold">Events</h1>
       <button
@@ -207,7 +207,8 @@ function fmtDates(e: SalesEvent): string {
       No events yet. Create one to start selling — every sale is recorded against the active event.
     </p>
 
-    <ul class="space-y-3">
+    <!-- Card grid on wide screens instead of one long column -->
+    <ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
       <li
         v-for="event in sortedEvents"
         :key="event.id"
