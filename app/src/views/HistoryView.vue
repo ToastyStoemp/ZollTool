@@ -7,8 +7,12 @@ import { fmtPrice } from '@/lib/money';
 import { transactionsToCsv } from '@/lib/export/csv';
 import { saveBinaryFile, saveTextFile } from '@/lib/download';
 import { showToast } from '@/lib/toast';
-import { buildReceiptLines, loadReceiptConfig } from '@/lib/receipt';
-import { CarbonPayment, hasNativePlugin } from '@/native/plugins';
+import {
+  buildReceiptLines,
+  loadReceiptConfig,
+  printReceipt as printReceiptLines,
+  printingAvailable,
+} from '@/lib/receipt';
 import ModalShell from '@/components/ModalShell.vue';
 
 const data = useDataStore();
@@ -140,14 +144,15 @@ function fmtTime(ts: number): string {
 const methodIcons: Record<string, string> = { cash: '💵', card: '💳', split: '⚡' };
 const methodIcon = (method: string): string => methodIcons[method] ?? '📱';
 
-// ── Receipt reprint (Carbon terminal only) ──────────────────────────────────
-const canPrintReceipts = hasNativePlugin('CarbonPayment');
+// ── Receipt reprint (Carbon built-in printer or paired thermal printer) ─────
+const canPrintReceipts = ref(false);
+void printingAvailable().then((ok) => (canPrintReceipts.value = ok));
 
 async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
   try {
     const config = await loadReceiptConfig();
     const lines = buildReceiptLines(tx, eventName(tx.eventId), config);
-    const result = await CarbonPayment.printReceipt({ lines });
+    const result = await printReceiptLines(lines);
     if (!result.printed) showToast(`Receipt: ${result.error ?? 'print failed'}`, 'error');
   } catch (err) {
     showToast(`Receipt: ${err instanceof Error ? err.message : err}`, 'error');

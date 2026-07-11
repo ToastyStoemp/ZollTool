@@ -1,6 +1,7 @@
 import type { Transaction } from '@zolltool/shared';
 import { getSetting } from '@/db/repo';
 import { fmtPrice } from '@/lib/money';
+import { CarbonPayment, ThermalPrinter, hasNativePlugin } from '@/native/plugins';
 
 /**
  * Receipt building for the myPOS Carbon's built-in thermal printer (carbon
@@ -35,7 +36,35 @@ export const RECEIPT_KEYS = {
   logoB64: 'receipt.logoB64',
   footerText: 'receipt.footerText',
   autoPrint: 'receipt.autoPrint',
+  /** MAC address + display name of a paired Bluetooth ESC/POS printer. */
+  printerAddress: 'receipt.printerAddress',
+  printerName: 'receipt.printerName',
 } as const;
+
+// ── Printing (routes to whichever printer this device has) ──────────────────
+// On the Carbon terminal the built-in printer is used; elsewhere a paired
+// Bluetooth ESC/POS printer selected in Settings. Both take the same 32-char
+// line format (58mm thermal paper = 384 dots, same as the Carbon).
+
+export async function printingAvailable(): Promise<boolean> {
+  if (hasNativePlugin('CarbonPayment')) return true;
+  if (!hasNativePlugin('ThermalPrinter')) return false;
+  return !!(await getSetting<string>(RECEIPT_KEYS.printerAddress));
+}
+
+export async function printReceipt(lines: ReceiptLine[]): Promise<{ printed: boolean; error?: string }> {
+  if (hasNativePlugin('CarbonPayment')) {
+    const r = await CarbonPayment.printReceipt({ lines });
+    return { printed: r.printed, error: r.error };
+  }
+  if (hasNativePlugin('ThermalPrinter')) {
+    const address = await getSetting<string>(RECEIPT_KEYS.printerAddress);
+    if (!address) return { printed: false, error: 'No printer selected in Settings' };
+    const r = await ThermalPrinter.printReceipt({ address, lines });
+    return { printed: r.printed, error: r.error };
+  }
+  return { printed: false, error: 'Printing is not available on this device' };
+}
 
 /** Printable width of the Carbon paper in characters (myPOS "Smart" format). */
 const WIDTH = 32;

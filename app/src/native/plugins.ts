@@ -27,15 +27,7 @@ export interface CarbonPaymentPluginApi {
   getStatus(): Promise<{ connected: boolean; detail?: string }>;
   startPayment(options: { amount: number; currency: string }): Promise<NativePaymentResult>;
   /** Print pre-formatted lines on the terminal's built-in printer (see lib/receipt.ts). */
-  printReceipt(options: {
-    lines: Array<{
-      kind: 'text' | 'image' | 'space';
-      text?: string;
-      align?: 'left' | 'center' | 'right';
-      doubleHeight?: boolean;
-      imageB64?: string;
-    }>;
-  }): Promise<{ printed: boolean; status: number; error?: string }>;
+  printReceipt(options: { lines: NativeReceiptLine[] }): Promise<{ printed: boolean; status: number; error?: string }>;
 }
 
 export interface FileSharePluginApi {
@@ -71,8 +63,27 @@ export interface SumUpPluginApi {
   }): Promise<{ approved: boolean; resultCode: number; txCode?: string; message?: string }>;
 }
 
+/** Receipt line as consumed by both printer plugins (see lib/receipt.ts). */
+export interface NativeReceiptLine {
+  kind: 'text' | 'image' | 'space';
+  text?: string;
+  align?: 'left' | 'center' | 'right';
+  doubleHeight?: boolean;
+  imageB64?: string;
+}
+
+export interface ThermalPrinterPluginApi {
+  /** Bonded Bluetooth devices; requests the BT permission on Android 12+. */
+  listPrinters(): Promise<{ printers: Array<{ name: string; address: string }> }>;
+  printReceipt(options: {
+    address: string;
+    lines: NativeReceiptLine[];
+  }): Promise<{ printed: boolean; status: number; error?: string }>;
+}
+
 export const MyPos = registerPlugin<MyPosPluginApi>('MyPos');
 export const CarbonPayment = registerPlugin<CarbonPaymentPluginApi>('CarbonPayment');
+export const ThermalPrinter = registerPlugin<ThermalPrinterPluginApi>('ThermalPrinter');
 export const FileShare = registerPlugin<FileSharePluginApi>('FileShare');
 export const SumUp = registerPlugin<SumUpPluginApi>('SumUp');
 

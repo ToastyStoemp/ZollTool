@@ -9,8 +9,8 @@ import { cashShortcutAmounts, splitCashPortionAmounts } from '@/lib/cash';
 import { fmtPrice, round2 } from '@/lib/money';
 import { showToast } from '@/lib/toast';
 import { getProvider } from '@/payments/registry';
-import { CarbonPayment, MyPos, hasNativePlugin } from '@/native/plugins';
-import { buildReceiptLines, loadReceiptConfig } from '@/lib/receipt';
+import { MyPos, hasNativePlugin } from '@/native/plugins';
+import { buildReceiptLines, loadReceiptConfig, printReceipt, printingAvailable } from '@/lib/receipt';
 import ModalShell from '@/components/ModalShell.vue';
 import ProductThumb from '@/components/ProductThumb.vue';
 
@@ -351,14 +351,17 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
   void maybePrintReceipt(tx);
 }
 
-/** On the Carbon terminal: print a receipt after the sale when enabled in Settings. */
+/**
+ * Print a receipt after the sale — only when the user opted in via Settings
+ * (off by default) and this device has a printer (Carbon built-in or a paired
+ * Bluetooth thermal printer).
+ */
 async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>): Promise<void> {
-  if (!hasNativePlugin('CarbonPayment')) return;
   try {
     const config = await loadReceiptConfig();
-    if (!config.autoPrint) return;
+    if (!config.autoPrint || !(await printingAvailable())) return;
     const lines = buildReceiptLines(tx, data.activeEvent?.name ?? '', config);
-    const result = await CarbonPayment.printReceipt({ lines });
+    const result = await printReceipt(lines);
     if (!result.printed) showToast(`Receipt: ${result.error ?? 'print failed'}`, 'error');
   } catch (err) {
     showToast(`Receipt: ${err instanceof Error ? err.message : err}`, 'error');
