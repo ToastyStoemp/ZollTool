@@ -670,17 +670,26 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
       :title="variantPickerProduct.title || 'Choose a variant'"
       @close="variantPickerProduct = null"
     >
+      <!-- Stays open so several variants can be added in a row; the badge mirrors the product cards. -->
       <div class="grid grid-cols-2 gap-2">
         <button
           v-for="v in variantPickerProduct.variants"
           :key="v.id"
-          class="flex flex-col items-start gap-1 rounded-xl bg-slate-800 p-3 text-left ring-1 ring-slate-700"
+          class="relative flex flex-col items-start gap-1 rounded-xl bg-slate-800 p-3 text-left ring-1 ring-slate-700 transition active:scale-[0.98]"
           :class="{ 'opacity-60': cart.remaining(variantPickerProduct.id, v.id) <= 0 }"
-          @click="
-            addToCart(variantPickerProduct!.id, v.id);
-            variantPickerProduct = null;
-          "
+          @click="addToCart(variantPickerProduct!.id, v.id)"
         >
+          <span
+            v-if="cart.inCart(variantPickerProduct.id, v.id)"
+            class="absolute -right-1.5 -top-1.5 flex h-6 min-w-6 items-center justify-center rounded-full bg-emerald-500 px-1 text-xs font-bold text-slate-950"
+          >
+            {{ cart.inCart(variantPickerProduct.id, v.id) }}
+          </span>
+          <ProductThumb
+            v-if="v.imageId || variantPickerProduct.imageId"
+            :image-id="v.imageId ?? variantPickerProduct.imageId"
+            :type="variantPickerProduct.type"
+          />
           <span class="text-sm font-semibold">{{ v.name || '(untitled)' }}</span>
           <span v-if="v.sku" class="text-[11px] text-slate-500">{{ v.sku }}</span>
           <span class="flex w-full items-center justify-between pt-1 text-xs">
