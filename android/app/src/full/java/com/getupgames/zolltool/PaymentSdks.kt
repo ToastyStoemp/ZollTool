@@ -8,7 +8,8 @@ import com.sumup.reader.sdk.api.SumUpState
 /** Flavor hook — the "full" flavor ships SumUp (minSdk 26) and myPOS Glass softPOS. */
 object PaymentSdks {
     fun init(app: Application) {
-        SumUpState.init(app)
+        // A SumUp init failure must not take down app startup.
+        try { SumUpState.init(app) } catch (_: Throwable) {}
     }
 
     fun registerPlugins(activity: BridgeActivity) {

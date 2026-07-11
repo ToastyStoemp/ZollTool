@@ -157,16 +157,21 @@ class MyPosPlugin : Plugin(), POSInfoListener, ConnectionListener, POSReadyListe
         }
 
     /**
-     * connectDevice starts a BLE scan; if a permission is somehow still missing
-     * the scan throws SecurityException on the calling thread. Contain it so the
-     * terminal simply reports "not connected" rather than crashing the app.
+     * connectDevice shows the terminal-picker dialog and starts a BLE scan.
+     * Must run on the UI thread: plugin methods (and permission callbacks) run
+     * on Capacitor's worker thread, but the SDK's BluetoothDevicesDialog builds
+     * its views there while its own handlers post to main → the dialog would
+     * crash with CalledFromWrongThreadException. Also contain a missing-
+     * permission SecurityException so the terminal just reports "not connected".
      */
     private fun connectSafely() {
-        try {
-            pos.connectDevice(activity)
-        } catch (e: SecurityException) {
-            notifyListeners("terminalStatus", JSObject().apply { put("connected", false) })
-        } catch (_: Exception) {
+        activity.runOnUiThread {
+            try {
+                pos.connectDevice(activity)
+            } catch (e: SecurityException) {
+                notifyListeners("terminalStatus", JSObject().apply { put("connected", false) })
+            } catch (_: Exception) {
+            }
         }
     }
 

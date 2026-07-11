@@ -45,16 +45,30 @@ class SumUpPlugin : Plugin() {
         instance = this
     }
 
+    /**
+     * SumUpAPI.isLoggedIn() throws an NPE (ReaderModuleCoreState null) on some
+     * devices/SDK builds when the reader module hasn't been initialized yet —
+     * it initializes when the login activity first runs. An unchecked throw
+     * from a plugin method crashes Capacitor's worker thread, so the Settings
+     * status poll must never let it escape: treat "can't tell" as not logged in.
+     */
+    private fun safeIsLoggedIn(): Boolean =
+        try {
+            SumUpAPI.isLoggedIn()
+        } catch (_: Throwable) {
+            false
+        }
+
     @PluginMethod
     fun isLoggedIn(call: PluginCall) {
-        call.resolve(JSObject().apply { put("loggedIn", SumUpAPI.isLoggedIn()) })
+        call.resolve(JSObject().apply { put("loggedIn", safeIsLoggedIn()) })
     }
 
     @PluginMethod
     fun login(call: PluginCall) {
         val affiliateKey = call.getString("affiliateKey")
             ?: run { call.reject("affiliateKey required"); return }
-        if (SumUpAPI.isLoggedIn()) {
+        if (safeIsLoggedIn()) {
             call.resolve(JSObject().apply { put("loggedIn", true) })
             return
         }
@@ -67,7 +81,7 @@ class SumUpPlugin : Plugin() {
 
     @PluginMethod
     fun logout(call: PluginCall) {
-        SumUpAPI.logout()
+        try { SumUpAPI.logout() } catch (_: Throwable) {}
         call.resolve()
     }
 
@@ -75,7 +89,7 @@ class SumUpPlugin : Plugin() {
     fun checkout(call: PluginCall) {
         val amount = call.getDouble("amount") ?: run { call.reject("amount required"); return }
         val currency = call.getString("currency") ?: run { call.reject("currency required"); return }
-        if (!SumUpAPI.isLoggedIn()) {
+        if (!safeIsLoggedIn()) {
             call.reject("Not logged in to SumUp")
             return
         }
