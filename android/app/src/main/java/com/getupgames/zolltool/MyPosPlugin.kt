@@ -1,16 +1,22 @@
 package com.getupgames.zolltool
 
+import android.Manifest
 import android.bluetooth.BluetoothDevice
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import androidx.core.content.ContextCompat
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import com.getcapacitor.annotation.Permission
+import com.getcapacitor.annotation.PermissionCallback
 import com.mypos.slavesdk.ConnectionListener
 import com.mypos.slavesdk.ConnectionType
 import com.mypos.slavesdk.Currency
@@ -21,7 +27,28 @@ import com.mypos.slavesdk.POSReadyListener
 import com.mypos.slavesdk.TransactionData
 import java.util.UUID
 
-@CapacitorPlugin(name = "MyPos")
+@CapacitorPlugin(
+    name = "MyPos",
+    permissions = [
+        // Android 12+: scanning/connecting to the terminal.
+        Permission(
+            alias = "bluetooth",
+            strings = [
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT,
+            ],
+        ),
+        // Location: BLE discovery needs it on API <= 30, and the myPOS SDK's own
+        // permission gate requires COARSE on every Android version.
+        Permission(
+            alias = "location",
+            strings = [
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+                Manifest.permission.ACCESS_FINE_LOCATION,
+            ],
+        ),
+    ],
+)
 class MyPosPlugin : Plugin(), POSInfoListener, ConnectionListener, POSReadyListener {
 
     private lateinit var pos: POSHandler
@@ -50,8 +77,22 @@ class MyPosPlugin : Plugin(), POSInfoListener, ConnectionListener, POSReadyListe
             if (intent.action != BluetoothDevice.ACTION_ACL_DISCONNECTED) return
             termConnected = false
             termReady     = false
+            // A disconnect mid-payment must not leave the pending call latched —
+            // that would block every later startPayment with "already in progress".
+            failPending("Terminal disconnected")
             notifyListeners("terminalStatus", JSObject().apply { put("connected", false) })
         }
+    }
+
+    /** Resolve and clear the pending payment call as a failure, if one is latched. */
+    private fun failPending(message: String) {
+        if (callResolved) { pendingCall = null; return }
+        val call = pendingCall ?: return
+        pendingCall = null; callResolved = true
+        call.resolve(JSObject().apply {
+            put("approved", false)
+            put("error",    message)
+        })
     }
 
     // ── Lifecycle ─────────────────────────────────────────────────────────────
@@ -67,20 +108,24 @@ class MyPosPlugin : Plugin(), POSInfoListener, ConnectionListener, POSReadyListe
         pos.setPOSInfoListener(this)
         pos.setConnectionListener(this)
         pos.setPOSReadyListener(this)
+        // SDK safety-clearing (stuck transaction dropped) — release our latch too.
+        pos.setTransactionClearedListener { status -> failPending("Transaction cleared (status $status)") }
 
-        // Register BLE pairing receiver with highest priority so we handle it before the system dialog
+        // Register BLE pairing receiver with highest priority so we handle it before the system dialog.
+        // ContextCompat picks the RECEIVER_* export flag Android 14+ (API 34) requires.
         val pairingFilter = IntentFilter(BluetoothDevice.ACTION_PAIRING_REQUEST)
         pairingFilter.priority = IntentFilter.SYSTEM_HIGH_PRIORITY
-        activity.registerReceiver(pairingReceiver, pairingFilter)
+        ContextCompat.registerReceiver(activity, pairingReceiver, pairingFilter, ContextCompat.RECEIVER_EXPORTED)
 
-        activity.registerReceiver(disconnectReceiver,
-            IntentFilter(BluetoothDevice.ACTION_ACL_DISCONNECTED))
+        ContextCompat.registerReceiver(
+            activity, disconnectReceiver,
+            IntentFilter(BluetoothDevice.ACTION_ACL_DISCONNECTED), ContextCompat.RECEIVER_EXPORTED,
+        )
 
-        // Put Android into connectable state immediately so the GO2 can find us at any time.
-        // Permission check first — connectDevice is called again in onRequestPermissionsResult if needed.
-        if (pos.checkPermissions(activity)) {
-            pos.connectDevice(activity)
-        }
+        // Put Android into connectable state so the GO2 can find us — but only once
+        // the BT permissions are actually granted, otherwise the SDK's scan throws
+        // SecurityException and crashes. The user grants them via the Connect button.
+        if (hasBtPermissions()) connectSafely()
     }
 
     override fun handleOnDestroy() {
@@ -90,13 +135,60 @@ class MyPosPlugin : Plugin(), POSInfoListener, ConnectionListener, POSReadyListe
 
     // ── Plugin methods ────────────────────────────────────────────────────────
 
+    /**
+     * Permissions the SDK's internal checkPermissions gate requires before it
+     * will show the terminal picker (verified against the decompiled SDK):
+     * coarse location on EVERY version, plus SCAN/CONNECT on Android 12+.
+     */
+    private fun requiredBtPermissions(): List<String> =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            listOf(
+                Manifest.permission.BLUETOOTH_SCAN,
+                Manifest.permission.BLUETOOTH_CONNECT,
+                Manifest.permission.ACCESS_COARSE_LOCATION,
+            )
+        } else {
+            listOf(Manifest.permission.ACCESS_COARSE_LOCATION)
+        }
+
+    private fun hasBtPermissions(): Boolean =
+        requiredBtPermissions().all {
+            ContextCompat.checkSelfPermission(activity, it) == PackageManager.PERMISSION_GRANTED
+        }
+
+    /**
+     * connectDevice starts a BLE scan; if a permission is somehow still missing
+     * the scan throws SecurityException on the calling thread. Contain it so the
+     * terminal simply reports "not connected" rather than crashing the app.
+     */
+    private fun connectSafely() {
+        try {
+            pos.connectDevice(activity)
+        } catch (e: SecurityException) {
+            notifyListeners("terminalStatus", JSObject().apply { put("connected", false) })
+        } catch (_: Exception) {
+        }
+    }
+
     /** Re-enter connectable state (e.g. after the user taps Connect in the setup screen). */
     @PluginMethod
     fun connectTerminal(call: PluginCall) {
-        if (pos.checkPermissions(activity)) {
-            pos.connectDevice(activity)
+        if (hasBtPermissions()) {
+            connectSafely()
+            call.resolve(JSObject().apply { put("granted", true) })
+        } else {
+            val aliases =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) arrayOf("bluetooth", "location")
+                else arrayOf("location")
+            requestPermissionForAliases(aliases, call, "btPermissionCallback")
         }
-        call.resolve()
+    }
+
+    @PermissionCallback
+    private fun btPermissionCallback(call: PluginCall) {
+        val granted = hasBtPermissions()
+        if (granted) connectSafely()
+        call.resolve(JSObject().apply { put("granted", granted) })
     }
 
     /** Current status polled by the setup screen. */
@@ -137,6 +229,18 @@ class MyPosPlugin : Plugin(), POSInfoListener, ConnectionListener, POSReadyListe
         )
     }
 
+    /**
+     * Cancel the in-flight payment (user aborted in the app) and clear the
+     * pending latch so the plugin can never stay stuck in "already in progress".
+     * Safe to call with no payment running — it then just resets state.
+     */
+    @PluginMethod
+    fun cancelPayment(call: PluginCall) {
+        try { pos.cancelTransaction() } catch (_: Exception) {}
+        failPending("Cancelled")
+        call.resolve()
+    }
+
     // ── ConnectionListener ────────────────────────────────────────────────────
 
     override fun onConnected(device: BluetoothDevice?) {
@@ -165,13 +269,34 @@ class MyPosPlugin : Plugin(), POSInfoListener, ConnectionListener, POSReadyListe
         })
     }
 
+    // Progress notifications during a purchase — keep waiting, a final callback follows.
+    // Every other status while a purchase is pending is terminal: resolve as failure,
+    // otherwise the pending latch sticks and every later payment is rejected with
+    // "Payment already in progress". (All SDK POS_STATUS_* constants are >= 0, so the
+    // old `status >= 0` early-return swallowed cancels/declines entirely.)
+    private val progressStatuses = setOf(
+        POSHandler.POS_STATUS_SUCCESS,                              // generic OK signal; success arrives via onTransactionComplete
+        POSHandler.POS_STATUS_PENDING_USER_INTERACTION,
+        POSHandler.POS_STATUS_PROCESSING,
+        POSHandler.POS_STATUS_INVALID_PIN,                          // terminal lets the customer retry
+        POSHandler.POS_STATUS_PIN_CHECK_ONLINE,
+        POSHandler.POS_STATUS_DOWNLOADING_CERTIFICATES_IN_PROGRESS,
+        POSHandler.POS_STATUS_DOWNLOADING_CERTIFICATES_COMPLETED,
+        POSHandler.POS_STATUS_PRESENT_CARD_SCREEN,
+        POSHandler.POS_STATUS_SELECT_DCC_SCREEN,
+        POSHandler.POS_STATUS_ENTER_PIN_SCREEN,
+        POSHandler.POS_STATUS_DCC_BEEN_SELECTED,
+    )
+
     override fun onPOSInfoReceived(command: Int, status: Int, description: String?, extra: Bundle?) {
-        if (status >= 0 || callResolved) return
-        val call = pendingCall ?: return
-        pendingCall = null; callResolved = true
-        call.resolve(JSObject().apply {
-            put("approved", false)
-            put("error",    description ?: "Payment declined (status $status)")
-        })
+        if (callResolved || pendingCall == null) return
+        if (status in progressStatuses) return
+        if (status == POSHandler.POS_STATUS_SUCCESS_PURCHASE) return  // final data arrives via onTransactionComplete
+
+        val message = when (status) {
+            POSHandler.POS_STATUS_USER_CANCEL -> "Cancelled on terminal"
+            else -> description ?: "Payment failed (status $status)"
+        }
+        failPending(message)
     }
 }

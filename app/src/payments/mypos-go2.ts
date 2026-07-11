@@ -33,10 +33,15 @@ export const myposGo2Provider: PaymentProvider = {
   },
 
   async cancel(): Promise<void> {
-    // The slave SDK has no cancel API — the terminal times out on its own.
+    // Aborts the terminal transaction (SDK cancelTransaction) and resets the
+    // native pending-payment latch so the next payment can start.
+    await MyPos.cancelPayment();
   },
 
   async configure(): Promise<void> {
-    await MyPos.connectTerminal();
+    const { granted } = await MyPos.connectTerminal();
+    if (!granted) {
+      throw new Error('Bluetooth permission denied — allow Bluetooth (and Location) for ZollTool in Android settings');
+    }
   },
 };
