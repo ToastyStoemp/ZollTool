@@ -91,6 +91,22 @@ export async function closeEvent(eventId: string): Promise<void> {
   });
 }
 
+/**
+ * Soft-delete: tombstone the event and sync it as a plain upsert — remote
+ * apply is whole-record LWW, so deletedAt propagates without a new op type.
+ * Transactions keep their eventId; history shows them under "(deleted event)".
+ */
+export async function deleteEvent(eventId: string): Promise<void> {
+  await db.transaction('rw', [db.events, db.ops, db.settings], async () => {
+    const event = await db.events.get(eventId);
+    if (!event) return;
+    const now = Date.now();
+    const tombstone: SalesEvent = { ...event, status: 'closed', deletedAt: now, updatedAt: now };
+    await db.events.put(tombstone);
+    await appendOp('event.upsert', tombstone);
+  });
+}
+
 // ── Products / stock / discounts ──────────────────────────────────────────
 
 export async function upsertProduct(product: Product): Promise<void> {

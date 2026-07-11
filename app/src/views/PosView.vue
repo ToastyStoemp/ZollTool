@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import type { PaymentLeg, PaymentMethod, Product } from '@zolltool/shared';
 import { useDataStore } from '@/stores/data';
 import { useSettingsStore } from '@/stores/settings';
@@ -9,6 +9,7 @@ import { cashShortcutAmounts, splitCashPortionAmounts } from '@/lib/cash';
 import { fmtPrice, round2 } from '@/lib/money';
 import { showToast } from '@/lib/toast';
 import { getProvider } from '@/payments/registry';
+import { MyPos, hasNativePlugin } from '@/native/plugins';
 import ModalShell from '@/components/ModalShell.vue';
 import ProductThumb from '@/components/ProductThumb.vue';
 
@@ -179,6 +180,63 @@ function applyDiscount(): void {
 // ── Payment flow ───────────────────────────────────────────────────────────
 const activeProvider = computed(() => getProvider(settings.paymentProviderId));
 
+// ── Terminal connection indicator ───────────────────────────────────────────
+// Shown whenever a real card reader is selected (anything but manual entry).
+// Polled while the POS is open; the MyPos plugin additionally pushes
+// terminalStatus events so BT connects/drops show up instantly.
+const showTerminalState = computed(() => activeProvider.value.id !== 'manual');
+const terminalConnected = ref<boolean | null>(null); // null = still checking
+const terminalDetail = ref('');
+
+async function refreshTerminalStatus(): Promise<void> {
+  if (!showTerminalState.value) return;
+  try {
+    const s = await activeProvider.value.getStatus();
+    terminalConnected.value = s.connected;
+    terminalDetail.value = s.detail ?? '';
+  } catch (err) {
+    terminalConnected.value = false;
+    terminalDetail.value = String(err);
+  }
+}
+
+function tapTerminalState(): void {
+  void refreshTerminalStatus();
+  const state =
+    terminalConnected.value === true ? 'connected' : terminalConnected.value === false ? 'not connected' : 'checking…';
+  showToast(`${activeProvider.value.label}: ${terminalDetail.value || state}`, terminalConnected.value ? 'info' : 'error');
+}
+
+let statusTimer: number | undefined;
+let statusListener: { remove: () => Promise<void> } | null = null;
+
+watch(
+  () => settings.paymentProviderId,
+  () => {
+    terminalConnected.value = null;
+    terminalDetail.value = '';
+    void refreshTerminalStatus();
+  },
+);
+
+onMounted(async () => {
+  void refreshTerminalStatus();
+  statusTimer = window.setInterval(refreshTerminalStatus, 5000);
+  if (hasNativePlugin('MyPos')) {
+    statusListener = await MyPos.addListener('terminalStatus', (s) => {
+      if (activeProvider.value.id === 'mypos-go2') {
+        terminalConnected.value = s.connected;
+        terminalDetail.value = s.connected ? 'Terminal ready' : 'Terminal not paired';
+      }
+    });
+  }
+});
+
+onUnmounted(() => {
+  if (statusTimer) window.clearInterval(statusTimer);
+  void statusListener?.remove().catch(() => {});
+});
+
 const cashShortcuts = computed(() =>
   payment.method === 'cash' ? cashShortcutAmounts(payment.total, data.currency) : [],
 );
@@ -316,6 +374,30 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
           <div class="min-w-0">
             <h1 class="truncate text-sm font-semibold text-emerald-400">{{ data.activeEvent.name }}</h1>
           </div>
+          <RouterLink
+            :to="{ path: '/history', query: { event: data.activeEvent.id, from: 'pos' } }"
+            class="shrink-0 rounded-lg px-1.5 py-1 text-slate-400 hover:bg-slate-800"
+            title="Sales history"
+          >
+            📈
+          </RouterLink>
+          <!-- Card reader connection state (hidden for manual entry) -->
+          <button
+            v-if="showTerminalState"
+            class="flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-800/60 px-2 py-1.5 text-sm hover:bg-slate-800"
+            :title="`${activeProvider.label} — tap to re-check`"
+            @click="tapTerminalState"
+          >
+            💳
+            <span
+              class="h-2 w-2 rounded-full"
+              :class="{
+                'bg-emerald-500': terminalConnected === true,
+                'bg-red-500': terminalConnected === false,
+                'animate-pulse bg-slate-500': terminalConnected === null,
+              }"
+            />
+          </button>
           <input
             v-model="search"
             placeholder="Search / scan…"

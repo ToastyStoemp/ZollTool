@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { toasts } from '@/lib/toast';
 import { useSettingsStore } from '@/stores/settings';
@@ -15,12 +16,17 @@ const nav = [
   { to: '/history', label: 'History', icon: '📈' },
   { to: '/settings', label: 'Settings', icon: '⚙️' },
 ];
+
+// POS is a focused fullscreen mode: hide the app nav so the whole screen
+// (especially tablets in landscape) is selling surface. The POS header has
+// its own back/history shortcuts.
+const chromeHidden = computed(() => route.name === 'pos');
 </script>
 
 <template>
   <div class="app-shell flex flex-col md:flex-row md:pb-[var(--safe-bottom)]">
     <!-- Sidebar (tablet/desktop) -->
-    <aside class="hidden w-52 shrink-0 flex-col border-r border-slate-800 bg-slate-900 md:flex">
+    <aside v-if="!chromeHidden" class="hidden w-52 shrink-0 flex-col border-r border-slate-800 bg-slate-900 md:flex">
       <div class="flex items-center gap-2 px-4 py-5">
         <span class="text-xl font-bold tracking-tight text-emerald-400">ZollTool</span>
       </div>
@@ -44,7 +50,7 @@ const nav = [
     </main>
 
     <!-- Bottom nav (phone) — bottom padding keeps it above the gesture bar -->
-    <nav class="flex shrink-0 border-t border-slate-800 bg-slate-900 pb-[var(--safe-bottom)] md:hidden">
+    <nav v-if="!chromeHidden" class="flex shrink-0 border-t border-slate-800 bg-slate-900 pb-[var(--safe-bottom)] md:hidden">
       <RouterLink
         v-for="item in nav"
         :key="item.to"

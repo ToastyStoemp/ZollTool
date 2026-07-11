@@ -12,6 +12,9 @@ import ModalShell from '@/components/ModalShell.vue';
 const data = useDataStore();
 const route = useRoute();
 
+/** Opened from the POS header — show a shortcut back to selling. */
+const fromPos = route.query.from === 'pos';
+
 // ── Scope: one event or all events ──────────────────────────────────────────
 const scope = ref<string>(
   typeof route.query.event === 'string' ? route.query.event : (data.activeEvent?.id ?? 'all'),
@@ -139,6 +142,13 @@ const methodIcon = (method: string): string => methodIcons[method] ?? '📱';
 <template>
   <div class="mx-auto max-w-4xl p-4 md:p-6">
     <div class="mb-4 flex flex-wrap items-center gap-3">
+      <RouterLink
+        v-if="fromPos"
+        to="/pos"
+        class="rounded-lg bg-emerald-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-emerald-500"
+      >
+        ← POS
+      </RouterLink>
       <h1 class="text-xl font-bold">Sales history</h1>
       <select v-model="scope" class="rounded-lg bg-slate-800 px-3 py-1.5 text-sm">
         <option value="all">All events</option>

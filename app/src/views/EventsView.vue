@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router';
 import type { SalesEvent } from '@zolltool/shared';
 import { useDataStore } from '@/stores/data';
 import { useSettingsStore } from '@/stores/settings';
-import { closeEvent, setStock, upsertEvent } from '@/db/repo';
+import { closeEvent, deleteEvent, setStock, upsertEvent } from '@/db/repo';
 import { db } from '@/db/schema';
 import { uuidv7 } from '@/lib/uuid';
 import { fmtPrice } from '@/lib/money';
@@ -19,6 +19,7 @@ const router = useRouter();
 const showCreate = ref(false);
 const editingId = ref<string | null>(null);
 const confirmCloseId = ref<string | null>(null);
+const confirmDeleteId = ref<string | null>(null);
 
 const form = reactive({
   preset: '',
@@ -173,6 +174,12 @@ async function doClose(eventId: string): Promise<void> {
   confirmCloseId.value = null;
 }
 
+async function doDelete(eventId: string): Promise<void> {
+  await deleteEvent(eventId);
+  if (settings.activeEventId === eventId) await settings.setActiveEvent(null);
+  confirmDeleteId.value = null;
+}
+
 function fmtDates(e: SalesEvent): string {
   if (e.dateStart && e.dateEnd) return `${e.dateStart} → ${e.dateEnd}`;
   return e.dateStart || '';
@@ -262,6 +269,12 @@ function fmtDates(e: SalesEvent): string {
           >
             Close
           </button>
+          <button
+            class="rounded-lg px-3 py-1.5 text-xs font-semibold text-red-400/80 hover:bg-red-950 hover:text-red-400"
+            @click="confirmDeleteId = event.id"
+          >
+            🗑 Delete
+          </button>
         </div>
       </li>
     </ul>
@@ -350,6 +363,26 @@ function fmtDates(e: SalesEvent): string {
             @click="editingId ? saveEdit() : createEvent()"
           >
             {{ editingId ? 'Save' : 'Create' }}
+          </button>
+        </div>
+      </template>
+    </ModalShell>
+
+    <!-- Delete confirm -->
+    <ModalShell v-if="confirmDeleteId" title="Delete event?" @close="confirmDeleteId = null">
+      <p class="text-sm text-slate-300">
+        The event disappears from this list and from all connected devices. Recorded sales are kept
+        — they stay visible in History under “(deleted event)” — but the event itself, its stock
+        counts and customs data are no longer reachable.
+      </p>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <button class="rounded-lg bg-slate-800 px-4 py-2 text-sm" @click="confirmDeleteId = null">Cancel</button>
+          <button
+            class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500"
+            @click="doDelete(confirmDeleteId!)"
+          >
+            Delete event
           </button>
         </div>
       </template>
