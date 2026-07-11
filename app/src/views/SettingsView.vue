@@ -1,16 +1,35 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { getSetting, setSetting } from '@/db/repo';
 import { allProviders } from '@/payments/registry';
 import { SUMUP_KEY_SETTING } from '@/payments/sumup';
 import type { PaymentProviderId, ProviderStatus } from '@/payments/provider';
 import { showToast } from '@/lib/toast';
-import { exportBackup, importBackup } from '@/lib/export/backup-json';
-import { saveTextFile } from '@/lib/download';
+import { exportBackupJson, exportBackupZipTo, importBackup, importBackupZip } from '@/lib/export/backup-json';
+import { saveTextFile, createFileWriter } from '@/lib/download';
 import { syncState, syncNow } from '@/sync/engine';
+import { connectQrDataUrl, decodeConnectQr } from '@/lib/qr';
+import ModalShell from '@/components/ModalShell.vue';
 
 const settings = useSettingsStore();
+
+// ── Editable drafts ─────────────────────────────────────────────────────────
+// Inputs bind to these local refs, not to the store: the provider-status poll
+// re-renders this view every few seconds, and a `:value="store.x"` binding
+// would reset the DOM input to the stored value mid-typing. Drafts are synced
+// from the store once it's ready and persisted on change (blur/Enter).
+const deviceNameDraft = ref('');
+const currencyDraft = ref('');
+
+async function saveDeviceName(): Promise<void> {
+  await settings.setDeviceName(deviceNameDraft.value.trim());
+}
+
+async function saveCurrency(): Promise<void> {
+  await settings.setDefaultCurrency(currencyDraft.value);
+  currencyDraft.value = settings.defaultCurrency; // reflect normalization (upper-case, CHF fallback)
+}
 
 const statuses = ref<Record<string, ProviderStatus & { available: boolean }>>({});
 let pollTimer: ReturnType<typeof setInterval> | null = null;
@@ -75,6 +94,18 @@ const authAccountName = ref('');
 const authBusy = ref(false);
 const authError = ref('');
 
+// Sync drafts from the store once it has loaded (or immediately if it already has).
+watch(
+  () => settings.ready,
+  (ready) => {
+    if (!ready) return;
+    deviceNameDraft.value = settings.deviceName;
+    currencyDraft.value = settings.defaultCurrency;
+    if (!authUrl.value) authUrl.value = settings.serverUrl;
+  },
+  { immediate: true },
+);
+
 async function submitAuth(): Promise<void> {
   if (!authUrl.value.trim() || !authEmail.value.trim() || !authPassword.value) {
     authError.value = 'Server, email and password are required';
@@ -107,6 +138,53 @@ async function doLogout(): Promise<void> {
   showToast('Logged out — the app keeps working offline', 'info');
 }
 
+// ── Quick connect via QR ────────────────────────────────────────────────────
+// Share: this device shows a QR with URL + email + password. The password is
+// never stored locally (login keeps only tokens), so the user types it once
+// to embed it. Scan: photo-capture + jsQR fills the login form and connects.
+const showShareQr = ref(false);
+const shareQrPassword = ref('');
+const shareQrImg = ref('');
+
+function openShareQr(): void {
+  shareQrPassword.value = '';
+  shareQrImg.value = '';
+  showShareQr.value = true;
+}
+
+async function generateShareQr(): Promise<void> {
+  if (!shareQrPassword.value) return;
+  shareQrImg.value = await connectQrDataUrl({
+    url: settings.serverUrl,
+    email: settings.syncUser?.email ?? '',
+    password: shareQrPassword.value,
+  });
+}
+
+const scanInput = ref<HTMLInputElement | null>(null);
+
+async function onScanFile(e: Event): Promise<void> {
+  const input = e.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  try {
+    const payload = await decodeConnectQr(file);
+    if (!payload) {
+      showToast('No ZollTool connect code found in the photo', 'error');
+      return;
+    }
+    authMode.value = 'login';
+    authUrl.value = payload.url;
+    authEmail.value = payload.email;
+    authPassword.value = payload.password;
+    showToast('Code scanned — connecting…', 'info');
+    await submitAuth();
+  } catch (err) {
+    showToast(`Scan failed: ${err instanceof Error ? err.message : err}`, 'error');
+  }
+}
+
 function fmtSyncTime(ts: number): string {
   return ts ? new Date(ts).toLocaleTimeString() : 'never';
 }
@@ -115,12 +193,36 @@ function fmtSyncTime(ts: number): string {
 const importInput = ref<HTMLInputElement | null>(null);
 const busyBackup = ref(false);
 
-async function doExportBackup(): Promise<void> {
+function backupStamp(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+async function doExportJson(): Promise<void> {
   busyBackup.value = true;
   try {
-    const json = await exportBackup();
-    const stamp = new Date().toISOString().slice(0, 10);
-    await saveTextFile(`zolltool_backup_${stamp}.json`, json, 'application/json');
+    const json = await exportBackupJson();
+    await saveTextFile(`zolltool_backup_${backupStamp()}.json`, json, 'application/json');
+  } catch (err) {
+    showToast(`Backup failed: ${err}`, 'error');
+  } finally {
+    busyBackup.value = false;
+  }
+}
+
+async function doExportZip(): Promise<void> {
+  busyBackup.value = true;
+  try {
+    // Streamed: photos pass through one at a time, so big backups can't OOM
+    // the WebView (the old all-in-memory export crashed Android 7 tablets).
+    const writer = await createFileWriter(`zolltool_backup_${backupStamp()}.zip`, 'application/zip');
+    if (!writer) return; // user cancelled the save dialog
+    try {
+      await exportBackupZipTo(writer);
+      await writer.close();
+    } catch (err) {
+      await writer.abort();
+      throw err;
+    }
   } catch (err) {
     showToast(`Backup failed: ${err}`, 'error');
   } finally {
@@ -135,7 +237,10 @@ async function onImportFile(e: Event): Promise<void> {
   if (!file) return;
   busyBackup.value = true;
   try {
-    const counts = await importBackup(await file.text());
+    const isZip = file.name.toLowerCase().endsWith('.zip') || file.type === 'application/zip';
+    const counts = isZip
+      ? await importBackupZip(new Uint8Array(await file.arrayBuffer()))
+      : await importBackup(await file.text());
     showToast(
       `Imported ${counts.events} events, ${counts.products} products, ${counts.transactions} sales`,
       'success',
@@ -158,19 +263,19 @@ async function onImportFile(e: Event): Promise<void> {
       <label class="block text-sm">
         <span class="text-slate-400">Device name</span>
         <input
-          :value="settings.deviceName"
+          v-model="deviceNameDraft"
           placeholder="e.g. Wolf's tablet"
           class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2"
-          @change="settings.setDeviceName(($event.target as HTMLInputElement).value)"
+          @change="saveDeviceName"
         />
       </label>
       <label class="mt-3 block text-sm">
         <span class="text-slate-400">Default currency (prefilled for new events)</span>
         <input
-          :value="settings.defaultCurrency"
+          v-model="currencyDraft"
           placeholder="CHF"
           class="mt-1 w-24 rounded-lg bg-slate-800 px-3 py-2 uppercase"
-          @change="settings.setDefaultCurrency(($event.target as HTMLInputElement).value)"
+          @change="saveCurrency"
         />
       </label>
       <p class="mt-2 text-xs text-slate-500">Device ID: {{ settings.deviceId }}</p>
@@ -277,17 +382,25 @@ async function onImportFile(e: Event): Promise<void> {
     <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
       <h2 class="mb-2 text-sm font-semibold text-slate-300">Backup</h2>
       <p class="mb-3 text-xs text-slate-500">
-        Export everything (events, products, sales, discounts, photos) as one JSON file, or restore
-        from a backup. Importing merges by id — it never deletes existing data. JSON files saved by
-        the old ZollTool are accepted too and become a new event.
+        Export your data as a <strong>JSON</strong> file (events, products, sales, discounts — small
+        and quick, no photos), or as a full <strong>ZIP</strong> that also bundles every product
+        photo. Import accepts either, plus JSON saved by the old ZollTool. Importing merges by id — it
+        never deletes existing data.
       </p>
       <div class="flex flex-wrap gap-2">
         <button
           class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
           :disabled="busyBackup"
-          @click="doExportBackup"
+          @click="doExportJson"
         >
-          Export backup
+          Export JSON
+        </button>
+        <button
+          class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
+          :disabled="busyBackup"
+          @click="doExportZip"
+        >
+          Export ZIP (with photos)
         </button>
         <button
           class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
@@ -296,7 +409,13 @@ async function onImportFile(e: Event): Promise<void> {
         >
           Import backup
         </button>
-        <input ref="importInput" type="file" accept="application/json,.json" class="hidden" @change="onImportFile" />
+        <input
+          ref="importInput"
+          type="file"
+          accept="application/json,.json,application/zip,.zip"
+          class="hidden"
+          @change="onImportFile"
+        />
       </div>
     </section>
 
@@ -336,6 +455,12 @@ async function onImportFile(e: Event): Promise<void> {
             @click="syncNow"
           >
             Sync now
+          </button>
+          <button
+            class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700"
+            @click="openShareQr"
+          >
+            📱 Share login (QR)
           </button>
           <RouterLink
             v-if="settings.syncUser.role === 'owner'"
@@ -416,6 +541,15 @@ async function onImportFile(e: Event): Promise<void> {
           >
             {{ authBusy ? 'Connecting…' : authMode === 'login' ? 'Log in' : 'Create account' }}
           </button>
+          <button
+            type="button"
+            class="w-full rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
+            :disabled="authBusy"
+            @click="scanInput?.click()"
+          >
+            📷 Scan connect QR from another device
+          </button>
+          <input ref="scanInput" type="file" accept="image/*" capture="environment" class="hidden" @change="onScanFile" />
         </form>
       </template>
     </section>
@@ -434,5 +568,40 @@ async function onImportFile(e: Event): Promise<void> {
         Open legacy ZollTool
       </a>
     </section>
+
+    <!-- Quick-connect QR modal -->
+    <ModalShell v-if="showShareQr" title="Share login via QR" @close="showShareQr = false">
+      <div class="space-y-3">
+        <p class="text-xs text-slate-500">
+          Another device can scan this code from its Settings → Server sync form to connect
+          instantly. Your password isn't stored on this device, so enter it once to embed it.
+          <span class="text-amber-400">The code contains the password in plain text — only show it
+          to devices you trust.</span>
+        </p>
+        <p class="text-sm text-slate-300">
+          {{ settings.serverUrl }}<br />
+          {{ settings.syncUser?.email }}
+        </p>
+        <form class="flex gap-2" @submit.prevent="generateShareQr">
+          <input
+            v-model="shareQrPassword"
+            type="password"
+            autocomplete="current-password"
+            placeholder="Account password"
+            class="min-w-0 flex-1 rounded-lg bg-slate-800 px-3 py-2 text-sm"
+          />
+          <button
+            type="submit"
+            class="shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+            :disabled="!shareQrPassword"
+          >
+            Generate
+          </button>
+        </form>
+        <div v-if="shareQrImg" class="flex justify-center rounded-xl bg-white p-3">
+          <img :src="shareQrImg" alt="Connect QR code" class="h-64 w-64 [image-rendering:pixelated]" />
+        </div>
+      </div>
+    </ModalShell>
   </div>
 </template>
