@@ -2,6 +2,7 @@ import type { PaymentProvider, PaymentProviderId } from './provider';
 import { manualProvider } from './manual';
 import { myposGo2Provider } from './mypos-go2';
 import { myposCarbonProvider } from './mypos-carbon';
+import { myposGlassProvider } from './mypos-glass';
 import { bridgeProvider, bridgeConnection } from './bridge-ws';
 import { sumupProvider } from './sumup';
 
@@ -9,6 +10,7 @@ const providers: PaymentProvider[] = [
   manualProvider,
   myposGo2Provider,
   myposCarbonProvider,
+  myposGlassProvider,
   bridgeProvider,
   sumupProvider,
 ];

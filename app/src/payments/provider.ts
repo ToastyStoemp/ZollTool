@@ -1,4 +1,4 @@
-export type PaymentProviderId = 'manual' | 'mypos-go2' | 'mypos-carbon' | 'bridge' | 'sumup';
+export type PaymentProviderId = 'manual' | 'mypos-go2' | 'mypos-carbon' | 'mypos-glass' | 'bridge' | 'sumup';
 
 export interface ProviderStatus {
   connected: boolean;

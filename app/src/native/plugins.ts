@@ -72,6 +72,12 @@ export interface NativeReceiptLine {
   imageB64?: string;
 }
 
+export interface GlassPaymentPluginApi {
+  /** connected = the myPOS Glass app is installed on this phone. */
+  getStatus(): Promise<{ connected: boolean; detail?: string }>;
+  startPayment(options: { amount: number; currency: string }): Promise<NativePaymentResult>;
+}
+
 export interface ThermalPrinterPluginApi {
   /** Bonded Bluetooth devices; requests the BT permission on Android 12+. */
   listPrinters(): Promise<{ printers: Array<{ name: string; address: string }> }>;
@@ -83,6 +89,7 @@ export interface ThermalPrinterPluginApi {
 
 export const MyPos = registerPlugin<MyPosPluginApi>('MyPos');
 export const CarbonPayment = registerPlugin<CarbonPaymentPluginApi>('CarbonPayment');
+export const GlassPayment = registerPlugin<GlassPaymentPluginApi>('GlassPayment');
 export const ThermalPrinter = registerPlugin<ThermalPrinterPluginApi>('ThermalPrinter');
 export const FileShare = registerPlugin<FileSharePluginApi>('FileShare');
 export const SumUp = registerPlugin<SumUpPluginApi>('SumUp');

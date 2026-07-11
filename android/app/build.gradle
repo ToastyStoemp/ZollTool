@@ -69,6 +69,8 @@ dependencies {
     implementation 'com.mypos:slavesdk:2.1.8'
     implementation 'org.java-websocket:Java-WebSocket:1.5.4'
     fullImplementation 'com.sumup:merchant-sdk:7.1.0'
+    // myPOS Glass softPOS (tap-to-pay via the Glass app on the same phone)
+    fullImplementation 'com.mypos:glasssdk:1.0.6'
     carbonImplementation 'com.mypos:mypossmartsdk:1.0.8'
     // Receipt printing: PrinterCommand lists are serialized to JSON for the myPOS print broadcast
     carbonImplementation 'com.google.code.gson:gson:2.11.0'

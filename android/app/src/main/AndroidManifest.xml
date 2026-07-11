@@ -2,9 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!-- Package visibility (Android 11+): the carbon flavor talks to the myPOS
-         payment core; other flavors simply never query it. -->
+         payment core, the full flavor to the myPOS Glass softPOS app; flavors
+         that don't ship the respective SDK simply never query these. -->
     <queries>
         <package android:name="com.mypos" />
+        <package android:name="com.mypos.top" />
     </queries>
 
     <application
