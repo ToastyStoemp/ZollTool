@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
-import type { PaymentLeg, PaymentMethod, Product } from '@zolltool/shared';
+import type { PaymentLeg, PaymentMethod, Product, Transaction } from '@zolltool/shared';
 import { useDataStore } from '@/stores/data';
 import { useSettingsStore } from '@/stores/settings';
 import { useCartStore } from '@/stores/cart';
@@ -9,9 +9,10 @@ import { cashShortcutAmounts, splitCashPortionAmounts } from '@/lib/cash';
 import { fmtPrice, round2 } from '@/lib/money';
 import { showToast } from '@/lib/toast';
 import { getProvider } from '@/payments/registry';
+import { revertTransaction } from '@/db/repo';
 import { MyPos, hasNativePlugin } from '@/native/plugins';
 import { buildReceiptLines, loadReceiptConfig, printReceipt, printingAvailable } from '@/lib/receipt';
-import { ArrowLeft, ChartLine, CreditCard, ShoppingCart, X } from 'lucide-vue-next';
+import { ArrowLeft, ChartLine, Check, CreditCard, Printer, ShoppingCart, Undo2, X } from 'lucide-vue-next';
 import ModalShell from '@/components/ModalShell.vue';
 import ProductThumb from '@/components/ProductThumb.vue';
 
@@ -166,6 +167,65 @@ function bundleQtys(p: Product, vid: string | null = null): number[] {
 /** Quick-add a whole bundle (e.g. the "3 for 10" tier) in one tap. */
 function addBundle(pid: string, vid: string | null, qty: number): void {
   cart.setQty(vid ? `${pid}:${vid}` : pid, cart.inCart(pid, vid) + qty);
+}
+
+/** Variant products show their cheapest price instead of an opaque "⋯". */
+function fromPrice(p: Product): string {
+  const min = Math.min(...p.variants.map((v) => v.price ?? p.price));
+  return `from ${fmtPrice(min, data.currency)}`;
+}
+
+// ── Last sale: undo fat-fingered checkouts and reprint right at the counter ──
+const lastSale = ref<Transaction | null>(null);
+const canPrintReceipt = ref(false);
+void printingAvailable().then((ok) => (canPrintReceipt.value = ok));
+
+async function undoLastSale(): Promise<void> {
+  if (!lastSale.value) return;
+  await revertTransaction(lastSale.value.id);
+  lastSale.value = null;
+  showToast('Sale reverted — stock restored', 'info');
+}
+
+async function printLastSale(): Promise<void> {
+  if (!lastSale.value) return;
+  try {
+    const config = await loadReceiptConfig();
+    const lines = buildReceiptLines(lastSale.value, data.activeEvent?.name ?? '', config);
+    const result = await printReceipt(lines);
+    showToast(result.printed ? 'Receipt printed' : `Receipt: ${result.error ?? 'print failed'}`, result.printed ? 'success' : 'error');
+  } catch (err) {
+    showToast(`Receipt: ${err instanceof Error ? err.message : err}`, 'error');
+  }
+}
+
+/** Today's non-reverted sales for the active event — the header tally. */
+const todayStats = computed(() => {
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  let count = 0;
+  let revenue = 0;
+  for (const tx of data.eventTransactions) {
+    if (tx.revertedBy || tx.timestamp < start.getTime()) continue;
+    count++;
+    revenue += tx.total;
+  }
+  return { count, revenue };
+});
+
+// ── Two-tap cart clear: one stray tap must not wipe a big cart ──────────────
+const clearArmed = ref(false);
+let clearTimer: number | undefined;
+function tapClear(): void {
+  if (!clearArmed.value) {
+    clearArmed.value = true;
+    window.clearTimeout(clearTimer);
+    clearTimer = window.setTimeout(() => (clearArmed.value = false), 3000);
+    return;
+  }
+  window.clearTimeout(clearTimer);
+  clearArmed.value = false;
+  cart.clear();
 }
 
 function stockLabel(pid: string, vid: string | null): { text: string; cls: string } {
@@ -380,6 +440,7 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
   const tx = await cart.checkout(payment.method, legs);
   payment.phase = 'idle';
   showCartSheet.value = false;
+  lastSale.value = tx;
   showToast(`Payment confirmed — ${count} item${count !== 1 ? 's' : ''} sold`, 'success');
   void maybePrintReceipt(tx);
 }
@@ -427,6 +488,10 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
           </RouterLink>
           <div class="min-w-0">
             <h1 class="truncate text-sm font-semibold text-emerald-400">{{ data.activeEvent.name }}</h1>
+            <p class="truncate text-[10px] leading-tight text-slate-500">
+              Today {{ todayStats.count }} sale{{ todayStats.count === 1 ? '' : 's' }} ·
+              {{ fmtPrice(todayStats.revenue, data.currency) }}
+            </p>
           </div>
           <RouterLink
             :to="{ path: '/history', query: { event: data.activeEvent.id, from: 'pos' } }"
@@ -475,6 +540,36 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
             </button>
           </div>
         </header>
+
+        <!-- Last sale: undo / reprint without leaving the counter -->
+        <div
+          v-if="lastSale"
+          class="flex items-center gap-2 border-b border-emerald-900/60 bg-emerald-950/40 px-4 py-1.5 text-sm"
+        >
+          <Check class="h-4 w-4 shrink-0 text-emerald-400" />
+          <span class="min-w-0 truncate text-emerald-300">
+            {{ fmtPrice(lastSale.total, lastSale.currency) }} ·
+            {{ lastSale.items.reduce((s, i) => s + i.qty, 0) }} item{{ lastSale.items.reduce((s, i) => s + i.qty, 0) === 1 ? '' : 's' }}
+          </span>
+          <div class="ml-auto flex shrink-0 items-center gap-1.5">
+            <button
+              v-if="canPrintReceipt"
+              class="flex items-center gap-1.5 rounded-lg bg-slate-800 px-2.5 py-1 text-xs font-medium hover:bg-slate-700"
+              @click="printLastSale"
+            >
+              <Printer class="h-3.5 w-3.5" /> Receipt
+            </button>
+            <button
+              class="flex items-center gap-1.5 rounded-lg bg-slate-800 px-2.5 py-1 text-xs font-medium text-amber-300 hover:bg-slate-700"
+              @click="undoLastSale"
+            >
+              <Undo2 class="h-3.5 w-3.5" /> Undo
+            </button>
+            <button class="rounded-lg px-1.5 py-1 text-slate-500 hover:bg-slate-800" @click="lastSale = null">
+              <X class="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
 
         <div class="grid flex-1 auto-rows-min grid-cols-2 gap-2 overflow-y-auto overflow-x-hidden p-3 sm:grid-cols-3 lg:grid-cols-4">
           <template v-for="e in gridEntries" :key="e.key">
@@ -539,7 +634,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
             <span class="mt-auto flex w-full items-center justify-between pt-1 text-xs">
               <span :class="stockLabel(p.id, null).cls">{{ stockLabel(p.id, null).text }}</span>
               <span class="font-semibold text-slate-200">
-                {{ p.variants.length ? '⋯' : fmtPrice(p.price, data.currency) }}
+                {{ p.variants.length ? fromPrice(p) : fmtPrice(p.price, data.currency) }}
               </span>
             </span>
           </button>
@@ -575,10 +670,11 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
           <div class="flex gap-2">
             <button
               v-if="cart.itemCount"
-              class="text-xs text-slate-400 hover:text-red-400"
-              @click="cart.clear()"
+              class="text-xs"
+              :class="clearArmed ? 'font-semibold text-red-400' : 'text-slate-400 hover:text-red-400'"
+              @click="tapClear"
             >
-              Clear
+              {{ clearArmed ? 'Really clear?' : 'Clear' }}
             </button>
             <button class="text-slate-400 md:hidden" @click="showCartSheet = false"><X class="h-5 w-5" /></button>
           </div>
@@ -718,7 +814,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
           <span class="mt-auto flex w-full items-center justify-between pt-1 text-xs">
             <span :class="stockLabel(p.id, null).cls">{{ stockLabel(p.id, null).text }}</span>
             <span class="font-semibold text-slate-200">
-              {{ p.variants.length ? '⋯' : fmtPrice(p.price, data.currency) }}
+              {{ p.variants.length ? fromPrice(p) : fmtPrice(p.price, data.currency) }}
             </span>
           </span>
         </button>

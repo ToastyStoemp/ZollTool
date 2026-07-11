@@ -4,10 +4,21 @@ import { useRoute } from 'vue-router';
 import { CalendarDays, ChartLine, Package, Settings } from 'lucide-vue-next';
 import { toasts } from '@/lib/toast';
 import { useSettingsStore } from '@/stores/settings';
+import { syncState } from '@/sync/engine';
 import OnboardingWizard from '@/components/OnboardingWizard.vue';
 
 const route = useRoute();
 const settings = useSettingsStore();
+
+// At-a-glance sync health: amber = changes waiting, red = last sync failed.
+const syncBadge = computed<null | { cls: string; title: string }>(() => {
+  if (!settings.syncUser) return null;
+  if (syncState.lastError) return { cls: 'bg-red-500', title: `Sync offline — ${syncState.lastError}` };
+  if (syncState.pendingOps > 0) {
+    return { cls: 'bg-amber-400', title: `${syncState.pendingOps} change(s) waiting to sync` };
+  }
+  return null;
+});
 
 // Selling and customs are reached through an event (Events tab) so it's
 // always clear which event they apply to.
@@ -30,6 +41,7 @@ const chromeHidden = computed(() => route.name === 'pos');
     <aside v-if="!chromeHidden" class="hidden w-52 shrink-0 flex-col border-r border-slate-800 bg-slate-900 md:flex">
       <div class="flex items-center gap-2 px-4 py-5">
         <span class="text-xl font-bold tracking-tight text-emerald-400">ZollTool</span>
+        <span v-if="syncBadge" class="h-2 w-2 rounded-full" :class="syncBadge.cls" :title="syncBadge.title" />
       </div>
       <nav class="flex flex-1 flex-col gap-1 px-2">
         <RouterLink
@@ -59,7 +71,14 @@ const chromeHidden = computed(() => route.name === 'pos');
         class="flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] text-slate-400"
         :class="{ 'text-emerald-400': route.path.startsWith(item.to) }"
       >
-        <component :is="item.icon" class="h-5 w-5" />
+        <span class="relative">
+          <component :is="item.icon" class="h-5 w-5" />
+          <span
+            v-if="syncBadge && item.to === '/settings'"
+            class="absolute -right-1 -top-0.5 h-2 w-2 rounded-full"
+            :class="syncBadge.cls"
+          />
+        </span>
         <span>{{ item.label }}</span>
       </RouterLink>
     </nav>
