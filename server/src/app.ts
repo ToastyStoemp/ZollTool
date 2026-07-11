@@ -1,6 +1,9 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
 import Fastify, { type FastifyInstance } from 'fastify';
 import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
+import fastifyStatic from '@fastify/static';
 import type Database from 'better-sqlite3';
 import { openDb } from './db';
 import { authenticate, registerAuthRoutes, seedOwner } from './auth';
@@ -20,6 +23,12 @@ export interface BuildOptions {
   dataDir: string;
   jwtSecret: string;
   logger?: boolean;
+  /**
+   * Directory with the built web app (app/dist). When it exists, the SPA is
+   * served at / so the tool can be used straight from a browser against this
+   * server. The app uses hash routing, so no history rewrites are needed.
+   */
+  webDir?: string;
 }
 
 export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
@@ -41,6 +50,11 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   registerAdminRoutes(app, db);
 
   app.get('/api/health', async () => ({ ok: true, ts: Date.now() }));
+
+  if (opts.webDir && existsSync(join(opts.webDir, 'index.html'))) {
+    await app.register(fastifyStatic, { root: opts.webDir });
+    app.log.info(`Serving web app from ${opts.webDir}`);
+  }
 
   app.addHook('onClose', async () => db.close());
   return app;

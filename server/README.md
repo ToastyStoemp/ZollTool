@@ -22,6 +22,11 @@ The server listens on port 8787 (HTTP + WebSocket). Put a TLS-terminating revers
 (Caddy, nginx, Traefik) in front of it for internet use. All state lives in `server/data/`
 (SQLite database + image files) — back that folder up.
 
+The Docker image also bundles the **web app**: browse to the server URL, log in, and use
+ZollTool (POS, catalog, history, admin) straight from the browser — handy for managing the
+catalog from a desktop. Outside Docker, the server serves whatever `WEB_DIR` points to
+(default `../app/dist`, i.e. run `npm run build` first); without a build it's API-only.
+
 ## Accounts
 
 - The **owner** account is seeded from `OWNER_EMAIL` / `OWNER_PASSWORD` on first boot.
