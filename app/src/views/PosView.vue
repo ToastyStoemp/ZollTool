@@ -143,6 +143,30 @@ function addToCart(pid: string, vid: string | null): void {
   cart.add(pid, vid);
 }
 
+/**
+ * Tier quantities of tiered discount rules targeting this product (or one
+ * specific variant) — they drive the "+3 / +5" quick-add bundle chips, so only
+ * products that actually have such a discount get them.
+ */
+function bundleQtys(p: Product, vid: string | null = null): number[] {
+  const qtys = new Set<number>();
+  for (const rule of data.discounts) {
+    if (rule.type !== 'tiered' || !rule.tiers?.length) continue;
+    const matches =
+      rule.productIds.includes(p.id) ||
+      (!!p.type && (rule.productTypes ?? []).includes(p.type)) ||
+      (vid !== null && rule.variantIds.includes(`${p.id}:${vid}`));
+    if (!matches) continue;
+    for (const t of rule.tiers) if (t.qty > 1) qtys.add(t.qty);
+  }
+  return [...qtys].sort((a, b) => a - b).slice(0, 3);
+}
+
+/** Quick-add a whole bundle (e.g. the "3 for 10" tier) in one tap. */
+function addBundle(pid: string, vid: string | null, qty: number): void {
+  cart.setQty(vid ? `${pid}:${vid}` : pid, cart.inCart(pid, vid) + qty);
+}
+
 function stockLabel(pid: string, vid: string | null): { text: string; cls: string } {
   const left = cart.remaining(pid, vid);
   if (left < 0) return { text: `${-left} over stock`, cls: 'text-red-400' };
@@ -497,6 +521,18 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
               <span class="line-clamp-2 text-sm font-semibold">{{ p.title || '(untitled)' }}</span>
             </span>
             <span v-if="p.sku" class="text-[11px] text-slate-500">{{ p.sku }}</span>
+            <!-- Bundle quick-add, derived from the product's tiered discount (spans: no nested buttons) -->
+            <span v-if="!p.variants.length && bundleQtys(p).length" class="flex flex-wrap gap-1.5 pt-1">
+              <span
+                v-for="q in bundleQtys(p)"
+                :key="q"
+                role="button"
+                class="rounded-md bg-emerald-950 px-2 py-1 text-[11px] font-bold text-emerald-400 ring-1 ring-emerald-800 active:bg-emerald-900"
+                @click.stop="addBundle(p.id, null, q)"
+              >
+                +{{ q }}
+              </span>
+            </span>
             <span class="mt-auto flex w-full items-center justify-between pt-1 text-xs">
               <span :class="stockLabel(p.id, null).cls">{{ stockLabel(p.id, null).text }}</span>
               <span class="font-semibold text-slate-200">
@@ -662,6 +698,17 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
             <span class="line-clamp-2 text-sm font-semibold">{{ p.title || '(untitled)' }}</span>
           </span>
           <span v-if="p.sku" class="text-[11px] text-slate-500">{{ p.sku }}</span>
+          <span v-if="!p.variants.length && bundleQtys(p).length" class="flex flex-wrap gap-1.5 pt-1">
+            <span
+              v-for="q in bundleQtys(p)"
+              :key="q"
+              role="button"
+              class="rounded-md bg-emerald-950 px-2 py-1 text-[11px] font-bold text-emerald-400 ring-1 ring-emerald-800 active:bg-emerald-900"
+              @click.stop="addBundle(p.id, null, q)"
+            >
+              +{{ q }}
+            </span>
+          </span>
           <span class="mt-auto flex w-full items-center justify-between pt-1 text-xs">
             <span :class="stockLabel(p.id, null).cls">{{ stockLabel(p.id, null).text }}</span>
             <span class="font-semibold text-slate-200">
@@ -697,6 +744,17 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
           <ProductThumb v-if="v.imageId" :image-id="v.imageId" :type="variantPickerProduct.type" />
           <span class="text-sm font-semibold">{{ v.name || '(untitled)' }}</span>
           <span v-if="v.sku" class="text-[11px] text-slate-500">{{ v.sku }}</span>
+          <span v-if="bundleQtys(variantPickerProduct, v.id).length" class="flex flex-wrap gap-1.5 pt-1">
+            <span
+              v-for="q in bundleQtys(variantPickerProduct, v.id)"
+              :key="q"
+              role="button"
+              class="rounded-md bg-emerald-950 px-2 py-1 text-[11px] font-bold text-emerald-400 ring-1 ring-emerald-800 active:bg-emerald-900"
+              @click.stop="addBundle(variantPickerProduct!.id, v.id, q)"
+            >
+              +{{ q }}
+            </span>
+          </span>
           <span class="flex w-full items-center justify-between pt-1 text-xs">
             <span :class="stockLabel(variantPickerProduct!.id, v.id).cls">
               {{ stockLabel(variantPickerProduct!.id, v.id).text }}
