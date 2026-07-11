@@ -122,10 +122,10 @@ class MyPosPlugin : Plugin(), POSInfoListener, ConnectionListener, POSReadyListe
             IntentFilter(BluetoothDevice.ACTION_ACL_DISCONNECTED), ContextCompat.RECEIVER_EXPORTED,
         )
 
-        // Put Android into connectable state so the GO2 can find us — but only once
-        // the BT permissions are actually granted, otherwise the SDK's scan throws
-        // SecurityException and crashes. The user grants them via the Connect button.
-        if (hasBtPermissions()) connectSafely()
+        // No auto-connect here: load() runs on every app start in every flavor,
+        // but whether the GO2 is actually the selected payment provider lives in
+        // the web app's settings. The JS side calls connectTerminal() when (and
+        // only when) the MyPOS GO2 provider is active.
     }
 
     override fun handleOnDestroy() {
