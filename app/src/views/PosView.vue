@@ -26,7 +26,7 @@ const showDiscountForm = ref(false);
 const discountForm = reactive({ type: 'amount' as 'amount' | 'percent', value: '', name: '' });
 
 // ── Payment state ──────────────────────────────────────────────────────────
-type PayPhase = 'idle' | 'confirm' | 'terminal' | 'done';
+type PayPhase = 'idle' | 'confirm' | 'terminal' | 'failed' | 'done';
 const payment = reactive({
   phase: 'idle' as PayPhase,
   method: 'cash' as PaymentMethod,
@@ -307,14 +307,22 @@ async function runTerminalPayment(): Promise<void> {
       ]);
       showToast(`Card approved${result.cardBrand ? ' · ' + result.cardBrand : ''}`, 'success');
     } else {
-      payment.phase = 'idle';
-      showToast(result.error || 'Card payment declined', 'error');
+      // Keep the modal open so the seller can retry the card or complete the
+      // sale manually (e.g. the customer pays cash instead).
+      payment.terminalError = result.error || 'Card payment declined';
+      payment.phase = 'failed';
     }
   } catch (err) {
     if (payment.phase !== 'terminal') return;
-    payment.phase = 'idle';
-    showToast(`Terminal: ${err instanceof Error ? err.message : err}`, 'error');
+    payment.terminalError = err instanceof Error ? err.message : String(err);
+    payment.phase = 'failed';
   }
+}
+
+function retryTerminal(): void {
+  payment.terminalError = '';
+  payment.phase = 'terminal';
+  void runTerminalPayment();
 }
 
 async function cancelPayment(): Promise<void> {
@@ -784,6 +792,15 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
           <p class="text-xs text-slate-500">{{ activeProvider.label }}</p>
         </template>
 
+        <!-- Terminal declined / failed -->
+        <template v-else-if="payment.phase === 'failed'">
+          <p class="text-sm font-semibold text-red-400">Card payment didn't go through</p>
+          <p v-if="payment.terminalError" class="text-xs text-slate-400">{{ payment.terminalError }}</p>
+          <p class="text-xs text-slate-500">
+            Retry the card, or complete the sale manually if it was paid another way.
+          </p>
+        </template>
+
         <!-- Cash -->
         <template v-else-if="payment.method === 'cash'">
           <div class="flex flex-wrap justify-center gap-2">
@@ -902,7 +919,14 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
             Confirm sale
           </button>
           <button
-            v-if="payment.phase === 'terminal'"
+            v-if="payment.phase === 'failed'"
+            class="rounded-lg bg-sky-600 px-4 py-2 text-sm font-semibold text-white"
+            @click="retryTerminal"
+          >
+            Retry card
+          </button>
+          <button
+            v-if="payment.phase === 'terminal' || payment.phase === 'failed'"
             class="rounded-lg bg-slate-700 px-4 py-2 text-sm"
             @click="
               payment.phase = 'confirm';
