@@ -12,7 +12,7 @@ import { getProvider } from '@/payments/registry';
 import { revertTransaction } from '@/db/repo';
 import { MyPos, hasNativePlugin } from '@/native/plugins';
 import { buildReceiptLines, loadReceiptConfig, printReceipt, printingAvailable } from '@/lib/receipt';
-import { ArrowLeft, ChartLine, Check, CreditCard, Printer, ShoppingCart, Undo2, X } from 'lucide-vue-next';
+import { ArrowLeft, ChartLine, Check, CreditCard, Monitor, Printer, ShoppingCart, Undo2, X } from 'lucide-vue-next';
 import ModalShell from '@/components/ModalShell.vue';
 import ProductThumb from '@/components/ProductThumb.vue';
 
@@ -235,6 +235,29 @@ function stockLabel(pid: string, vid: string | null): { text: string; cls: strin
   if (left <= 3) return { text: `${left} left`, cls: 'text-amber-400' };
   return { text: `${left} in stock`, cls: 'text-slate-400' };
 }
+
+// ── Misc sale: one-off items that aren't in the catalog ────────────────────
+const showMiscForm = ref(false);
+const miscForm = reactive({ title: '', price: '', qty: '1' });
+
+function openMiscForm(): void {
+  Object.assign(miscForm, { title: '', price: '', qty: '1' });
+  showMiscForm.value = true;
+}
+
+function addMiscItem(): void {
+  const price = parseFloat(miscForm.price);
+  const qty = Math.max(1, Math.floor(Number(miscForm.qty)) || 1);
+  if (!Number.isFinite(price) || price <= 0) {
+    showToast('Enter a price for the item.', 'error');
+    return;
+  }
+  cart.addMisc(miscForm.title, round2(price), qty);
+  showMiscForm.value = false;
+}
+
+// ── Customer display: fullscreen cart + total facing the customer ──────────
+const showCustomerView = ref(false);
 
 // ── Discount form ──────────────────────────────────────────────────────────
 function openDiscountForm(): void {
@@ -500,6 +523,13 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
           >
             <ChartLine class="h-4 w-4" />
           </RouterLink>
+          <button
+            class="shrink-0 rounded-lg px-1.5 py-1.5 text-slate-400 hover:bg-slate-800"
+            title="Customer display"
+            @click="showCustomerView = true"
+          >
+            <Monitor class="h-4 w-4" />
+          </button>
           <!-- Card reader connection state (hidden for manual entry) -->
           <button
             v-if="showTerminalState"
@@ -734,13 +764,21 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
               <span>Total</span><span>{{ fmtPrice(cart.totals.grandTotal, data.currency) }}</span>
             </div>
           </div>
-          <button
-            class="w-full rounded-lg bg-slate-800 py-2 text-xs font-medium text-slate-300 hover:bg-slate-700 disabled:opacity-40"
-            :disabled="!cart.itemCount"
-            @click="openDiscountForm"
-          >
-            {{ cart.customDiscount ? 'Edit discount' : '+ Discount' }}
-          </button>
+          <div class="flex gap-2">
+            <button
+              class="flex-1 rounded-lg bg-slate-800 py-2 text-xs font-medium text-slate-300 hover:bg-slate-700 disabled:opacity-40"
+              :disabled="!cart.itemCount"
+              @click="openDiscountForm"
+            >
+              {{ cart.customDiscount ? 'Edit discount' : '+ Discount' }}
+            </button>
+            <button
+              class="flex-1 rounded-lg bg-slate-800 py-2 text-xs font-medium text-slate-300 hover:bg-slate-700"
+              @click="openMiscForm"
+            >
+              + Misc item
+            </button>
+          </div>
           <div class="grid grid-cols-3 gap-2">
             <button
               class="rounded-lg bg-emerald-600 py-2.5 text-sm font-bold text-white disabled:opacity-40"
@@ -868,6 +906,75 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
         </button>
       </div>
     </ModalShell>
+
+    <!-- Misc item -->
+    <ModalShell v-if="showMiscForm" title="Misc item" @close="showMiscForm = false">
+      <div class="space-y-3">
+        <p class="text-xs text-slate-500">
+          Sell something that isn't in the catalog (commission, old stock, …). No stock is tracked
+          and discounts don't apply.
+        </p>
+        <input
+          v-model="miscForm.title"
+          placeholder="Description (e.g. Commission)"
+          class="w-full rounded-lg bg-slate-800 px-3 py-2"
+        />
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block text-sm">
+            <span class="text-slate-400">Price ({{ data.currency }})</span>
+            <input v-model="miscForm.price" type="number" min="0" step="0.05" inputmode="decimal" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          </label>
+          <label class="block text-sm">
+            <span class="text-slate-400">Quantity</span>
+            <input v-model="miscForm.qty" type="number" min="1" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          </label>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <button class="rounded-lg bg-slate-800 px-4 py-2 text-sm" @click="showMiscForm = false">Cancel</button>
+          <button class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white" @click="addMiscItem">
+            Add to cart
+          </button>
+        </div>
+      </template>
+    </ModalShell>
+
+    <!-- Customer display: big, uncluttered, meant to face the customer -->
+    <div
+      v-if="showCustomerView"
+      class="fixed inset-0 z-[80] flex flex-col bg-slate-950 p-8 pt-[calc(2rem_+_var(--safe-top))]"
+      @click="showCustomerView = false"
+    >
+      <p class="text-center text-lg text-slate-400">{{ data.activeEvent?.name }}</p>
+      <div class="mx-auto mt-6 w-full max-w-xl flex-1 space-y-3 overflow-y-auto">
+        <div v-for="l in cart.lines" :key="l.pid + ':' + (l.vid || '')" class="flex justify-between text-xl">
+          <span class="min-w-0 truncate">
+            {{ l.qty }} × {{ l.title }}<span v-if="l.variantLabel" class="text-slate-400"> · {{ l.variantLabel }}</span>
+          </span>
+          <span class="shrink-0 pl-4 font-semibold">{{ fmtPrice(l.lineTotal, data.currency) }}</span>
+        </div>
+        <div
+          v-for="r in cart.totals.ruleDiscounts"
+          :key="r.rule.id"
+          class="flex justify-between text-xl text-emerald-400"
+        >
+          <span>{{ r.rule.name }}</span><span>− {{ fmtPrice(r.amount, data.currency) }}</span>
+        </div>
+        <div v-if="cart.totals.customDiscountAmount" class="flex justify-between text-xl text-emerald-400">
+          <span>{{ cart.customDiscount?.name || 'Discount' }}</span>
+          <span>− {{ fmtPrice(cart.totals.customDiscountAmount, data.currency) }}</span>
+        </div>
+        <p v-if="!cart.lines.length" class="pt-12 text-center text-2xl text-slate-500">Welcome!</p>
+      </div>
+      <div class="mx-auto w-full max-w-xl border-t border-slate-700 pt-4">
+        <div class="flex items-baseline justify-between">
+          <span class="text-2xl text-slate-300">Total</span>
+          <span class="text-5xl font-bold text-emerald-400">{{ fmtPrice(cart.totals.grandTotal, data.currency) }}</span>
+        </div>
+        <p class="mt-3 text-center text-xs text-slate-600">tap anywhere to return</p>
+      </div>
+    </div>
 
     <!-- Custom discount -->
     <ModalShell v-if="showDiscountForm" title="Cart discount" @close="showDiscountForm = false">

@@ -24,9 +24,27 @@ export const useCartStore = defineStore('cart', () => {
   /** stockKey → qty */
   const items = ref<Record<string, number>>({});
   const customDiscount = ref<CustomDiscount | null>(null);
+  /**
+   * One-off items sold outside the catalog (commissions, old stock, …),
+   * keyed "misc:<uuid>". They ride through checkout as normal lines; discount
+   * rules never match them and no stock is tracked.
+   */
+  const miscItems = ref<Record<string, { title: string; price: number; qty: number }>>({});
 
   const lines = computed<CartLine[]>(() => {
     const result: CartLine[] = [];
+    for (const [key, m] of Object.entries(miscItems.value)) {
+      if (!m.qty) continue;
+      result.push({
+        pid: key,
+        vid: null,
+        title: m.title,
+        variantLabel: null,
+        qty: m.qty,
+        unitPrice: m.price,
+        lineTotal: m.price * m.qty,
+      });
+    }
     for (const [key, qty] of Object.entries(items.value)) {
       if (!qty) continue;
       const { pid, vid } = parseCartKey(key);
@@ -54,7 +72,11 @@ export const useCartStore = defineStore('cart', () => {
     return result;
   });
 
-  const itemCount = computed(() => Object.values(items.value).reduce((s, q) => s + q, 0));
+  const itemCount = computed(
+    () =>
+      Object.values(items.value).reduce((s, q) => s + q, 0) +
+      Object.values(miscItems.value).reduce((s, m) => s + m.qty, 0),
+  );
 
   const totals = computed(() =>
     computeCartTotals(lines.value, data.discounts, customDiscount.value),
@@ -79,16 +101,33 @@ export const useCartStore = defineStore('cart', () => {
     items.value = { ...items.value, [key]: (items.value[key] ?? 0) + 1 };
   }
 
+  function addMisc(title: string, price: number, qty = 1): void {
+    miscItems.value = {
+      ...miscItems.value,
+      [`misc:${uuidv7()}`]: { title: title.trim() || 'Misc item', price, qty },
+    };
+  }
+
   function setQty(key: string, qty: number): void {
-    const next = { ...items.value };
-    if (qty <= 0) delete next[key];
-    else next[key] = qty;
-    items.value = next;
-    if (Object.keys(next).length === 0) customDiscount.value = null;
+    if (key.startsWith('misc:')) {
+      const next = { ...miscItems.value };
+      if (qty <= 0) delete next[key];
+      else if (next[key]) next[key] = { ...next[key], qty };
+      miscItems.value = next;
+    } else {
+      const next = { ...items.value };
+      if (qty <= 0) delete next[key];
+      else next[key] = qty;
+      items.value = next;
+    }
+    if (Object.keys(items.value).length === 0 && Object.keys(miscItems.value).length === 0) {
+      customDiscount.value = null;
+    }
   }
 
   function clear(): void {
     items.value = {};
+    miscItems.value = {};
     customDiscount.value = null;
   }
 
@@ -157,6 +196,7 @@ export const useCartStore = defineStore('cart', () => {
     inCart,
     remaining,
     add,
+    addMisc,
     setQty,
     clear,
     checkout,
