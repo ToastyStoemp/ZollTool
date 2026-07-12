@@ -16,6 +16,7 @@ bridge/obj
 bridge/bin
 app/dist/
 server/data/
+server/web/
 /data/
 *.tsbuildinfo
 .codegraph/

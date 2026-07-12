@@ -22,10 +22,27 @@ The server listens on port 8787 (HTTP + WebSocket). Put a TLS-terminating revers
 (Caddy, nginx, Traefik) in front of it for internet use. All state lives in `server/data/`
 (SQLite database + image files) — back that folder up.
 
-The Docker image also bundles the **web app**: browse to the server URL, log in, and use
-ZollTool (POS, catalog, history, admin) straight from the browser — handy for managing the
-catalog from a desktop. Outside Docker, the server serves whatever `WEB_DIR` points to
-(default `../app/dist`, i.e. run `npm run build` first); without a build it's API-only.
+## Web app in the browser
+
+The server serves the built web app at `/` when one is present: browse to the server URL,
+log in, and use ZollTool (POS, catalog, history, admin) from any browser.
+
+The web app is **built on a dev machine, not on the server** — vite on a small cloud
+instance takes tens of minutes, on a PC seconds. Deploying a web-app update therefore
+needs **no docker rebuild**:
+
+```sh
+# on the dev machine, from the repo root
+npm run build
+scp -r app/dist/* user@yourserver:/path/to/ZollTool/server/web/
+```
+
+`server/web/` is mounted read-only into the container as `WEB_DIR=/web`; a browser reload
+picks up the new files immediately. Without a `web/` folder the server is API-only.
+Outside Docker, `WEB_DIR` defaults to `../app/dist`.
+
+Rebuild the image (`docker compose ... up -d --build`) only when **server** code changes —
+that build is small (deps layer is cached and npm downloads are kept in a BuildKit cache).
 
 ## Accounts
 
