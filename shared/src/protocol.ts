@@ -97,6 +97,31 @@ export interface NudgeMessage {
   latestSeq: number;
 }
 
+// ── Customer display (ephemeral cart relay over the sync WS) ────────────────
+
+/** Self-contained cart snapshot a register broadcasts for customer displays. */
+export interface DisplayCart {
+  deviceName: string;
+  eventName: string;
+  currency: string;
+  lines: Array<{ title: string; variantLabel?: string; qty: number; lineTotal: number }>;
+  discounts: Array<{ name: string; amount: number }>;
+  total: number;
+  /** Set right after a completed sale — displays show a thank-you state. */
+  paid?: { total: number };
+  ts: number;
+}
+
+/**
+ * Sent register → server (no `from`), rebroadcast server → account room with
+ * `from` = the register's deviceId. Never persisted.
+ */
+export interface DisplayCartMessage {
+  type: 'display.cart';
+  from?: string;
+  cart: DisplayCart;
+}
+
 // ── Admin (owner-only) ───────────────────────────────────────────────────────
 
 export interface AdminOverview {

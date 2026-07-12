@@ -10,9 +10,10 @@ import { fmtPrice, round2 } from '@/lib/money';
 import { showToast } from '@/lib/toast';
 import { getProvider } from '@/payments/registry';
 import { revertTransaction } from '@/db/repo';
+import { sendDisplayCart } from '@/sync/engine';
 import { MyPos, hasNativePlugin } from '@/native/plugins';
 import { buildReceiptLines, loadReceiptConfig, printReceipt, printingAvailable } from '@/lib/receipt';
-import { ArrowLeft, ChartLine, Check, CreditCard, Monitor, Printer, ShoppingCart, Undo2, X } from 'lucide-vue-next';
+import { ArrowLeft, ChartLine, Check, CreditCard, Printer, ShoppingCart, Undo2, X } from 'lucide-vue-next';
 import ModalShell from '@/components/ModalShell.vue';
 import ProductThumb from '@/components/ProductThumb.vue';
 
@@ -256,8 +257,48 @@ function addMiscItem(): void {
   showMiscForm.value = false;
 }
 
-// ── Customer display: fullscreen cart + total facing the customer ──────────
-const showCustomerView = ref(false);
+// ── Customer display: broadcast the cart to paired display devices ─────────
+// Any other logged-in device in "customer display" mode (Settings → This
+// device) mirrors this register live via the sync server's WebSocket.
+let displayTimer: ReturnType<typeof setTimeout> | null = null;
+let thankYouUntil = 0;
+
+function publishCart(paid?: { total: number }): void {
+  sendDisplayCart({
+    deviceName: settings.deviceName || 'Register',
+    eventName: data.activeEvent?.name ?? '',
+    currency: data.currency,
+    lines: cart.lines.map((l) => ({
+      title: l.title,
+      variantLabel: l.variantLabel ?? undefined,
+      qty: l.qty,
+      lineTotal: l.lineTotal,
+    })),
+    discounts: [
+      ...cart.totals.ruleDiscounts.map((r) => ({ name: r.rule.name, amount: r.amount })),
+      ...(cart.totals.customDiscountAmount > 0.001
+        ? [{ name: cart.customDiscount?.name || 'Discount', amount: cart.totals.customDiscountAmount }]
+        : []),
+    ],
+    total: cart.totals.grandTotal,
+    paid,
+    ts: Date.now(),
+  });
+}
+
+watch(
+  () => cart.totals,
+  () => {
+    if (displayTimer) return;
+    displayTimer = setTimeout(() => {
+      displayTimer = null;
+      // Don't clobber the post-sale thank-you with the emptied cart
+      if (Date.now() < thankYouUntil && !cart.lines.length) return;
+      publishCart();
+    }, 250);
+  },
+);
+onMounted(() => publishCart());
 
 // ── Discount form ──────────────────────────────────────────────────────────
 function openDiscountForm(): void {
@@ -465,6 +506,8 @@ async function finishSale(legs: PaymentLeg[]): Promise<void> {
   showCartSheet.value = false;
   lastSale.value = tx;
   showToast(`Payment confirmed — ${count} item${count !== 1 ? 's' : ''} sold`, 'success');
+  thankYouUntil = Date.now() + 6000;
+  publishCart({ total: tx.total });
   void maybePrintReceipt(tx);
 }
 
@@ -523,13 +566,6 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
           >
             <ChartLine class="h-4 w-4" />
           </RouterLink>
-          <button
-            class="shrink-0 rounded-lg px-1.5 py-1.5 text-slate-400 hover:bg-slate-800"
-            title="Customer display"
-            @click="showCustomerView = true"
-          >
-            <Monitor class="h-4 w-4" />
-          </button>
           <!-- Card reader connection state (hidden for manual entry) -->
           <button
             v-if="showTerminalState"
@@ -939,42 +975,6 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
         </div>
       </template>
     </ModalShell>
-
-    <!-- Customer display: big, uncluttered, meant to face the customer -->
-    <div
-      v-if="showCustomerView"
-      class="fixed inset-0 z-[80] flex flex-col bg-slate-950 p-8 pt-[calc(2rem_+_var(--safe-top))]"
-      @click="showCustomerView = false"
-    >
-      <p class="text-center text-lg text-slate-400">{{ data.activeEvent?.name }}</p>
-      <div class="mx-auto mt-6 w-full max-w-xl flex-1 space-y-3 overflow-y-auto">
-        <div v-for="l in cart.lines" :key="l.pid + ':' + (l.vid || '')" class="flex justify-between text-xl">
-          <span class="min-w-0 truncate">
-            {{ l.qty }} × {{ l.title }}<span v-if="l.variantLabel" class="text-slate-400"> · {{ l.variantLabel }}</span>
-          </span>
-          <span class="shrink-0 pl-4 font-semibold">{{ fmtPrice(l.lineTotal, data.currency) }}</span>
-        </div>
-        <div
-          v-for="r in cart.totals.ruleDiscounts"
-          :key="r.rule.id"
-          class="flex justify-between text-xl text-emerald-400"
-        >
-          <span>{{ r.rule.name }}</span><span>− {{ fmtPrice(r.amount, data.currency) }}</span>
-        </div>
-        <div v-if="cart.totals.customDiscountAmount" class="flex justify-between text-xl text-emerald-400">
-          <span>{{ cart.customDiscount?.name || 'Discount' }}</span>
-          <span>− {{ fmtPrice(cart.totals.customDiscountAmount, data.currency) }}</span>
-        </div>
-        <p v-if="!cart.lines.length" class="pt-12 text-center text-2xl text-slate-500">Welcome!</p>
-      </div>
-      <div class="mx-auto w-full max-w-xl border-t border-slate-700 pt-4">
-        <div class="flex items-baseline justify-between">
-          <span class="text-2xl text-slate-300">Total</span>
-          <span class="text-5xl font-bold text-emerald-400">{{ fmtPrice(cart.totals.grandTotal, data.currency) }}</span>
-        </div>
-        <p class="mt-3 text-center text-xs text-slate-600">tap anywhere to return</p>
-      </div>
-    </div>
 
     <!-- Custom discount -->
     <ModalShell v-if="showDiscountForm" title="Cart discount" @close="showDiscountForm = false">

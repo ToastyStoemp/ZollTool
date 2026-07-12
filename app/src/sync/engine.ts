@@ -1,6 +1,6 @@
 import { reactive } from 'vue';
 import { liveQuery, type Subscription } from 'dexie';
-import type { NudgeMessage, Op } from '@zolltool/shared';
+import type { DisplayCart, DisplayCartMessage, NudgeMessage, Op } from '@zolltool/shared';
 import { db } from '@/db/schema';
 import { getSetting, setSetting } from '@/db/repo';
 import { SYNC_KEYS, fetchImage, getServerUrl, isLoggedIn, pullOps, pushOps, uploadImage } from './api';
@@ -21,6 +21,19 @@ export const syncState = reactive({
   lastSyncAt: 0,
   lastError: '',
 });
+
+// ── Customer display relay (ephemeral, rides the sync WS) ───────────────────
+
+/** Latest cart snapshot per register deviceId, as received from the server. */
+export const displayCarts = reactive<Record<string, DisplayCart & { deviceId: string; receivedAt: number }>>({});
+
+/** Broadcast this register's cart to the account's customer displays. */
+export function sendDisplayCart(cart: DisplayCart): void {
+  if (ws?.readyState === WebSocket.OPEN) {
+    const msg: DisplayCartMessage = { type: 'display.cart', cart };
+    ws.send(JSON.stringify(msg));
+  }
+}
 
 const PUSH_BATCH = 200;
 const POLL_MS = 30_000;
@@ -189,8 +202,11 @@ function connectWs(): void {
     };
     ws.onmessage = (ev) => {
       try {
-        const msg = JSON.parse(String(ev.data)) as NudgeMessage;
+        const msg = JSON.parse(String(ev.data)) as NudgeMessage | DisplayCartMessage;
         if (msg.type === 'nudge') void syncNow();
+        else if (msg.type === 'display.cart' && msg.from && msg.cart) {
+          displayCarts[msg.from] = { ...msg.cart, deviceId: msg.from, receivedAt: Date.now() };
+        }
       } catch {
         /* ignore malformed frames */
       }

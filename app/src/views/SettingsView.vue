@@ -11,6 +11,7 @@ import { saveTextFile, createFileWriter } from '@/lib/download';
 import { syncState, syncNow } from '@/sync/engine';
 import { connectQrDataUrl, decodeConnectQr } from '@/lib/qr';
 import { hashPin, pinState, setPin } from '@/lib/pin';
+import { MonitorSmartphone } from 'lucide-vue-next';
 import {
   RECEIPT_KEYS,
   loadReceiptConfig,
@@ -456,12 +457,21 @@ async function onImportFile(e: Event): Promise<void> {
         />
       </label>
       <p class="mt-2 text-xs text-slate-500">Device ID: {{ settings.deviceId }}</p>
-      <button
-        class="mt-3 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700"
-        @click="settings.reopenOnboarding()"
-      >
-        Run setup guide
-      </button>
+      <div class="mt-3 flex flex-wrap gap-2">
+        <button
+          class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700"
+          @click="settings.reopenOnboarding()"
+        >
+          Run setup guide
+        </button>
+        <RouterLink
+          v-if="settings.syncUser"
+          to="/display"
+          class="flex items-center gap-1.5 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700"
+        >
+          <MonitorSmartphone class="h-4 w-4" /> Customer display mode
+        </RouterLink>
+      </div>
     </section>
 
     <!-- Payment provider -->

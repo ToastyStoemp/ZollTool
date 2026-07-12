@@ -13,6 +13,8 @@ export const router = createRouter({
     { path: '/catalog', name: 'catalog', component: () => import('@/views/CatalogView.vue') },
     { path: '/history', name: 'history', component: () => import('@/views/HistoryView.vue') },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },
+    // Customer display mode: mirrors another register's cart (Settings → This device)
+    { path: '/display', name: 'display', component: () => import('@/views/DisplayView.vue') },
     { path: '/admin', name: 'admin', component: () => import('@/views/AdminView.vue') },
   ],
 });

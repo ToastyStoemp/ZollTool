@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import websocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
-import type { NudgeMessage } from '@zolltool/shared';
+import type { DisplayCartMessage, NudgeMessage } from '@zolltool/shared';
 import type { JwtClaims } from './auth';
 
 /**
@@ -30,6 +30,21 @@ export class Rooms {
       if (socket.readyState === socket.OPEN) socket.send(json);
     }
   }
+
+  /**
+   * Rebroadcast a register's cart snapshot to the account's other devices so
+   * they can act as customer displays. Ephemeral — nothing is stored.
+   */
+  relayDisplayCart(accountId: string, fromDeviceId: string, cart: DisplayCartMessage['cart']): void {
+    const room = this.byAccount.get(accountId);
+    if (!room) return;
+    const msg: DisplayCartMessage = { type: 'display.cart', from: fromDeviceId, cart };
+    const json = JSON.stringify(msg);
+    for (const { socket, deviceId } of room) {
+      if (deviceId === fromDeviceId) continue;
+      if (socket.readyState === socket.OPEN) socket.send(json);
+    }
+  }
 }
 
 export async function registerWs(app: FastifyInstance, rooms: Rooms): Promise<void> {
@@ -45,8 +60,17 @@ export async function registerWs(app: FastifyInstance, rooms: Rooms): Promise<vo
       return;
     }
     rooms.add(claims.accountId, deviceId ?? 'unknown', socket);
-    socket.on('message', () => {
-      /* clients never send data — pings are handled by ws itself */
+    socket.on('message', (raw) => {
+      // Registers push ephemeral customer-display cart snapshots; everything
+      // else is ignored (sync data always travels over HTTP).
+      try {
+        const msg = JSON.parse(String(raw)) as DisplayCartMessage;
+        if (msg?.type === 'display.cart' && msg.cart && typeof msg.cart === 'object') {
+          rooms.relayDisplayCart(claims.accountId, deviceId ?? 'unknown', msg.cart);
+        }
+      } catch {
+        /* not JSON — ignore */
+      }
     });
   });
 }

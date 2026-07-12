@@ -33,7 +33,7 @@ const nav = [
 // POS is a focused fullscreen mode: hide the app nav so the whole screen
 // (especially tablets in landscape) is selling surface. The POS header has
 // its own back/history shortcuts.
-const chromeHidden = computed(() => route.name === 'pos');
+const chromeHidden = computed(() => route.name === 'pos' || route.name === 'display');
 
 // ── PIN lock: selling stays open, management areas need the PIN ────────────
 const router = useRouter();
