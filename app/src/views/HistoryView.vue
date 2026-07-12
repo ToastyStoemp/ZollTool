@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { useDataStore } from '@/stores/data';
-import { revertTransaction } from '@/db/repo';
+import { getSetting, revertTransaction, setSetting } from '@/db/repo';
 import { fmtPrice } from '@/lib/money';
 import { transactionsToCsv } from '@/lib/export/csv';
 import { typeColor } from '@/lib/search';
@@ -13,6 +13,7 @@ import {
   loadReceiptConfig,
   printReceipt as printReceiptLines,
   printingAvailable,
+  type ReceiptLine,
 } from '@/lib/receipt';
 import { ArrowLeft, Banknote, CreditCard, Printer, Smartphone, Zap } from 'lucide-vue-next';
 import type { Component } from 'vue';
@@ -127,6 +128,113 @@ const bestAll = computed(() => {
 });
 
 const bestSellers = computed(() => (bestExpanded.value ? bestAll.value : bestAll.value.slice(0, 8)));
+
+/** Revenue per hour of day — find the peak selling times. */
+const hourly = computed(() => {
+  const buckets = new Array(24).fill(0) as number[];
+  for (const tx of scopedTransactions.value) {
+    if (tx.revertedBy) continue;
+    buckets[new Date(tx.timestamp).getHours()] += tx.total;
+  }
+  const active = buckets.map((v, h) => ({ h, v })).filter((b) => b.v > 0);
+  if (!active.length) return [];
+  // Show the contiguous range from first to last active hour
+  const from = active[0]!.h;
+  const to = active[active.length - 1]!.h;
+  const max = Math.max(...buckets);
+  return buckets.slice(from, to + 1).map((v, i) => ({
+    h: from + i,
+    v,
+    pct: Math.round((v / max) * 100),
+  }));
+});
+
+// ── Cash drawer: float, expected cash and a printable day report ────────────
+const floatInput = ref('');
+const countedInput = ref('');
+
+watch(
+  scopeEvent,
+  async (ev) => {
+    floatInput.value = ev ? String((await getSetting<number>(`cashFloat.${ev.id}`)) ?? '') : '';
+    countedInput.value = '';
+  },
+  { immediate: true },
+);
+
+async function saveFloat(): Promise<void> {
+  if (!scopeEvent.value) return;
+  await setSetting(`cashFloat.${scopeEvent.value.id}`, parseFloat(floatInput.value) || 0);
+}
+
+/** Revenue split by payment leg: Cash / Card / each custom method by name. */
+const methodBreakdown = computed(() => {
+  const CARD_PROVIDERS = new Set(['card', 'mypos-go2', 'mypos-carbon', 'mypos-glass', 'sumup', 'bridge']);
+  const map = new Map<string, number>();
+  for (const tx of scopedTransactions.value) {
+    if (tx.revertedBy) continue;
+    for (const leg of tx.payments) {
+      const label =
+        leg.kind === 'cash' ? 'Cash' : !leg.provider || CARD_PROVIDERS.has(leg.provider) ? 'Card' : leg.provider;
+      map.set(label, (map.get(label) ?? 0) + leg.amount);
+    }
+  }
+  return [...map.entries()].map(([label, amount]) => ({ label, amount })).sort((a, b) => b.amount - a.amount);
+});
+
+const cashDrawer = computed(() => {
+  const float = parseFloat(floatInput.value) || 0;
+  const cash = methodBreakdown.value.find((m) => m.label === 'Cash')?.amount ?? 0;
+  const expected = float + cash;
+  const counted = parseFloat(countedInput.value);
+  return {
+    float,
+    cash,
+    expected,
+    counted: Number.isFinite(counted) ? counted : null,
+    diff: Number.isFinite(counted) ? counted - expected : null,
+  };
+});
+
+/** Z-report: day/event summary on the receipt printer. */
+async function printDayReport(): Promise<void> {
+  if (!scopeEvent.value) return;
+  try {
+    const config = await loadReceiptConfig();
+    const W = 32;
+    const div = '-'.repeat(W);
+    const row = (l: string, r: string): string =>
+      l.slice(0, Math.max(0, W - r.length - 1)) + ' '.repeat(Math.max(1, W - Math.min(l.length, W - r.length - 1) - r.length)) + r;
+    const lines: ReceiptLine[] = [];
+    if (config.artist.companyName) lines.push({ kind: 'text', text: config.artist.companyName, align: 'center' });
+    lines.push({ kind: 'text', text: 'DAY REPORT', align: 'center', doubleHeight: true });
+    lines.push({ kind: 'text', text: scopeEvent.value.name, align: 'center' });
+    lines.push({ kind: 'text', text: new Date().toLocaleString('de-CH'), align: 'center' });
+    lines.push({ kind: 'text', text: div });
+    lines.push({ kind: 'text', text: row('Sales', String(stats.value.count)) });
+    lines.push({ kind: 'text', text: row('Items sold', String(stats.value.items)) });
+    lines.push({ kind: 'text', text: row('Revenue', fmtPrice(stats.value.revenue, currency.value)) });
+    lines.push({ kind: 'text', text: div });
+    for (const m of methodBreakdown.value) {
+      lines.push({ kind: 'text', text: row(m.label, fmtPrice(m.amount, currency.value)) });
+    }
+    lines.push({ kind: 'text', text: div });
+    lines.push({ kind: 'text', text: row('Float', fmtPrice(cashDrawer.value.float, currency.value)) });
+    lines.push({ kind: 'text', text: row('Expected cash', fmtPrice(cashDrawer.value.expected, currency.value)) });
+    if (cashDrawer.value.counted !== null) {
+      lines.push({ kind: 'text', text: row('Counted', fmtPrice(cashDrawer.value.counted, currency.value)) });
+      lines.push({
+        kind: 'text',
+        text: row('Difference', fmtPrice(cashDrawer.value.diff ?? 0, currency.value)),
+      });
+    }
+    lines.push({ kind: 'space' });
+    const result = await printReceiptLines(lines);
+    showToast(result.printed ? 'Day report printed' : `Report: ${result.error ?? 'print failed'}`, result.printed ? 'success' : 'error');
+  } catch (err) {
+    showToast(`Report: ${err instanceof Error ? err.message : err}`, 'error');
+  }
+}
 
 /** Revenue per day for a simple bar chart (divs — no chart lib needed here). */
 const daily = computed(() => {
@@ -300,6 +408,69 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
             <span class="w-20 text-right font-medium">{{ fmtPrice(d.value, currency) }}</span>
           </div>
         </div>
+      </div>
+    </div>
+
+    <div class="mb-4 grid gap-3 md:grid-cols-2">
+      <!-- Hourly revenue: when do people actually buy -->
+      <div class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+        <h2 class="mb-2 text-sm font-semibold text-slate-300">Revenue per hour</h2>
+        <p v-if="!hourly.length" class="text-xs text-slate-500">No sales yet.</p>
+        <div v-else class="flex h-28 items-end gap-1">
+          <div v-for="b in hourly" :key="b.h" class="flex min-w-0 flex-1 flex-col items-center gap-1">
+            <div class="flex w-full flex-1 items-end">
+              <div
+                class="w-full rounded-t bg-emerald-500/70"
+                :style="{ height: b.pct + '%' }"
+                :title="`${b.h}:00 — ${fmtPrice(b.v, currency)}`"
+              />
+            </div>
+            <span class="text-[9px] text-slate-500">{{ b.h % 3 === 0 ? b.h : '' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Cash drawer / day report (per event) -->
+      <div v-if="!allMode" class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+        <h2 class="mb-2 text-sm font-semibold text-slate-300">Cash drawer</h2>
+        <div class="grid grid-cols-2 gap-3">
+          <label class="block text-sm">
+            <span class="text-xs text-slate-400">Float (opening cash)</span>
+            <input
+              v-model="floatInput"
+              type="number"
+              inputmode="decimal"
+              class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2"
+              @change="saveFloat"
+            />
+          </label>
+          <label class="block text-sm">
+            <span class="text-xs text-slate-400">Counted (end of day)</span>
+            <input v-model="countedInput" type="number" inputmode="decimal" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          </label>
+        </div>
+        <div class="mt-3 space-y-1 text-sm">
+          <div class="flex justify-between text-slate-400">
+            <span>Cash revenue</span><span>{{ fmtPrice(cashDrawer.cash, currency) }}</span>
+          </div>
+          <div class="flex justify-between font-medium">
+            <span>Expected in drawer</span><span>{{ fmtPrice(cashDrawer.expected, currency) }}</span>
+          </div>
+          <div v-if="cashDrawer.diff !== null" class="flex justify-between font-semibold" :class="Math.abs(cashDrawer.diff) < 0.005 ? 'text-emerald-400' : 'text-amber-400'">
+            <span>Difference</span>
+            <span>{{ cashDrawer.diff >= 0 ? '+' : '−' }}{{ fmtPrice(Math.abs(cashDrawer.diff), currency) }}</span>
+          </div>
+          <div v-for="m in methodBreakdown" :key="m.label" class="flex justify-between text-xs text-slate-500">
+            <span>{{ m.label }}</span><span>{{ fmtPrice(m.amount, currency) }}</span>
+          </div>
+        </div>
+        <button
+          v-if="canPrintReceipts"
+          class="mt-3 flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium hover:bg-slate-700"
+          @click="printDayReport"
+        >
+          <Printer class="h-3.5 w-3.5" /> Print day report
+        </button>
       </div>
     </div>
 
