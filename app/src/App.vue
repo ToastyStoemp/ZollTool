@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue';
-import { useRoute } from 'vue-router';
-import { CalendarDays, ChartLine, Package, Settings } from 'lucide-vue-next';
+import { computed, onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { CalendarDays, ChartLine, Lock, Package, Settings } from 'lucide-vue-next';
 import { toasts } from '@/lib/toast';
+import { loadPin, pinState, tryUnlock } from '@/lib/pin';
 import { useSettingsStore } from '@/stores/settings';
 import { syncState } from '@/sync/engine';
 import OnboardingWizard from '@/components/OnboardingWizard.vue';
@@ -33,6 +34,30 @@ const nav = [
 // (especially tablets in landscape) is selling surface. The POS header has
 // its own back/history shortcuts.
 const chromeHidden = computed(() => route.name === 'pos');
+
+// ── PIN lock: selling stays open, management areas need the PIN ────────────
+const router = useRouter();
+const PIN_PROTECTED = ['/settings', '/catalog', '/history', '/admin', '/customs'];
+const pinPromptVisible = computed(
+  () =>
+    pinState.loaded &&
+    !!pinState.hash &&
+    !pinState.unlocked &&
+    PIN_PROTECTED.some((p) => route.path.startsWith(p)),
+);
+const pinInput = ref('');
+const pinError = ref(false);
+
+onMounted(() => void loadPin());
+
+async function submitPin(): Promise<void> {
+  if (await tryUnlock(pinInput.value)) {
+    pinError.value = false;
+  } else {
+    pinError.value = true;
+  }
+  pinInput.value = '';
+}
 </script>
 
 <template>
@@ -82,6 +107,36 @@ const chromeHidden = computed(() => route.name === 'pos');
         <span>{{ item.label }}</span>
       </RouterLink>
     </nav>
+
+    <!-- PIN lock: covers the management views until unlocked -->
+    <div
+      v-if="pinPromptVisible"
+      class="fixed inset-0 z-[65] flex flex-col items-center justify-center gap-4 bg-slate-950/95 p-6 backdrop-blur-sm"
+    >
+      <Lock class="h-8 w-8 text-slate-500" />
+      <p class="text-sm text-slate-300">This area is PIN-protected</p>
+      <form class="flex w-full max-w-56 flex-col gap-2" @submit.prevent="submitPin">
+        <input
+          v-model="pinInput"
+          type="password"
+          inputmode="numeric"
+          autocomplete="off"
+          placeholder="PIN"
+          class="w-full rounded-lg bg-slate-800 px-3 py-2 text-center text-lg tracking-[0.4em]"
+        />
+        <p v-if="pinError" class="text-center text-xs text-red-400">Wrong PIN</p>
+        <button type="submit" class="rounded-lg bg-emerald-600 py-2 text-sm font-semibold text-white">
+          Unlock
+        </button>
+        <button
+          type="button"
+          class="rounded-lg py-2 text-xs text-slate-400 hover:text-slate-200"
+          @click="router.push('/events')"
+        >
+          Back to selling
+        </button>
+      </form>
+    </div>
 
     <!-- First-run setup guide -->
     <OnboardingWizard v-if="settings.ready && !settings.onboardingDone" />

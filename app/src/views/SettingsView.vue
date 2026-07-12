@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { getSetting, setSetting } from '@/db/repo';
 import { allProviders } from '@/payments/registry';
@@ -10,6 +10,7 @@ import { exportBackupJson, exportBackupZipTo, importBackup, importBackupZip } fr
 import { saveTextFile, createFileWriter } from '@/lib/download';
 import { syncState, syncNow } from '@/sync/engine';
 import { connectQrDataUrl, decodeConnectQr } from '@/lib/qr';
+import { hashPin, pinState, setPin } from '@/lib/pin';
 import {
   RECEIPT_KEYS,
   loadReceiptConfig,
@@ -326,6 +327,41 @@ async function removeLogo(): Promise<void> {
 async function toggleAutoPrint(): Promise<void> {
   receiptAutoPrint.value = !receiptAutoPrint.value;
   await setSetting(RECEIPT_KEYS.autoPrint, receiptAutoPrint.value);
+}
+
+// ── Security: PIN lock for the management views ─────────────────────────────
+const pinCurrent = ref('');
+const pinNew = ref('');
+const pinConfirm = ref('');
+const hasPin = computed(() => !!pinState.hash);
+
+async function verifyCurrentPin(): Promise<boolean> {
+  if (!hasPin.value) return true;
+  if ((await hashPin(pinCurrent.value)) === pinState.hash) return true;
+  showToast('Current PIN is wrong.', 'error');
+  return false;
+}
+
+async function savePinSettings(): Promise<void> {
+  if (!/^\d{4,8}$/.test(pinNew.value)) {
+    showToast('PIN must be 4–8 digits.', 'error');
+    return;
+  }
+  if (pinNew.value !== pinConfirm.value) {
+    showToast('PINs do not match.', 'error');
+    return;
+  }
+  if (!(await verifyCurrentPin())) return;
+  await setPin(pinNew.value);
+  pinCurrent.value = pinNew.value = pinConfirm.value = '';
+  showToast('PIN set — Settings, Catalog, History, Customs and Admin now require it', 'success');
+}
+
+async function removePinSettings(): Promise<void> {
+  if (!(await verifyCurrentPin())) return;
+  await setPin(null);
+  pinCurrent.value = pinNew.value = pinConfirm.value = '';
+  showToast('PIN removed', 'info');
 }
 
 // ── Backup ──────────────────────────────────────────────────────────────────
@@ -837,6 +873,45 @@ async function onImportFile(e: Event): Promise<void> {
           <input ref="scanInput" type="file" accept="image/*" capture="environment" class="hidden" @change="onScanFile" />
         </form>
       </template>
+    </section>
+
+    <!-- Security -->
+    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800 xl:mb-6 xl:break-inside-avoid">
+      <h2 class="mb-2 text-sm font-semibold text-slate-300">Security</h2>
+      <p class="mb-3 text-xs text-slate-500">
+        Optional PIN for Settings, Catalog, History, Customs and Admin — helpers can still sell in
+        the POS. Locks again when the app restarts.
+        <span v-if="hasPin" class="text-emerald-400">PIN is active.</span>
+      </p>
+      <div class="grid grid-cols-2 gap-3">
+        <label v-if="hasPin" class="col-span-2 block text-sm">
+          <span class="text-slate-400">Current PIN</span>
+          <input v-model="pinCurrent" type="password" inputmode="numeric" autocomplete="off" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+        </label>
+        <label class="block text-sm">
+          <span class="text-slate-400">{{ hasPin ? 'New PIN' : 'PIN (4–8 digits)' }}</span>
+          <input v-model="pinNew" type="password" inputmode="numeric" autocomplete="off" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+        </label>
+        <label class="block text-sm">
+          <span class="text-slate-400">Repeat PIN</span>
+          <input v-model="pinConfirm" type="password" inputmode="numeric" autocomplete="off" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+        </label>
+      </div>
+      <div class="mt-3 flex gap-2">
+        <button
+          class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+          @click="savePinSettings"
+        >
+          {{ hasPin ? 'Change PIN' : 'Set PIN' }}
+        </button>
+        <button
+          v-if="hasPin"
+          class="rounded-lg px-4 py-2 text-sm text-red-400 hover:bg-red-950"
+          @click="removePinSettings"
+        >
+          Remove PIN
+        </button>
+      </div>
     </section>
 
     <!-- Legacy -->
