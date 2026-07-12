@@ -1,5 +1,7 @@
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { buildApp } from './app';
+import { unpackWebDist } from './webdist';
 
 const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret || jwtSecret.length < 16) {
@@ -7,13 +9,22 @@ if (!jwtSecret || jwtSecret.length < 16) {
   process.exit(1);
 }
 
+// Which web app to serve, in order of precedence:
+// 1. explicit WEB_DIR env
+// 2. the committed build (server/web-dist.zip via `npm run deploy:web`),
+//    unpacked at every startup — this is what Docker deploys use
+// 3. dev fallback: the repo's app/dist (cwd is server/ in dev)
+const zipPath = fileURLToPath(new URL('../web-dist.zip', import.meta.url));
+const unpackDir = fileURLToPath(new URL('../web-unpacked', import.meta.url));
+const webDir = process.env.WEB_DIR
+  ? resolve(process.env.WEB_DIR)
+  : (unpackWebDist(zipPath, unpackDir) ?? resolve('../app/dist'));
+
 const app = await buildApp({
   dataDir: process.env.DATA_DIR || './data',
   jwtSecret,
   logger: true,
-  // Serve the web app when a build exists: ../app/dist in the repo (dev runs
-  // with cwd=server), or wherever WEB_DIR points (Docker sets it explicitly).
-  webDir: resolve(process.env.WEB_DIR || '../app/dist'),
+  webDir,
 });
 
 const port = Number(process.env.PORT || 8787);

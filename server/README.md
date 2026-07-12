@@ -46,25 +46,27 @@ docker compose -f server/docker-compose.yml -f server/docker-compose.override.ym
 
 ## Web app in the browser
 
-The server serves the built web app at `/` when one is present: browse to the server URL,
-log in, and use ZollTool (POS, catalog, history, admin) from any browser.
+The server serves the built web app at `/`: browse to the server URL, log in, and use
+ZollTool (POS, catalog, history, admin) from any browser.
 
 The web app is **built on a dev machine, not on the server** — vite on a small cloud
-instance takes tens of minutes, on a PC seconds. Deploying a web-app update therefore
-needs **no docker rebuild**:
+instance takes tens of minutes, on a PC seconds. The build ships as `server/web-dist.zip`,
+**committed to git** and unpacked by the server at startup, so git is the transfer channel
+(no scp, no SSH keys):
 
 ```sh
 # on the dev machine, from the repo root
-npm run build
-scp -r app/dist/* user@yourserver:/path/to/ZollTool/server/web/
+npm run deploy:web            # builds app/dist and packs server/web-dist.zip
+git commit -am "web build" && git push
+
+# on the server
+git pull
+docker compose -f server/docker-compose.yml --env-file server/.env up -d --build
 ```
 
-`server/web/` is mounted read-only into the container as `WEB_DIR=/web`; a browser reload
-picks up the new files immediately. Without a `web/` folder the server is API-only.
-Outside Docker, `WEB_DIR` defaults to `../app/dist`.
-
-Rebuild the image (`docker compose ... up -d --build`) only when **server** code changes —
-that build is small (deps layer is cached and npm downloads are kept in a BuildKit cache).
+The rebuild is fast — only COPY layers change; npm deps stay cached (BuildKit cache mount).
+What gets served, in order of precedence: explicit `WEB_DIR` env → the committed zip →
+`../app/dist` (dev fallback). With none of these the server is API-only.
 
 ## Accounts
 

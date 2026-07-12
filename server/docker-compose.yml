@@ -8,8 +8,6 @@ services:
       - '8787:8787'
     volumes:
       - ./data:/data
-      # Built web app (copy app/dist here from a dev machine); served at /
-      - ./web:/web:ro
     environment:
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
       OWNER_EMAIL: ${OWNER_EMAIL:-}

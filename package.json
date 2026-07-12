@@ -12,6 +12,7 @@
     "dev": "npm run dev -w app",
     "dev:server": "npm run dev -w server",
     "build": "npm run build -w app",
+    "deploy:web": "npm run build && node scripts/pack-web.mjs",
     "test": "npm run test -w app && npm run test -w server",
     "typecheck": "npm run typecheck -w app && npm run typecheck -w server",
     "android:sync": "npm run build && npx cap sync android",

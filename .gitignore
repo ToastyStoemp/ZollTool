@@ -17,6 +17,7 @@ bridge/bin
 app/dist/
 server/data/
 server/web/
+server/web-unpacked/
 # Machine-specific compose additions (networks, container_name, …)
 server/docker-compose.override.yml
 /data/
