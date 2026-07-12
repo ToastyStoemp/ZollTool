@@ -2,7 +2,9 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { X } from 'lucide-vue-next';
+import type { DisplayCartMessage } from '@zolltool/shared';
 import { displayCarts, syncState } from '@/sync/engine';
+import { DisplayLink, hasNativePlugin } from '@/native/plugins';
 import { fmtPrice } from '@/lib/money';
 
 /**
@@ -16,6 +18,11 @@ const now = ref(Date.now());
 let clock: ReturnType<typeof setInterval> | null = null;
 let wakeLock: { release(): Promise<void> } | null = null;
 
+// Bluetooth channel: accept a register directly (no internet needed). Frames
+// carry the same DisplayCartMessage as the WS relay and land in the same store.
+const btServerActive = ref(false);
+let btCartListener: { remove: () => Promise<void> } | null = null;
+
 onMounted(async () => {
   clock = setInterval(() => (now.value = Date.now()), 5000);
   // Keep the screen on where supported (Android WebView 84+, desktop browsers)
@@ -24,10 +31,30 @@ onMounted(async () => {
   } catch {
     /* unsupported or denied — non-essential */
   }
+  if (hasNativePlugin('DisplayLink')) {
+    try {
+      btCartListener = await DisplayLink.addListener('displayCart', ({ json }) => {
+        try {
+          const msg = JSON.parse(json) as DisplayCartMessage;
+          if (msg.type === 'display.cart' && msg.from && msg.cart) {
+            displayCarts[msg.from] = { ...msg.cart, deviceId: msg.from, receivedAt: Date.now() };
+          }
+        } catch {
+          /* malformed frame */
+        }
+      });
+      await DisplayLink.startServer();
+      btServerActive.value = true;
+    } catch {
+      /* Bluetooth off or permission denied — the WS channel still works */
+    }
+  }
 });
 onUnmounted(() => {
   if (clock) clearInterval(clock);
   void wakeLock?.release().catch(() => {});
+  void btCartListener?.remove().catch(() => {});
+  if (btServerActive.value) void DisplayLink.stopServer().catch(() => {});
 });
 
 const sources = computed(() =>
@@ -70,9 +97,12 @@ const showThanks = computed(
     </button>
 
     <!-- Waiting states -->
-    <div v-if="!syncState.enabled" class="m-auto max-w-sm text-center text-slate-400">
+    <div v-if="!syncState.enabled && !btServerActive" class="m-auto max-w-sm text-center text-slate-400">
       <p class="text-xl font-semibold">Not connected</p>
-      <p class="mt-2 text-sm">Log in to the sync server under Settings first — the display mirrors a register through it.</p>
+      <p class="mt-2 text-sm">
+        Log in to the sync server under Settings, or pair this device with the register via
+        Bluetooth (the register selects it under Settings → Customer display).
+      </p>
     </div>
     <div v-else-if="!current" class="m-auto text-center text-slate-500">
       <p class="text-2xl font-semibold">Welcome!</p>

@@ -9,8 +9,11 @@ import { cashShortcutAmounts, splitCashPortionAmounts } from '@/lib/cash';
 import { fmtPrice, round2 } from '@/lib/money';
 import { showToast } from '@/lib/toast';
 import { getProvider } from '@/payments/registry';
-import { revertTransaction } from '@/db/repo';
+import { getSetting, revertTransaction } from '@/db/repo';
 import { sendDisplayCart } from '@/sync/engine';
+import { DisplayLink } from '@/native/plugins';
+import { DISPLAY_KEYS } from '@/lib/display';
+import type { DisplayCart, DisplayCartMessage } from '@zolltool/shared';
 import { MyPos, hasNativePlugin } from '@/native/plugins';
 import { buildReceiptLines, loadReceiptConfig, printReceipt, printingAvailable } from '@/lib/receipt';
 import { ArrowLeft, ChartLine, Check, CreditCard, Printer, ShoppingCart, Undo2, X } from 'lucide-vue-next';
@@ -258,13 +261,27 @@ function addMiscItem(): void {
 }
 
 // ── Customer display: broadcast the cart to paired display devices ─────────
-// Any other logged-in device in "customer display" mode (Settings → This
-// device) mirrors this register live via the sync server's WebSocket.
+// Two channels, both carrying the same DisplayCartMessage: the sync server's
+// WebSocket (any logged-in device in display mode) and — when a paired device
+// is selected in Settings — a direct Bluetooth link that needs no internet.
 let displayTimer: ReturnType<typeof setTimeout> | null = null;
 let thankYouUntil = 0;
+const btDisplayReady = ref(false);
+
+onMounted(async () => {
+  if (!hasNativePlugin('DisplayLink')) return;
+  const address = await getSetting<string>(DISPLAY_KEYS.btAddress);
+  if (!address) return;
+  try {
+    await DisplayLink.configure({ address });
+    btDisplayReady.value = true;
+  } catch {
+    /* plugin unavailable — WS channel still works */
+  }
+});
 
 function publishCart(paid?: { total: number }): void {
-  sendDisplayCart({
+  const cartPayload: DisplayCart = {
     deviceName: settings.deviceName || 'Register',
     eventName: data.activeEvent?.name ?? '',
     currency: data.currency,
@@ -283,7 +300,12 @@ function publishCart(paid?: { total: number }): void {
     total: cart.totals.grandTotal,
     paid,
     ts: Date.now(),
-  });
+  };
+  sendDisplayCart(cartPayload);
+  if (btDisplayReady.value) {
+    const msg: DisplayCartMessage = { type: 'display.cart', from: settings.deviceId, cart: cartPayload };
+    void DisplayLink.send({ json: JSON.stringify(msg) }).catch(() => {});
+  }
 }
 
 watch(

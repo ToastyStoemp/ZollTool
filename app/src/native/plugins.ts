@@ -87,9 +87,29 @@ export interface ThermalPrinterPluginApi {
   }): Promise<{ printed: boolean; status: number; error?: string }>;
 }
 
+/** Bluetooth cart relay for the customer display (see DisplayLinkPlugin.kt). */
+export interface DisplayLinkPluginApi {
+  /** Display side: accept a register over RFCOMM and emit its cart frames. */
+  startServer(): Promise<void>;
+  stopServer(): Promise<void>;
+  /** Register side: pick the paired display device to stream to. */
+  configure(options: { address: string }): Promise<void>;
+  send(options: { json: string }): Promise<{ sent: boolean; error?: string }>;
+  disconnect(): Promise<void>;
+  addListener(
+    eventName: 'displayCart',
+    listener: (data: { json: string }) => void,
+  ): Promise<{ remove: () => Promise<void> }>;
+  addListener(
+    eventName: 'linkState',
+    listener: (data: { connected: boolean }) => void,
+  ): Promise<{ remove: () => Promise<void> }>;
+}
+
 export const MyPos = registerPlugin<MyPosPluginApi>('MyPos');
 export const CarbonPayment = registerPlugin<CarbonPaymentPluginApi>('CarbonPayment');
 export const GlassPayment = registerPlugin<GlassPaymentPluginApi>('GlassPayment');
+export const DisplayLink = registerPlugin<DisplayLinkPluginApi>('DisplayLink');
 export const ThermalPrinter = registerPlugin<ThermalPrinterPluginApi>('ThermalPrinter');
 export const FileShare = registerPlugin<FileSharePluginApi>('FileShare');
 export const SumUp = registerPlugin<SumUpPluginApi>('SumUp');

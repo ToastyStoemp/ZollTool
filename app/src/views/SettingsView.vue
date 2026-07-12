@@ -12,6 +12,8 @@ import { syncState, syncNow } from '@/sync/engine';
 import { connectQrDataUrl, decodeConnectQr } from '@/lib/qr';
 import { hashPin, pinState, setPin } from '@/lib/pin';
 import { MonitorSmartphone } from 'lucide-vue-next';
+import { DisplayLink } from '@/native/plugins';
+import { DISPLAY_KEYS } from '@/lib/display';
 import {
   RECEIPT_KEYS,
   loadReceiptConfig,
@@ -330,6 +332,48 @@ async function toggleAutoPrint(): Promise<void> {
   await setSetting(RECEIPT_KEYS.autoPrint, receiptAutoPrint.value);
 }
 
+// ── Bluetooth customer display (register side) ──────────────────────────────
+// Pick the paired device that runs "Customer display mode"; the POS then
+// streams the cart to it directly over Bluetooth — no internet needed.
+const hasDisplayLink = hasNativePlugin('DisplayLink');
+const btDisplayName = ref('');
+const btDisplayChoices = ref<Array<{ name: string; address: string }>>([]);
+
+onMounted(async () => {
+  btDisplayName.value = (await getSetting<string>(DISPLAY_KEYS.btName)) ?? '';
+});
+
+async function findBtDisplays(): Promise<void> {
+  try {
+    const { printers } = await ThermalPrinter.listPrinters(); // bonded devices, any kind
+    btDisplayChoices.value = printers;
+    if (!printers.length) {
+      showToast('No paired devices — pair the display device in Android Bluetooth settings first', 'info');
+    }
+  } catch (err) {
+    showToast(String(err), 'error');
+  }
+}
+
+async function selectBtDisplay(e: Event): Promise<void> {
+  const address = (e.target as HTMLSelectElement).value;
+  const choice = btDisplayChoices.value.find((p) => p.address === address);
+  if (!choice) return;
+  await setSetting(DISPLAY_KEYS.btAddress, choice.address);
+  await setSetting(DISPLAY_KEYS.btName, choice.name);
+  await DisplayLink.configure({ address: choice.address }).catch(() => {});
+  btDisplayName.value = choice.name;
+  btDisplayChoices.value = [];
+  showToast(`Customer display: ${choice.name}`, 'success');
+}
+
+async function forgetBtDisplay(): Promise<void> {
+  await setSetting(DISPLAY_KEYS.btAddress, undefined);
+  await setSetting(DISPLAY_KEYS.btName, undefined);
+  await DisplayLink.disconnect().catch(() => {});
+  btDisplayName.value = '';
+}
+
 // ── Security: PIN lock for the management views ─────────────────────────────
 const pinCurrent = ref('');
 const pinNew = ref('');
@@ -465,12 +509,49 @@ async function onImportFile(e: Event): Promise<void> {
           Run setup guide
         </button>
         <RouterLink
-          v-if="settings.syncUser"
+          v-if="settings.syncUser || hasDisplayLink"
           to="/display"
           class="flex items-center gap-1.5 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700"
         >
           <MonitorSmartphone class="h-4 w-4" /> Customer display mode
         </RouterLink>
+      </div>
+
+      <!-- Bluetooth customer display (register side) -->
+      <div v-if="hasDisplayLink" class="mt-3 rounded-lg bg-slate-800/50 p-3">
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="min-w-0">
+            <span class="text-sm text-slate-300">Customer display (Bluetooth)</span>
+            <p class="text-xs text-slate-500">
+              {{ btDisplayName || 'None — pair the display device in Android Bluetooth settings, then select it here. It must be in "Customer display mode".' }}
+            </p>
+          </div>
+          <div class="ml-auto flex gap-2">
+            <button
+              class="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-medium hover:bg-slate-600"
+              @click="findBtDisplays"
+            >
+              {{ btDisplayName ? 'Change' : 'Select device' }}
+            </button>
+            <button
+              v-if="btDisplayName"
+              class="rounded-lg px-3 py-1.5 text-xs text-red-400 hover:bg-red-950"
+              @click="forgetBtDisplay"
+            >
+              Forget
+            </button>
+          </div>
+        </div>
+        <select
+          v-if="btDisplayChoices.length"
+          class="mt-2 w-full rounded-lg bg-slate-800 px-3 py-2 text-sm"
+          @change="selectBtDisplay"
+        >
+          <option value="">— pick a paired device —</option>
+          <option v-for="p in btDisplayChoices" :key="p.address" :value="p.address">
+            {{ p.name }} ({{ p.address }})
+          </option>
+        </select>
       </div>
     </section>
 
