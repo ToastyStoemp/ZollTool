@@ -7,7 +7,8 @@ import { deleteDiscount, deleteProduct, setStock, upsertDiscount, upsertProduct 
 import { uuidv7 } from '@/lib/uuid';
 import { fmtPrice } from '@/lib/money';
 import { typeColor } from '@/lib/search';
-import { Boxes, Camera, Image as ImageIcon, TriangleAlert, X } from 'lucide-vue-next';
+import { ArrowDown, ArrowUp, Boxes, Camera, FileDown, Image as ImageIcon, ListOrdered, TriangleAlert, X } from 'lucide-vue-next';
+import { saveTextFile } from '@/lib/download';
 import { showToast } from '@/lib/toast';
 import { saveProductImage } from '@/lib/images';
 import ModalShell from '@/components/ModalShell.vue';
@@ -50,13 +51,53 @@ const form = reactive({
   variants: [] as VariantForm[],
 });
 
+// ── Low-stock view: what needs restocking at the active event ──────────────
+const lowStockOnly = ref(false);
+const lowStockThreshold = ref('3');
+
+/** left = brought − sold, per product or per variant. */
+function lowStockRows(p: Product): Array<{ variant: string; left: number; brought: number; sold: number }> {
+  const thr = Math.max(0, parseInt(lowStockThreshold.value) || 0);
+  const rows: Array<{ variant: string; left: number; brought: number; sold: number }> = [];
+  if (p.variants.length) {
+    for (const v of p.variants) {
+      const brought = data.broughtQty(p.id, v.id);
+      const sold = data.soldQty(p.id, v.id);
+      if (brought - sold <= thr) rows.push({ variant: v.name || v.id, left: brought - sold, brought, sold });
+    }
+  } else {
+    const brought = data.broughtQty(p.id, null);
+    const sold = data.soldQty(p.id, null);
+    if (brought - sold <= thr) rows.push({ variant: '', left: brought - sold, brought, sold });
+  }
+  return rows;
+}
+
 const filteredProducts = computed(() => {
   const needle = search.value.trim().toLowerCase();
-  if (!needle) return data.products;
-  return data.products.filter((p) =>
-    [p.title, p.sku, p.type].filter(Boolean).join(' ').toLowerCase().includes(needle),
-  );
+  let list = data.products;
+  if (needle) {
+    list = list.filter((p) =>
+      [p.title, p.sku, p.type].filter(Boolean).join(' ').toLowerCase().includes(needle),
+    );
+  }
+  if (lowStockOnly.value && settings.activeEventId) {
+    list = list.filter((p) => lowStockRows(p).length > 0);
+  }
+  return list;
 });
+
+/** Export the current low-stock list as a restock CSV. */
+async function exportRestockCsv(): Promise<void> {
+  const rows = [['Product', 'Variant', 'Type', 'SKU', 'Brought', 'Sold', 'Left']];
+  for (const p of filteredProducts.value) {
+    for (const r of lowStockRows(p)) {
+      rows.push([p.title, r.variant, p.type ?? '', p.sku ?? '', String(r.brought), String(r.sold), String(r.left)]);
+    }
+  }
+  const csv = rows.map((r) => r.map((c) => `"${c.replace(/"/g, '""')}"`).join(',')).join('\r\n');
+  await saveTextFile(`restock_${new Date().toISOString().slice(0, 10)}.csv`, csv, 'text/csv');
+}
 
 /** The product list is always grouped by type, matching the POS and bulk editor. */
 const productGroups = computed(() => {
@@ -71,6 +112,25 @@ const productGroups = computed(() => {
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([type, products]) => ({ type, products }));
 });
+
+// ── Reorder: move products within the global sortOrder (drives the POS grid) ─
+const showReorder = ref(false);
+
+async function moveProduct(pid: string, dir: -1 | 1): Promise<void> {
+  const list = [...data.products];
+  const i = list.findIndex((p) => p.id === pid);
+  const j = i + dir;
+  if (i === -1 || j < 0 || j >= list.length) return;
+  const [moved] = list.splice(i, 1);
+  list.splice(j, 0, moved!);
+  // Renumber sequentially; only products whose position changed are written
+  // (first use may normalize legacy duplicate sortOrders once).
+  const now = Date.now();
+  for (let k = 0; k < list.length; k++) {
+    const p = list[k]!;
+    if (p.sortOrder !== k) await upsertProduct({ ...p, sortOrder: k, updatedAt: now });
+  }
+}
 
 function pickImage(e: Event): void {
   const file = (e.target as HTMLInputElement).files?.[0];
@@ -517,7 +577,42 @@ function discountTargets(d: DiscountRule): string {
         >
           <span class="flex items-center gap-1.5"><Boxes class="h-4 w-4" /> Bulk stock</span>
         </button>
+        <button
+          class="rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
+          :disabled="!data.products.length"
+          @click="showReorder = true"
+        >
+          <span class="flex items-center gap-1.5"><ListOrdered class="h-4 w-4" /> Reorder</span>
+        </button>
       </div>
+
+      <!-- Low-stock filter (per active event) -->
+      <div v-if="data.activeEvent" class="mb-3 flex flex-wrap items-center gap-2 text-sm">
+        <label class="flex items-center gap-2 text-slate-300">
+          <input v-model="lowStockOnly" type="checkbox" />
+          Low stock only
+        </label>
+        <template v-if="lowStockOnly">
+          <label class="flex items-center gap-1.5 text-xs text-slate-400">
+            ≤
+            <input
+              v-model="lowStockThreshold"
+              type="number"
+              min="0"
+              class="w-14 rounded-md bg-slate-800 px-2 py-1 text-sm"
+            />
+            left
+          </label>
+          <button
+            class="ml-auto flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium hover:bg-slate-700 disabled:opacity-40"
+            :disabled="!filteredProducts.length"
+            @click="exportRestockCsv"
+          >
+            <FileDown class="h-3.5 w-3.5" /> Restock CSV
+          </button>
+        </template>
+      </div>
+
       <p v-if="!data.activeEvent" class="mb-3 rounded-lg bg-amber-950/50 px-3 py-2 text-xs text-amber-400">
         No active event — stock quantities are per event, activate one under Events to edit them.
       </p>
@@ -733,6 +828,36 @@ function discountTargets(d: DiscountRule): string {
           </div>
         </div>
       </template>
+    </ModalShell>
+
+    <!-- Reorder products (drives the POS grid order) -->
+    <ModalShell v-if="showReorder" title="Reorder products" @close="showReorder = false">
+      <p class="mb-3 text-xs text-slate-500">
+        This order is used by the POS grid and the catalog. Changes sync to all devices.
+      </p>
+      <ul class="divide-y divide-slate-800 overflow-hidden rounded-xl bg-slate-800/40 ring-1 ring-slate-800">
+        <li v-for="(p, i) in data.products" :key="p.id" class="flex items-center gap-3 px-3 py-2">
+          <ProductThumb :image-id="p.imageId" :type="p.type" />
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm">{{ p.title || '(untitled)' }}</p>
+            <p v-if="p.type" class="text-[11px]" :style="{ color: typeColor(p.type) }">{{ p.type }}</p>
+          </div>
+          <button
+            class="rounded-lg bg-slate-800 p-2 disabled:opacity-30"
+            :disabled="i === 0"
+            @click="moveProduct(p.id, -1)"
+          >
+            <ArrowUp class="h-4 w-4" />
+          </button>
+          <button
+            class="rounded-lg bg-slate-800 p-2 disabled:opacity-30"
+            :disabled="i === data.products.length - 1"
+            @click="moveProduct(p.id, 1)"
+          >
+            <ArrowDown class="h-4 w-4" />
+          </button>
+        </li>
+      </ul>
     </ModalShell>
 
     <!-- Bulk stock editor -->
