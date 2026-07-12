@@ -22,6 +22,28 @@ The server listens on port 8787 (HTTP + WebSocket). Put a TLS-terminating revers
 (Caddy, nginx, Traefik) in front of it for internet use. All state lives in `server/data/`
 (SQLite database + image files) — back that folder up.
 
+### Machine-specific compose settings
+
+Don't edit `docker-compose.yml` on the server — git pulls will conflict. Put host-specific
+additions (proxy networks, container_name, …) in `server/docker-compose.override.yml`
+(gitignored) and pass both files:
+
+```yaml
+# server/docker-compose.override.yml — example: join the reverse proxy's network
+services:
+  zolltool:
+    container_name: zolltool
+    networks: [default, zollnet]
+networks:
+  zollnet:
+    external: true
+```
+
+```sh
+docker compose -f server/docker-compose.yml -f server/docker-compose.override.yml \
+  --env-file server/.env up -d --build
+```
+
 ## Web app in the browser
 
 The server serves the built web app at `/` when one is present: browse to the server URL,

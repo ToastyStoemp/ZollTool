@@ -17,6 +17,8 @@ bridge/bin
 app/dist/
 server/data/
 server/web/
+# Machine-specific compose additions (networks, container_name, …)
+server/docker-compose.override.yml
 /data/
 *.tsbuildinfo
 .codegraph/
