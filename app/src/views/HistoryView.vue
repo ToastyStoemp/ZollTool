@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
+import type { Transaction, TxDiscount, TxItem } from '@zolltool/shared';
 import { useDataStore } from '@/stores/data';
 import { getSetting, revertTransaction, setSetting } from '@/db/repo';
-import { fmtPrice } from '@/lib/money';
+import { fmtPrice, round2 } from '@/lib/money';
 import { transactionsToCsv } from '@/lib/export/csv';
 import { typeColor } from '@/lib/search';
 import { saveBinaryFile, saveTextFile } from '@/lib/download';
@@ -41,10 +42,38 @@ const scopedTransactions = computed(() => {
   return [...list].sort((a, b) => b.timestamp - a.timestamp);
 });
 
+/** Charge/local currency for the scope — what was physically collected (cash drawer, card terminal). */
 const currency = computed(() => scopeEvent.value?.currency ?? data.currency);
 
 function eventName(eventId: string): string {
   return data.events.find((e) => e.id === eventId)?.name ?? '(deleted event)';
+}
+
+// ── Local / base currency toggle ────────────────────────────────────────────
+// Only shown when at least one transaction in scope was charged in a
+// converted local currency (i.e. this feature was actually used). Applies to
+// revenue-style figures (what did I sell); cash/card/drawer reconciliation
+// always stays in whatever was physically collected.
+type AmountView = 'local' | 'base';
+const amountView = ref<AmountView>('local');
+const hasBaseData = computed(() => scopedTransactions.value.some((t) => t.baseCurrency));
+
+const revenueCurrency = computed(() =>
+  amountView.value === 'base' ? (scopeEvent.value?.currency ?? data.currency) : currency.value,
+);
+
+function amountOf(tx: Transaction): number {
+  return amountView.value === 'base' && tx.baseTotal != null ? tx.baseTotal : tx.total;
+}
+function currencyOf(tx: Transaction): string {
+  return amountView.value === 'base' ? (tx.baseCurrency ?? tx.currency) : tx.currency;
+}
+function itemAmountOf(item: TxItem): number {
+  return amountView.value === 'base' && item.baseLineTotal != null ? item.baseLineTotal : item.lineTotal;
+}
+function discountAmountOf(d: TxDiscount, tx: Transaction): number {
+  if (amountView.value !== 'base' || !tx.exchangeRate) return d.amount;
+  return round2(d.amount / tx.exchangeRate);
 }
 
 const methodFilter = ref<string>('all');
@@ -70,7 +99,7 @@ const visible = computed(() =>
 
 const stats = computed(() => {
   const active = scopedTransactions.value.filter((t) => !t.revertedBy);
-  const revenue = active.reduce((s, t) => s + t.total, 0);
+  const revenue = active.reduce((s, t) => s + amountOf(t), 0);
   const items = active.reduce((s, t) => s + t.items.reduce((si, i) => si + i.qty, 0), 0);
   const cash = active.reduce(
     (s, t) => s + t.payments.filter((p) => p.kind === 'cash').reduce((sp, p) => sp + p.amount, 0),
@@ -118,7 +147,7 @@ const bestAll = computed(() => {
       }
       const cur = map.get(key) ?? { label, type, qty: 0, value: 0 };
       cur.qty += item.qty;
-      cur.value += item.lineTotal;
+      cur.value += itemAmountOf(item);
       map.set(key, cur);
     }
   }
@@ -134,7 +163,7 @@ const hourly = computed(() => {
   const buckets = new Array(24).fill(0) as number[];
   for (const tx of scopedTransactions.value) {
     if (tx.revertedBy) continue;
-    buckets[new Date(tx.timestamp).getHours()] += tx.total;
+    buckets[new Date(tx.timestamp).getHours()] += amountOf(tx);
   }
   const active = buckets.map((v, h) => ({ h, v })).filter((b) => b.v > 0);
   if (!active.length) return [];
@@ -213,7 +242,7 @@ async function printDayReport(): Promise<void> {
     lines.push({ kind: 'text', text: div });
     lines.push({ kind: 'text', text: row('Sales', String(stats.value.count)) });
     lines.push({ kind: 'text', text: row('Items sold', String(stats.value.items)) });
-    lines.push({ kind: 'text', text: row('Revenue', fmtPrice(stats.value.revenue, currency.value)) });
+    lines.push({ kind: 'text', text: row('Revenue', fmtPrice(stats.value.revenue, revenueCurrency.value)) });
     lines.push({ kind: 'text', text: div });
     for (const m of methodBreakdown.value) {
       lines.push({ kind: 'text', text: row(m.label, fmtPrice(m.amount, currency.value)) });
@@ -242,7 +271,7 @@ const daily = computed(() => {
   for (const tx of scopedTransactions.value) {
     if (tx.revertedBy) continue;
     const day = new Date(tx.timestamp).toISOString().slice(0, 10);
-    map.set(day, (map.get(day) ?? 0) + tx.total);
+    map.set(day, (map.get(day) ?? 0) + amountOf(tx));
   }
   const entries = [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   const max = Math.max(1, ...entries.map(([, v]) => v));
@@ -316,6 +345,22 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
         <option value="all">All events</option>
         <option v-for="e in data.events" :key="e.id" :value="e.id">{{ e.name }}</option>
       </select>
+      <div v-if="hasBaseData" class="flex rounded-lg bg-slate-900 p-1 text-xs ring-1 ring-slate-800">
+        <button
+          class="rounded-md px-3 py-1"
+          :class="amountView === 'local' ? 'bg-slate-700 font-semibold' : 'text-slate-400'"
+          @click="amountView = 'local'"
+        >
+          Local
+        </button>
+        <button
+          class="rounded-md px-3 py-1"
+          :class="amountView === 'base' ? 'bg-slate-700 font-semibold' : 'text-slate-400'"
+          @click="amountView = 'base'"
+        >
+          Base
+        </button>
+      </div>
       <div class="ml-auto flex gap-2">
         <button
           class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-700 disabled:opacity-40"
@@ -339,7 +384,7 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
     <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
       <div class="rounded-xl bg-slate-900 p-3 ring-1 ring-slate-800">
         <p class="text-xs text-slate-400">Revenue</p>
-        <p class="text-lg font-bold">{{ fmtPrice(stats.revenue, currency) }}</p>
+        <p class="text-lg font-bold">{{ fmtPrice(stats.revenue, revenueCurrency) }}</p>
       </div>
       <div class="rounded-xl bg-slate-900 p-3 ring-1 ring-slate-800">
         <p class="text-xs text-slate-400">Sales / items</p>
@@ -383,7 +428,7 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
               {{ b.label }}
             </span>
             <span class="text-xs text-slate-400">{{ b.qty }}×</span>
-            <span class="w-20 text-right font-medium">{{ fmtPrice(b.value, currency) }}</span>
+            <span class="w-20 text-right font-medium">{{ fmtPrice(b.value, revenueCurrency) }}</span>
           </li>
         </ol>
         <button
@@ -405,7 +450,7 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
             <div class="h-4 flex-1 overflow-hidden rounded bg-slate-800">
               <div class="h-full rounded bg-emerald-500/70" :style="{ width: d.pct + '%' }" />
             </div>
-            <span class="w-20 text-right font-medium">{{ fmtPrice(d.value, currency) }}</span>
+            <span class="w-20 text-right font-medium">{{ fmtPrice(d.value, revenueCurrency) }}</span>
           </div>
         </div>
       </div>
@@ -422,7 +467,7 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
               <div
                 class="w-full rounded-t bg-emerald-500/70"
                 :style="{ height: b.pct + '%' }"
-                :title="`${b.h}:00 — ${fmtPrice(b.v, currency)}`"
+                :title="`${b.h}:00 — ${fmtPrice(b.v, revenueCurrency)}`"
               />
             </div>
             <span class="text-[9px] text-slate-500">{{ b.h % 3 === 0 ? b.h : '' }}</span>
@@ -502,7 +547,7 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
       >
         <div class="flex items-center gap-2">
           <component :is="methodIcon(tx.method)" class="h-4 w-4 shrink-0 text-slate-400" />
-          <span class="text-sm font-semibold">{{ fmtPrice(tx.total, tx.currency) }}</span>
+          <span class="text-sm font-semibold">{{ fmtPrice(amountOf(tx), currencyOf(tx)) }}</span>
           <span v-if="allMode" class="truncate rounded bg-slate-800 px-1.5 py-0.5 text-[10px] text-slate-400">
             {{ eventName(tx.eventId) }}
           </span>
@@ -531,11 +576,11 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
             <span>
               {{ item.qty }}× {{ item.title }}<span v-if="item.variantLabel"> · {{ item.variantLabel }}</span>
             </span>
-            <span>{{ fmtPrice(item.lineTotal, tx.currency) }}</span>
+            <span>{{ fmtPrice(itemAmountOf(item), currencyOf(tx)) }}</span>
           </li>
           <li v-for="(d, i) in tx.discounts" :key="'d' + i" class="flex justify-between text-emerald-500">
             <span>{{ d.name }}</span>
-            <span>− {{ fmtPrice(d.amount, tx.currency) }}</span>
+            <span>− {{ fmtPrice(discountAmountOf(d, tx), currencyOf(tx)) }}</span>
           </li>
         </ul>
       </li>

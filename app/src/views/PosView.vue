@@ -6,7 +6,7 @@ import { useSettingsStore } from '@/stores/settings';
 import { useCartStore } from '@/stores/cart';
 import { findSearchMatch, typeColor } from '@/lib/search';
 import { cashShortcutAmounts, splitCashPortionAmounts } from '@/lib/cash';
-import { fmtPrice, round2 } from '@/lib/money';
+import { fmtPrice, round2, toLocalPrice } from '@/lib/money';
 import { showToast } from '@/lib/toast';
 import { getProvider } from '@/payments/registry';
 import { getSetting, revertTransaction } from '@/db/repo';
@@ -173,10 +173,16 @@ function addBundle(pid: string, vid: string | null, qty: number): void {
   cart.setQty(vid ? `${pid}:${vid}` : pid, cart.inCart(pid, vid) + qty);
 }
 
+/** Converts a catalog (base-currency) price to the current charge currency, for display tags. */
+function tagPrice(basePrice: number): string {
+  const shown = toLocalPrice(basePrice, cart.chargeRate, cart.chargeIncrement);
+  return fmtPrice(shown, cart.chargeCurrency);
+}
+
 /** Variant products show their cheapest price instead of an opaque "⋯". */
 function fromPrice(p: Product): string {
   const min = Math.min(...p.variants.map((v) => v.price ?? p.price));
-  return `from ${fmtPrice(min, data.currency)}`;
+  return `from ${tagPrice(min)}`;
 }
 
 // ── Last sale: undo fat-fingered checkouts and reprint right at the counter ──
@@ -212,7 +218,7 @@ const todayStats = computed(() => {
   for (const tx of data.eventTransactions) {
     if (tx.revertedBy || tx.timestamp < start.getTime()) continue;
     count++;
-    revenue += tx.total;
+    revenue += tx.baseTotal ?? tx.total;
   }
   return { count, revenue };
 });
@@ -256,7 +262,10 @@ function addMiscItem(): void {
     showToast('Enter a price for the item.', 'error');
     return;
   }
-  cart.addMisc(miscForm.title, round2(price), qty);
+  // Entered in the charge currency (same as everything else on screen); the cart
+  // stores catalog-equivalent lines in base currency, so convert back on the way in.
+  const basePrice = data.hasLocalCurrency ? price / cart.chargeRate : price;
+  cart.addMisc(miscForm.title, round2(basePrice), qty);
   showMiscForm.value = false;
 }
 
@@ -284,20 +293,28 @@ function publishCart(paid?: { total: number }): void {
   const cartPayload: DisplayCart = {
     deviceName: settings.deviceName || 'Register',
     eventName: data.activeEvent?.name ?? '',
-    currency: data.currency,
-    lines: cart.lines.map((l) => ({
+    currency: cart.chargeCurrency,
+    lines: cart.chargeLines.map((l) => ({
       title: l.title,
       variantLabel: l.variantLabel ?? undefined,
       qty: l.qty,
       lineTotal: l.lineTotal,
     })),
     discounts: [
-      ...cart.totals.ruleDiscounts.map((r) => ({ name: r.rule.name, amount: r.amount })),
+      ...cart.totals.ruleDiscounts.map((r) => ({
+        name: r.rule.name,
+        amount: round2(r.amount * cart.chargeRate),
+      })),
       ...(cart.totals.customDiscountAmount > 0.001
-        ? [{ name: cart.customDiscount?.name || 'Discount', amount: cart.totals.customDiscountAmount }]
+        ? [
+            {
+              name: cart.customDiscount?.name || 'Discount',
+              amount: round2(cart.totals.customDiscountAmount * cart.chargeRate),
+            },
+          ]
         : []),
     ],
-    total: cart.totals.grandTotal,
+    total: cart.chargeGrandTotal,
     paid,
     ts: Date.now(),
   };
@@ -410,12 +427,12 @@ onUnmounted(() => {
 });
 
 const cashShortcuts = computed(() =>
-  payment.method === 'cash' ? cashShortcutAmounts(payment.total, data.currency) : [],
+  payment.method === 'cash' ? cashShortcutAmounts(payment.total, cart.chargeCurrency) : [],
 );
 
 const splitCashShortcuts = computed(() => {
   const card = parseFloat(payment.splitCard) || 0;
-  return splitCashPortionAmounts(Math.max(0, payment.total - card), data.currency);
+  return splitCashPortionAmounts(Math.max(0, payment.total - card), cart.chargeCurrency);
 });
 
 const change = computed(() => (parseFloat(payment.cashReceived) || 0) - payment.total);
@@ -442,7 +459,7 @@ function startPayment(method: PaymentMethod): void {
     return;
   }
   payment.method = method;
-  payment.total = round2(cart.totals.grandTotal);
+  payment.total = cart.chargeGrandTotal;
   payment.cashReceived = payment.total.toFixed(2);
   payment.splitCash = '';
   payment.splitCard = '';
@@ -461,7 +478,7 @@ async function runTerminalPayment(): Promise<void> {
   try {
     const result = await provider.startPayment({
       amount: payment.total,
-      currency: data.currency,
+      currency: cart.chargeCurrency,
       reference: `zoll-${Date.now()}`,
     });
     if (payment.phase !== 'terminal') return; // cancelled meanwhile
@@ -722,7 +739,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
             <span class="mt-auto flex w-full items-center justify-between pt-1 text-xs">
               <span :class="stockLabel(p.id, null).cls">{{ stockLabel(p.id, null).text }}</span>
               <span class="font-semibold text-slate-200">
-                {{ p.variants.length ? fromPrice(p) : fmtPrice(p.price, data.currency) }}
+                {{ p.variants.length ? fromPrice(p) : tagPrice(p.price) }}
               </span>
             </span>
           </button>
@@ -740,7 +757,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
             <ShoppingCart class="h-4.5 w-4.5" />
             {{ cart.itemCount }} item{{ cart.itemCount !== 1 ? 's' : '' }}
           </span>
-          <span>{{ fmtPrice(cart.totals.grandTotal, data.currency) }}</span>
+          <span>{{ fmtPrice(cart.chargeGrandTotal, cart.chargeCurrency) }}</span>
         </button>
       </section>
 
@@ -772,7 +789,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
           <p v-if="!cart.lines.length" class="py-8 text-center text-sm text-slate-500">Cart is empty</p>
           <ul class="space-y-2">
             <li
-              v-for="l in cart.lines"
+              v-for="l in cart.chargeLines"
               :key="l.pid + ':' + (l.vid || '')"
               class="rounded-lg bg-slate-800/60 p-2.5"
             >
@@ -780,7 +797,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
                 <span class="min-w-0 truncate text-sm">
                   {{ l.title }}<span v-if="l.variantLabel" class="text-slate-400"> · {{ l.variantLabel }}</span>
                 </span>
-                <span class="text-sm font-semibold">{{ fmtPrice(l.lineTotal, data.currency) }}</span>
+                <span class="text-sm font-semibold">{{ fmtPrice(l.lineTotal, cart.chargeCurrency) }}</span>
               </div>
               <div class="mt-1.5 flex items-center gap-2">
                 <button
@@ -796,7 +813,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
                 >
                   +
                 </button>
-                <span class="ml-auto text-xs text-slate-500">à {{ fmtPrice(l.unitPrice, data.currency) }}</span>
+                <span class="ml-auto text-xs text-slate-500">à {{ fmtPrice(l.unitPrice, cart.chargeCurrency) }}</span>
               </div>
             </li>
           </ul>
@@ -805,21 +822,30 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
         <footer class="space-y-2 border-t border-slate-800 p-3">
           <div class="space-y-1 text-sm">
             <div class="flex justify-between text-slate-400">
-              <span>Subtotal</span><span>{{ fmtPrice(cart.totals.subtotal, data.currency) }}</span>
+              <span>Subtotal</span>
+              <span>{{ fmtPrice(cart.chargeSubtotal, cart.chargeCurrency) }}</span>
             </div>
             <div
               v-for="r in cart.totals.ruleDiscounts"
               :key="r.rule.id"
               class="flex justify-between text-emerald-400"
             >
-              <span>{{ r.rule.name }}</span><span>− {{ fmtPrice(r.amount, data.currency) }}</span>
+              <span>{{ r.rule.name }}</span>
+              <span>− {{ fmtPrice(round2(r.amount * cart.chargeRate), cart.chargeCurrency) }}</span>
             </div>
             <div v-if="cart.totals.customDiscountAmount > 0.001" class="flex justify-between text-emerald-400">
               <span>{{ cart.customDiscount?.name }}</span>
-              <span>− {{ fmtPrice(cart.totals.customDiscountAmount, data.currency) }}</span>
+              <span>− {{ fmtPrice(round2(cart.totals.customDiscountAmount * cart.chargeRate), cart.chargeCurrency) }}</span>
+            </div>
+            <div
+              v-if="Math.abs(cart.chargeRoundingAdjustment) > 0.001"
+              class="flex justify-between text-slate-400"
+            >
+              <span>Rounding</span>
+              <span>{{ cart.chargeRoundingAdjustment > 0 ? '+ ' : '− ' }}{{ fmtPrice(Math.abs(cart.chargeRoundingAdjustment), cart.chargeCurrency) }}</span>
             </div>
             <div class="flex justify-between text-base font-bold">
-              <span>Total</span><span>{{ fmtPrice(cart.totals.grandTotal, data.currency) }}</span>
+              <span>Total</span><span>{{ fmtPrice(cart.chargeGrandTotal, cart.chargeCurrency) }}</span>
             </div>
           </div>
           <div class="flex gap-2">
@@ -910,7 +936,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
           <span class="mt-auto flex w-full items-center justify-between pt-1 text-xs">
             <span :class="stockLabel(p.id, null).cls">{{ stockLabel(p.id, null).text }}</span>
             <span class="font-semibold text-slate-200">
-              {{ p.variants.length ? fromPrice(p) : fmtPrice(p.price, data.currency) }}
+              {{ p.variants.length ? fromPrice(p) : tagPrice(p.price) }}
             </span>
           </span>
         </button>
@@ -958,7 +984,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
               {{ stockLabel(variantPickerProduct!.id, v.id).text }}
             </span>
             <span class="font-semibold">
-              {{ fmtPrice(v.price ?? variantPickerProduct!.price, data.currency) }}
+              {{ tagPrice(v.price ?? variantPickerProduct!.price) }}
             </span>
           </span>
         </button>
@@ -979,7 +1005,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
         />
         <div class="grid grid-cols-2 gap-3">
           <label class="block text-sm">
-            <span class="text-slate-400">Price ({{ data.currency }})</span>
+            <span class="text-slate-400">Price ({{ cart.chargeCurrency }})</span>
             <input v-model="miscForm.price" type="number" min="0" step="0.05" inputmode="decimal" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
           </label>
           <label class="block text-sm">
@@ -1073,7 +1099,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
       @close="cancelPayment"
     >
       <div class="space-y-4 text-center">
-        <p class="text-3xl font-bold">{{ fmtPrice(payment.total, data.currency) }}</p>
+        <p class="text-3xl font-bold">{{ fmtPrice(payment.total, cart.chargeCurrency) }}</p>
 
         <!-- Terminal waiting -->
         <template v-if="payment.phase === 'terminal'">
@@ -1123,7 +1149,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
               :class="change < -0.001 ? 'text-red-400' : 'text-emerald-400'"
               class="font-semibold"
             >
-              {{ change < -0.001 ? '− ' + fmtPrice(-change, data.currency) : change < 0.001 ? 'No change' : fmtPrice(change, data.currency) }}
+              {{ change < -0.001 ? '− ' + fmtPrice(-change, cart.chargeCurrency) : change < 0.001 ? 'No change' : fmtPrice(change, cart.chargeCurrency) }}
             </span>
           </p>
         </template>
@@ -1174,7 +1200,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
           </div>
           <p class="text-sm">
             {{ splitState.label }}:
-            <span :class="splitState.cls" class="font-semibold">{{ fmtPrice(splitState.amount, data.currency) }}</span>
+            <span :class="splitState.cls" class="font-semibold">{{ fmtPrice(splitState.amount, cart.chargeCurrency) }}</span>
           </p>
         </template>
 

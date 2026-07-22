@@ -36,6 +36,7 @@ const settings = useSettingsStore();
 // from the store once it's ready and persisted on change (blur/Enter).
 const deviceNameDraft = ref('');
 const currencyDraft = ref('');
+const roundingDraft = ref('0');
 
 async function saveDeviceName(): Promise<void> {
   await settings.setDeviceName(deviceNameDraft.value.trim());
@@ -44,6 +45,11 @@ async function saveDeviceName(): Promise<void> {
 async function saveCurrency(): Promise<void> {
   await settings.setDefaultCurrency(currencyDraft.value);
   currencyDraft.value = settings.defaultCurrency; // reflect normalization (upper-case, CHF fallback)
+}
+
+async function saveRounding(): Promise<void> {
+  await settings.setDefaultRoundingIncrement(Number(roundingDraft.value));
+  roundingDraft.value = String(settings.defaultRoundingIncrement);
 }
 
 const statuses = ref<Record<string, ProviderStatus & { available: boolean }>>({});
@@ -116,6 +122,7 @@ watch(
     if (!ready) return;
     deviceNameDraft.value = settings.deviceName;
     currencyDraft.value = settings.defaultCurrency;
+    roundingDraft.value = String(settings.defaultRoundingIncrement);
     if (!authUrl.value) authUrl.value = settings.serverUrl;
   },
   { immediate: true },
@@ -499,6 +506,22 @@ async function onImportFile(e: Event): Promise<void> {
           class="mt-1 w-24 rounded-lg bg-slate-800 px-3 py-2 uppercase"
           @change="saveCurrency"
         />
+      </label>
+      <label class="mt-3 block text-sm">
+        <span class="text-slate-400">Default rounding increment (prefilled for new events)</span>
+        <select
+          v-model="roundingDraft"
+          class="mt-1 w-24 rounded-lg bg-slate-800 px-3 py-2"
+          @change="saveRounding"
+        >
+          <option value="0">Off</option>
+          <option value="1">1</option>
+          <option value="5">5</option>
+          <option value="10">10</option>
+          <option value="20">20</option>
+          <option value="50">50</option>
+          <option value="100">100</option>
+        </select>
       </label>
       <p class="mt-2 text-xs text-slate-500">Device ID: {{ settings.deviceId }}</p>
       <div class="mt-3 flex flex-wrap gap-2">

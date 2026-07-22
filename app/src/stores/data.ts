@@ -41,6 +41,11 @@ export const useDataStore = defineStore('data', () => {
 
   const currency = computed(() => activeEvent.value?.currency ?? settings.defaultCurrency);
 
+  const localCurrency = computed(() => activeEvent.value?.localCurrency || null);
+  const exchangeRate = computed(() => activeEvent.value?.exchangeRate || 1);
+  const roundingIncrement = computed(() => activeEvent.value?.roundingIncrement ?? 0);
+  const hasLocalCurrency = computed(() => !!localCurrency.value && exchangeRate.value > 0);
+
   const eventTransactions = computed(() =>
     allTransactions.value
       .filter((t) => t.eventId === settings.activeEventId)
@@ -66,7 +71,8 @@ export const useDataStore = defineStore('data', () => {
         const key = stockKey(item.pid, item.vid);
         const cur = map.get(key) ?? { qty: 0, value: 0 };
         cur.qty += item.qty;
-        cur.value += item.lineTotal;
+        // Base/tracking currency, even for sales charged in a converted local currency.
+        cur.value += item.baseLineTotal ?? item.lineTotal;
         map.set(key, cur);
       }
     }
@@ -98,6 +104,10 @@ export const useDataStore = defineStore('data', () => {
     allTransactions,
     activeEvent,
     currency,
+    localCurrency,
+    exchangeRate,
+    roundingIncrement,
+    hasLocalCurrency,
     eventTransactions,
     stockByKey,
     soldByKey,

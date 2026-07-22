@@ -10,13 +10,26 @@ export function buildSalesReportPdf(event: SalesEvent, transactions: Transaction
   const cur = event.currency;
   const money = (n: number) => `${cur} ${n.toFixed(2)}`;
 
+  // Everything in this report is shown in the base/tracking currency, even for
+  // sales charged in a converted local currency (SalesEvent.localCurrency) —
+  // it's the accounting-oriented document, so figures without a precomputed
+  // base value (payment legs, discounts) are converted back via the rate
+  // snapshotted on the transaction at checkout time.
+  const toBase = (amount: number, tx: Transaction): number => (tx.exchangeRate ? amount / tx.exchangeRate : amount);
+
   const active = transactions.filter((t) => !t.revertedBy);
   const reverted = transactions.length - active.length;
-  const revenue = active.reduce((s, t) => s + t.total, 0);
+  const revenue = active.reduce((s, t) => s + (t.baseTotal ?? t.total), 0);
   const items = active.reduce((s, t) => s + t.items.reduce((si, i) => si + i.qty, 0), 0);
   const legTotal = (kind: 'cash' | 'card') =>
-    active.reduce((s, t) => s + t.payments.filter((p) => p.kind === kind).reduce((sp, p) => sp + p.amount, 0), 0);
-  const discountTotal = active.reduce((s, t) => s + t.discounts.reduce((sd, d) => sd + d.amount, 0), 0);
+    active.reduce(
+      (s, t) => s + t.payments.filter((p) => p.kind === kind).reduce((sp, p) => sp + toBase(p.amount, t), 0),
+      0,
+    );
+  const discountTotal = active.reduce(
+    (s, t) => s + t.discounts.reduce((sd, d) => sd + toBase(d.amount, t), 0),
+    0,
+  );
 
   // ── Header ────────────────────────────────────────────────────────────────
   doc.setFont('helvetica', 'bold').setFontSize(18);
@@ -63,7 +76,7 @@ export function buildSalesReportPdf(event: SalesEvent, transactions: Transaction
       const label = it.variantLabel ? `${it.title} · ${it.variantLabel}` : it.title;
       const curEntry = sellerMap.get(key) ?? { label, qty: 0, value: 0 };
       curEntry.qty += it.qty;
-      curEntry.value += it.lineTotal;
+      curEntry.value += it.baseLineTotal ?? it.lineTotal;
       sellerMap.set(key, curEntry);
     }
   }
@@ -86,7 +99,7 @@ export function buildSalesReportPdf(event: SalesEvent, transactions: Transaction
   const dayMap = new Map<string, number>();
   for (const tx of active) {
     const day = new Date(tx.timestamp).toISOString().slice(0, 10);
-    dayMap.set(day, (dayMap.get(day) ?? 0) + tx.total);
+    dayMap.set(day, (dayMap.get(day) ?? 0) + (tx.baseTotal ?? tx.total));
   }
   const days = [...dayMap.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   if (days.length > 1) {
@@ -127,7 +140,7 @@ export function buildSalesReportPdf(event: SalesEvent, transactions: Transaction
           tx.items
             .map((i) => `${i.qty}× ${i.variantLabel ? `${i.title} · ${i.variantLabel}` : i.title}`)
             .join(', '),
-          money(tx.total),
+          money(tx.baseTotal ?? tx.total),
           tx.revertedBy ? 'REVERTED' : '',
         ]),
       styles: { fontSize: 8, cellPadding: 1.6 },

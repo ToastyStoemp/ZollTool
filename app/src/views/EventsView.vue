@@ -8,6 +8,7 @@ import { closeEvent, deleteEvent, setStock, upsertEvent } from '@/db/repo';
 import { db } from '@/db/schema';
 import { uuidv7 } from '@/lib/uuid';
 import { fmtPrice } from '@/lib/money';
+import { fetchExchangeRate } from '@/lib/exchangeRate';
 import { EVENT_PRESETS } from '@/data/event-presets';
 import { ChartLine, Pencil, ShoppingCart, Stamp, Trash2 } from 'lucide-vue-next';
 import ModalShell from '@/components/ModalShell.vue';
@@ -22,6 +23,19 @@ const editingId = ref<string | null>(null);
 const confirmCloseId = ref<string | null>(null);
 const confirmDeleteId = ref<string | null>(null);
 
+const ROUNDING_INCREMENTS = [
+  ['0', 'No rounding'],
+  ['1', '1'],
+  ['5', '5'],
+  ['10', '10'],
+  ['20', '20'],
+  ['50', '50'],
+  ['100', '100'],
+] as const;
+
+const fetchingRate = ref(false);
+const fetchRateError = ref('');
+
 const form = reactive({
   preset: '',
   name: '',
@@ -32,9 +46,25 @@ const form = reactive({
   city: '',
   country: 'Switzerland',
   tin: '',
-  currency: 'CHF',
+  currency: settings.defaultCurrency,
+  localCurrency: '',
+  exchangeRate: '' as string,
+  roundingIncrement: '0',
   copyStockFrom: '',
 });
+
+async function fetchRate(): Promise<void> {
+  if (!form.currency.trim() || !form.localCurrency.trim()) return;
+  fetchingRate.value = true;
+  fetchRateError.value = '';
+  const rate = await fetchExchangeRate(form.currency, form.localCurrency);
+  fetchingRate.value = false;
+  if (rate == null) {
+    fetchRateError.value = 'Could not fetch a rate — enter it manually.';
+    return;
+  }
+  form.exchangeRate = String(rate);
+}
 
 const statusOrder: Record<string, number> = { active: 0, planned: 1, closed: 2 };
 const sortedEvents = computed(() =>
@@ -46,12 +76,14 @@ const sortedEvents = computed(() =>
 function eventStats(eventId: string): { count: number; revenue: number; currency: string } {
   let count = 0;
   let revenue = 0;
-  let currency = 'CHF';
+  let currency = settings.defaultCurrency;
   for (const tx of data.allTransactions) {
     if (tx.eventId !== eventId || tx.revertedBy) continue;
     count++;
-    revenue += tx.total;
-    currency = tx.currency;
+    // Always sum in base/tracking currency — tx.total may be in a converted
+    // local currency that changed over the life of the event.
+    revenue += tx.baseTotal ?? tx.total;
+    currency = tx.baseCurrency ?? tx.currency;
   }
   return { count, revenue, currency };
 }
@@ -82,13 +114,19 @@ function openCreate(): void {
     country: 'Switzerland',
     tin: '',
     currency: settings.defaultCurrency,
+    localCurrency: '',
+    exchangeRate: '',
+    roundingIncrement: String(settings.defaultRoundingIncrement),
     copyStockFrom: '',
   });
+  fetchRateError.value = '';
   showCreate.value = true;
 }
 
 async function createEvent(): Promise<void> {
   if (!form.name.trim()) return;
+  const localCurrency = form.localCurrency.trim().toUpperCase();
+  const rate = parseFloat(form.exchangeRate);
   const event: SalesEvent = {
     id: uuidv7(),
     name: form.name.trim(),
@@ -101,7 +139,10 @@ async function createEvent(): Promise<void> {
       country: form.country || undefined,
       tin: form.tin || undefined,
     },
-    currency: form.currency || 'CHF',
+    currency: form.currency || settings.defaultCurrency,
+    localCurrency: localCurrency && Number.isFinite(rate) && rate > 0 ? localCurrency : undefined,
+    exchangeRate: localCurrency && Number.isFinite(rate) && rate > 0 ? rate : undefined,
+    roundingIncrement: Number(form.roundingIncrement) || 0,
     status: 'planned',
     updatedAt: Date.now(),
   };
@@ -143,14 +184,20 @@ function openEdit(event: SalesEvent): void {
     country: event.venue.country ?? '',
     tin: event.venue.tin ?? '',
     currency: event.currency,
+    localCurrency: event.localCurrency ?? '',
+    exchangeRate: event.exchangeRate != null ? String(event.exchangeRate) : '',
+    roundingIncrement: String(event.roundingIncrement ?? 0),
     copyStockFrom: '',
   });
+  fetchRateError.value = '';
   editingId.value = event.id;
 }
 
 async function saveEdit(): Promise<void> {
   const event = data.events.find((e) => e.id === editingId.value);
   if (!event || !form.name.trim()) return;
+  const localCurrency = form.localCurrency.trim().toUpperCase();
+  const rate = parseFloat(form.exchangeRate);
   await upsertEvent({
     ...event,
     name: form.name.trim(),
@@ -163,7 +210,10 @@ async function saveEdit(): Promise<void> {
       country: form.country || undefined,
       tin: form.tin || undefined,
     },
-    currency: form.currency || 'CHF',
+    currency: form.currency || settings.defaultCurrency,
+    localCurrency: localCurrency && Number.isFinite(rate) && rate > 0 ? localCurrency : undefined,
+    exchangeRate: localCurrency && Number.isFinite(rate) && rate > 0 ? rate : undefined,
+    roundingIncrement: Number(form.roundingIncrement) || 0,
     updatedAt: Date.now(),
   });
   editingId.value = null;
@@ -347,6 +397,53 @@ function fmtDates(e: SalesEvent): string {
             <input v-model="form.currency" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
           </label>
         </div>
+
+        <div class="rounded-lg bg-slate-800/40 p-3 ring-1 ring-slate-800">
+          <p class="mb-2 text-xs font-medium text-slate-400">
+            Convention currency (optional) — display and charge prices converted from
+            {{ form.currency || 'the base currency' }}, leave blank to sell in
+            {{ form.currency || 'the base currency' }} directly.
+          </p>
+          <div class="grid grid-cols-3 gap-3">
+            <label class="block text-sm">
+              <span class="text-slate-400">Local currency</span>
+              <input
+                v-model="form.localCurrency"
+                placeholder="e.g. SEK"
+                class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2 uppercase"
+              />
+            </label>
+            <label class="block text-sm">
+              <span class="text-slate-400">Rate (1 {{ form.currency || 'base' }} =)</span>
+              <input
+                v-model="form.exchangeRate"
+                type="number"
+                min="0"
+                step="0.0001"
+                inputmode="decimal"
+                class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2"
+              />
+            </label>
+            <label class="block text-sm">
+              <span class="text-slate-400">Round to nearest</span>
+              <select v-model="form.roundingIncrement" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2">
+                <option v-for="[value, label] in ROUNDING_INCREMENTS" :key="value" :value="value">{{ label }}</option>
+              </select>
+            </label>
+          </div>
+          <div class="mt-2 flex items-center gap-2">
+            <button
+              type="button"
+              class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium hover:bg-slate-700 disabled:opacity-40"
+              :disabled="!form.currency.trim() || !form.localCurrency.trim() || fetchingRate"
+              @click="fetchRate"
+            >
+              {{ fetchingRate ? 'Fetching…' : "Fetch today's rate" }}
+            </button>
+            <span v-if="fetchRateError" class="text-xs text-amber-400">{{ fetchRateError }}</span>
+          </div>
+        </div>
+
         <label v-if="!editingId" class="block text-sm">
           <span class="text-slate-400">Copy stock from</span>
           <select v-model="form.copyStockFrom" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2">

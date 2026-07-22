@@ -17,6 +17,12 @@ export interface SalesEvent {
   dateEnd?: string;
   venue: Venue;
   currency: string;
+  /** Convention-local currency to display and charge in, e.g. "SEK". */
+  localCurrency?: string;
+  /** 1 unit of `currency` = exchangeRate units of `localCurrency`. */
+  exchangeRate?: number;
+  /** Round converted local prices to the nearest N units (0/undefined = cents only). */
+  roundingIncrement?: number;
   status: EventStatus;
   /** Per-event customs state (edec, form1174) — ported in Phase 6. */
   customs?: Record<string, unknown>;
@@ -117,6 +123,9 @@ export interface TxItem {
   qty: number;
   unitPrice: number;
   lineTotal: number;
+  /** Same line in the event's base/tracking currency, when charged in a converted local currency. */
+  baseUnitPrice?: number;
+  baseLineTotal?: number;
 }
 
 export interface TxDiscount {
@@ -137,6 +146,12 @@ export interface Transaction {
   discounts: TxDiscount[];
   total: number;
   currency: string;
+  /** Event's base/tracking currency, when this sale was charged in a converted local currency. */
+  baseCurrency?: string;
+  /** Accounting figure in baseCurrency. */
+  baseTotal?: number;
+  /** Exchange rate snapshot used at checkout (base -> currency). */
+  exchangeRate?: number;
   /** Op id of the revert that cancelled this transaction, if any. */
   revertedBy?: string;
   revertedAt?: number;

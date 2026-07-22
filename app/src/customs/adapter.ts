@@ -42,7 +42,9 @@ export function buildCustomsState(
       const key = `${item.pid}:${item.vid ?? ''}`;
       const cur = soldByKey.get(key) ?? { qty: 0, value: 0 };
       cur.qty += item.qty;
-      cur.value += item.lineTotal;
+      // Customs declarations are always in the event's base/tracking
+      // currency, even for sales charged in a converted local currency.
+      cur.value += item.baseLineTotal ?? item.lineTotal;
       soldByKey.set(key, cur);
     }
   }

@@ -7,6 +7,7 @@ import {
   type CartLine,
   type CustomDiscount,
 } from '@/lib/discounts';
+import { round2, toLocalPrice } from '@/lib/money';
 import { uuidv7 } from '@/lib/uuid';
 import { recordTransaction } from '@/db/repo';
 import { useDataStore, stockKey } from './data';
@@ -82,6 +83,43 @@ export const useCartStore = defineStore('cart', () => {
     computeCartTotals(lines.value, data.discounts, customDiscount.value),
   );
 
+  /**
+   * Presentation/charge-currency view of the cart. When the active event has
+   * a local currency configured, discounts still run entirely in base
+   * currency above (thresholds are authored in base currency) — this layer
+   * only converts+rounds the already-discounted numbers for display and
+   * charging, so it's the single source of truth shared by the on-screen
+   * breakdown, the customer-display payload, and checkout.
+   */
+  const chargeCurrency = computed(() => (data.hasLocalCurrency ? data.localCurrency! : data.currency));
+  const chargeRate = computed(() => (data.hasLocalCurrency ? data.exchangeRate : 1));
+  const chargeIncrement = computed(() => (data.hasLocalCurrency ? data.roundingIncrement : 0));
+
+  const chargeLines = computed<CartLine[]>(() =>
+    lines.value.map((l) => {
+      const unitPrice = toLocalPrice(l.unitPrice, chargeRate.value, chargeIncrement.value);
+      return { ...l, unitPrice, lineTotal: unitPrice * l.qty };
+    }),
+  );
+
+  /** Sum of the rounded line tags — same basis as chargeLines, so it never shows a gap the Rounding line can't explain. */
+  const chargeSubtotal = computed(() => chargeLines.value.reduce((s, l) => s + l.lineTotal, 0));
+
+  const chargeDiscountTotal = computed(() =>
+    round2(
+      (totals.value.ruleDiscountTotal + totals.value.customDiscountAmount) * chargeRate.value,
+    ),
+  );
+
+  const chargeGrandTotal = computed(() =>
+    toLocalPrice(totals.value.grandTotal, chargeRate.value, chargeIncrement.value),
+  );
+
+  /** Delta between (rounded line tags − discounts) and the actually-charged total, shown transparently. */
+  const chargeRoundingAdjustment = computed(() =>
+    round2(chargeGrandTotal.value - (chargeSubtotal.value - chargeDiscountTotal.value)),
+  );
+
   function inCart(pid: string, vid: string | null): number {
     return items.value[stockKey(pid, vid)] ?? 0;
   }
@@ -144,8 +182,10 @@ export const useCartStore = defineStore('cart', () => {
     const eventId = settings.activeEventId;
     if (!eventId) throw new Error('No active event');
     const t = totals.value;
+    const local = data.hasLocalCurrency;
+    const rate = chargeRate.value;
 
-    const txItems = distributeTotal(
+    const baseItems = distributeTotal(
       lines.value.map((l) => ({
         pid: l.pid,
         vid: l.vid,
@@ -158,28 +198,58 @@ export const useCartStore = defineStore('cart', () => {
       t.grandTotal,
     );
 
+    const txItems = local
+      ? distributeTotal(
+          chargeLines.value.map((l) => ({
+            pid: l.pid,
+            vid: l.vid,
+            title: l.title,
+            variantLabel: l.variantLabel ?? undefined,
+            qty: l.qty,
+            unitPrice: l.unitPrice,
+            lineTotal: l.lineTotal,
+          })),
+          chargeGrandTotal.value,
+        ).map((item, i) => ({
+          ...item,
+          baseUnitPrice: baseItems[i].unitPrice,
+          baseLineTotal: baseItems[i].lineTotal,
+        }))
+      : baseItems;
+
+    const chargedTotal = local ? chargeGrandTotal.value : t.grandTotal;
+
     const tx: Transaction = {
       id: uuidv7(),
       eventId,
       deviceId: settings.deviceId,
       timestamp: Date.now(),
       method,
-      payments: payments.length ? payments : [{ kind: method === 'cash' ? 'cash' : 'card', amount: t.grandTotal }],
+      payments: payments.length
+        ? payments
+        : [{ kind: method === 'cash' ? 'cash' : 'card', amount: chargedTotal }],
       items: txItems,
       discounts: [
-        ...t.ruleDiscounts.map((r) => ({ id: r.rule.id, name: r.rule.name, amount: r.amount })),
+        ...t.ruleDiscounts.map((r) => ({
+          id: r.rule.id,
+          name: r.rule.name,
+          amount: local ? round2(r.amount * rate) : r.amount,
+        })),
         ...(t.customDiscountAmount > 0.001
           ? [
               {
                 name: customDiscount.value?.name || 'Custom discount',
-                amount: t.customDiscountAmount,
+                amount: local ? round2(t.customDiscountAmount * rate) : t.customDiscountAmount,
                 custom: true,
               },
             ]
           : []),
       ],
-      total: t.grandTotal,
-      currency: data.currency,
+      total: chargedTotal,
+      currency: chargeCurrency.value,
+      ...(local
+        ? { baseCurrency: data.currency, baseTotal: t.grandTotal, exchangeRate: rate }
+        : {}),
     };
 
     await recordTransaction(tx);
@@ -193,6 +263,14 @@ export const useCartStore = defineStore('cart', () => {
     lines,
     itemCount,
     totals,
+    chargeCurrency,
+    chargeRate,
+    chargeIncrement,
+    chargeLines,
+    chargeSubtotal,
+    chargeDiscountTotal,
+    chargeGrandTotal,
+    chargeRoundingAdjustment,
     inCart,
     remaining,
     add,

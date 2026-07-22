@@ -23,6 +23,8 @@ export const useSettingsStore = defineStore('settings', () => {
   const customPaymentMethods = ref<string[]>([]);
   /** Prefill for new events (each event still carries its own currency). */
   const defaultCurrency = ref('CHF');
+  /** Prefill for new events' local-currency rounding increment (0 = off). */
+  const defaultRoundingIncrement = ref(0);
 
   async function init(): Promise<void> {
     deviceId.value = await ensureDeviceId();
@@ -35,6 +37,7 @@ export const useSettingsStore = defineStore('settings', () => {
     syncUser.value = (await api.getSyncUser()) ?? null;
     customPaymentMethods.value = (await getSetting<string[]>('customPaymentMethods')) ?? [];
     defaultCurrency.value = (await getSetting<string>('defaultCurrency')) ?? 'CHF';
+    defaultRoundingIncrement.value = (await getSetting<number>('defaultRoundingIncrement')) ?? 0;
     if (syncUser.value) void startSync();
 
     // First-run setup guide: only on a truly fresh install — devices that
@@ -108,6 +111,12 @@ export const useSettingsStore = defineStore('settings', () => {
     await setSetting('defaultCurrency', normalized);
   }
 
+  async function setDefaultRoundingIncrement(increment: number): Promise<void> {
+    const normalized = Number.isFinite(increment) && increment > 0 ? increment : 0;
+    defaultRoundingIncrement.value = normalized;
+    await setSetting('defaultRoundingIncrement', normalized);
+  }
+
   async function setPaymentProvider(id: PaymentProviderId): Promise<void> {
     paymentProviderId.value = id;
     await setSetting('paymentProviderId', id);
@@ -126,10 +135,12 @@ export const useSettingsStore = defineStore('settings', () => {
     onboardingDone,
     customPaymentMethods,
     defaultCurrency,
+    defaultRoundingIncrement,
     init,
     setActiveEvent,
     setDeviceName,
     setDefaultCurrency,
+    setDefaultRoundingIncrement,
     setPaymentProvider,
     loginToServer,
     registerOnServer,

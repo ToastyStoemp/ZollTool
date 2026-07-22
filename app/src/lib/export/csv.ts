@@ -20,6 +20,13 @@ export function transactionsToCsv(transactions: Transaction[]): string {
     'unit_price',
     'line_total',
     'reverted',
+    // Base/tracking-currency equivalents — populated only for sales charged
+    // in a converted local currency (see SalesEvent.localCurrency).
+    'base_total',
+    'base_currency',
+    'base_unit_price',
+    'base_line_total',
+    'exchange_rate',
   ];
   const rows: string[] = [header.join(',')];
 
@@ -41,6 +48,11 @@ export function transactionsToCsv(transactions: Transaction[]): string {
           (item.unitPrice ?? 0).toFixed(2),
           item.lineTotal.toFixed(2),
           tx.revertedBy ? 'yes' : 'no',
+          tx.baseTotal != null ? tx.baseTotal.toFixed(2) : '',
+          esc(tx.baseCurrency ?? ''),
+          item.baseUnitPrice != null ? item.baseUnitPrice.toFixed(2) : '',
+          item.baseLineTotal != null ? item.baseLineTotal.toFixed(2) : '',
+          tx.exchangeRate != null ? tx.exchangeRate : '',
         ].join(','),
       );
     }
