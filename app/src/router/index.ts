@@ -10,6 +10,7 @@ export const router = createRouter({
     // Selling and customs are opened from an event, not from the main nav
     { path: '/pos', name: 'pos', component: () => import('@/views/PosView.vue') },
     { path: '/customs/:eventId?', name: 'customs', component: () => import('@/views/CustomsView.vue') },
+    { path: '/prices/:eventId?', name: 'prices', component: () => import('@/views/PriceCompareView.vue') },
     { path: '/catalog', name: 'catalog', component: () => import('@/views/CatalogView.vue') },
     { path: '/history', name: 'history', component: () => import('@/views/HistoryView.vue') },
     { path: '/settings', name: 'settings', component: () => import('@/views/SettingsView.vue') },

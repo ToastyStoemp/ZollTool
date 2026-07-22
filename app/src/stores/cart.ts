@@ -7,7 +7,7 @@ import {
   type CartLine,
   type CustomDiscount,
 } from '@/lib/discounts';
-import { round2, toLocalPrice } from '@/lib/money';
+import { round2, roundToIncrement } from '@/lib/money';
 import { uuidv7 } from '@/lib/uuid';
 import { recordTransaction } from '@/db/repo';
 import { useDataStore, stockKey } from './data';
@@ -95,14 +95,15 @@ export const useCartStore = defineStore('cart', () => {
   const chargeRate = computed(() => (data.hasLocalCurrency ? data.exchangeRate : 1));
   const chargeIncrement = computed(() => (data.hasLocalCurrency ? data.roundingIncrement : 0));
 
+  /** Per-line local price: a manual override (Price compare) if set, else rate-converted + rounded. */
   const chargeLines = computed<CartLine[]>(() =>
     lines.value.map((l) => {
-      const unitPrice = toLocalPrice(l.unitPrice, chargeRate.value, chargeIncrement.value);
+      const unitPrice = data.localPriceFor(l.pid, l.vid, l.unitPrice);
       return { ...l, unitPrice, lineTotal: unitPrice * l.qty };
     }),
   );
 
-  /** Sum of the rounded line tags — same basis as chargeLines, so it never shows a gap the Rounding line can't explain. */
+  /** Sum of the (possibly overridden) line prices — the authoritative basis for what's charged. */
   const chargeSubtotal = computed(() => chargeLines.value.reduce((s, l) => s + l.lineTotal, 0));
 
   const chargeDiscountTotal = computed(() =>
@@ -111,11 +112,12 @@ export const useCartStore = defineStore('cart', () => {
     ),
   );
 
+  /** Final safety-net rounding for any residual cents left after discounts — a no-op when the line prices are already round. */
   const chargeGrandTotal = computed(() =>
-    toLocalPrice(totals.value.grandTotal, chargeRate.value, chargeIncrement.value),
+    roundToIncrement(chargeSubtotal.value - chargeDiscountTotal.value, chargeIncrement.value),
   );
 
-  /** Delta between (rounded line tags − discounts) and the actually-charged total, shown transparently. */
+  /** Delta between (line prices − discounts) and the actually-charged total, shown transparently. */
   const chargeRoundingAdjustment = computed(() =>
     round2(chargeGrandTotal.value - (chargeSubtotal.value - chargeDiscountTotal.value)),
   );

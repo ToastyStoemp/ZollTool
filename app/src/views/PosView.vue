@@ -6,7 +6,7 @@ import { useSettingsStore } from '@/stores/settings';
 import { useCartStore } from '@/stores/cart';
 import { findSearchMatch, typeColor } from '@/lib/search';
 import { cashShortcutAmounts, splitCashPortionAmounts } from '@/lib/cash';
-import { fmtPrice, round2, toLocalPrice } from '@/lib/money';
+import { fmtPrice, round2 } from '@/lib/money';
 import { showToast } from '@/lib/toast';
 import { getProvider } from '@/payments/registry';
 import { getSetting, revertTransaction } from '@/db/repo';
@@ -174,15 +174,15 @@ function addBundle(pid: string, vid: string | null, qty: number): void {
 }
 
 /** Converts a catalog (base-currency) price to the current charge currency, for display tags. */
-function tagPrice(basePrice: number): string {
-  const shown = toLocalPrice(basePrice, cart.chargeRate, cart.chargeIncrement);
+function tagPrice(pid: string, vid: string | null, basePrice: number): string {
+  const shown = data.localPriceFor(pid, vid, basePrice);
   return fmtPrice(shown, cart.chargeCurrency);
 }
 
 /** Variant products show their cheapest price instead of an opaque "⋯". */
 function fromPrice(p: Product): string {
-  const min = Math.min(...p.variants.map((v) => v.price ?? p.price));
-  return `from ${tagPrice(min)}`;
+  const min = Math.min(...p.variants.map((v) => data.localPriceFor(p.id, v.id, v.price ?? p.price)));
+  return `from ${fmtPrice(min, cart.chargeCurrency)}`;
 }
 
 // ── Last sale: undo fat-fingered checkouts and reprint right at the counter ──
@@ -739,7 +739,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
             <span class="mt-auto flex w-full items-center justify-between pt-1 text-xs">
               <span :class="stockLabel(p.id, null).cls">{{ stockLabel(p.id, null).text }}</span>
               <span class="font-semibold text-slate-200">
-                {{ p.variants.length ? fromPrice(p) : tagPrice(p.price) }}
+                {{ p.variants.length ? fromPrice(p) : tagPrice(p.id, null, p.price) }}
               </span>
             </span>
           </button>
@@ -936,7 +936,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
           <span class="mt-auto flex w-full items-center justify-between pt-1 text-xs">
             <span :class="stockLabel(p.id, null).cls">{{ stockLabel(p.id, null).text }}</span>
             <span class="font-semibold text-slate-200">
-              {{ p.variants.length ? fromPrice(p) : tagPrice(p.price) }}
+              {{ p.variants.length ? fromPrice(p) : tagPrice(p.id, null, p.price) }}
             </span>
           </span>
         </button>
@@ -984,7 +984,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
               {{ stockLabel(variantPickerProduct!.id, v.id).text }}
             </span>
             <span class="font-semibold">
-              {{ tagPrice(v.price ?? variantPickerProduct!.price) }}
+              {{ tagPrice(variantPickerProduct!.id, v.id, v.price ?? variantPickerProduct!.price) }}
             </span>
           </span>
         </button>

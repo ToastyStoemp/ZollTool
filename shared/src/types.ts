@@ -23,6 +23,8 @@ export interface SalesEvent {
   exchangeRate?: number;
   /** Round converted local prices to the nearest N units (0/undefined = cents only). */
   roundingIncrement?: number;
+  /** Manual local-currency price overrides, keyed by stockKey ("pid" or "pid:vid"). */
+  localPriceOverrides?: Record<string, number>;
   status: EventStatus;
   /** Per-event customs state (edec, form1174) — ported in Phase 6. */
   customs?: Record<string, unknown>;

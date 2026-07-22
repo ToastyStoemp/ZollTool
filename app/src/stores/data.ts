@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 import type { Product, SalesEvent } from '@zolltool/shared';
 import { db } from '@/db/schema';
 import { useLive } from '@/db/live';
+import { toLocalPrice } from '@/lib/money';
 import { useSettingsStore } from './settings';
 
 export interface SoldCounts {
@@ -45,6 +46,14 @@ export const useDataStore = defineStore('data', () => {
   const exchangeRate = computed(() => activeEvent.value?.exchangeRate || 1);
   const roundingIncrement = computed(() => activeEvent.value?.roundingIncrement ?? 0);
   const hasLocalCurrency = computed(() => !!localCurrency.value && exchangeRate.value > 0);
+  const localPriceOverrides = computed(() => activeEvent.value?.localPriceOverrides ?? {});
+
+  /** Local charge price for a catalog line: manual override if set, else rate-converted + rounded. */
+  function localPriceFor(pid: string, vid: string | null, basePrice: number): number {
+    const override = localPriceOverrides.value[stockKey(pid, vid)];
+    if (override != null) return override;
+    return toLocalPrice(basePrice, exchangeRate.value, roundingIncrement.value);
+  }
 
   const eventTransactions = computed(() =>
     allTransactions.value
@@ -108,6 +117,8 @@ export const useDataStore = defineStore('data', () => {
     exchangeRate,
     roundingIncrement,
     hasLocalCurrency,
+    localPriceOverrides,
+    localPriceFor,
     eventTransactions,
     stockByKey,
     soldByKey,

@@ -10,7 +10,7 @@ import { uuidv7 } from '@/lib/uuid';
 import { fmtPrice } from '@/lib/money';
 import { fetchExchangeRate } from '@/lib/exchangeRate';
 import { EVENT_PRESETS } from '@/data/event-presets';
-import { ChartLine, Pencil, ShoppingCart, Stamp, Trash2 } from 'lucide-vue-next';
+import { ArrowLeftRight, ChartLine, Pencil, ShoppingCart, Stamp, Trash2 } from 'lucide-vue-next';
 import ModalShell from '@/components/ModalShell.vue';
 import CountryPicker from '@/components/CountryPicker.vue';
 
@@ -312,6 +312,13 @@ function fmtDates(e: SalesEvent): string {
             class="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
           >
             <Stamp class="h-3.5 w-3.5" /> Customs
+          </RouterLink>
+          <RouterLink
+            v-if="event.localCurrency"
+            :to="`/prices/${event.id}`"
+            class="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
+          >
+            <ArrowLeftRight class="h-3.5 w-3.5" /> Prices
           </RouterLink>
           <button
             class="flex items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 hover:bg-slate-700"
