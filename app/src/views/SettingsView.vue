@@ -25,7 +25,13 @@ import {
   type ReceiptLine,
 } from '@/lib/receipt';
 import { ThermalPrinter, hasNativePlugin, isNative } from '@/native/plugins';
-import { checkForUpdate, installUpdate, type UpdateCheck } from '@/lib/updates';
+import {
+  checkForUpdate,
+  downloadUpdate,
+  installDownloadedUpdate,
+  updateDownload,
+  type UpdateCheck,
+} from '@/lib/updates';
 import { Camera, QrCode } from 'lucide-vue-next';
 import ModalShell from '@/components/ModalShell.vue';
 
@@ -165,10 +171,22 @@ async function doLogout(): Promise<void> {
 }
 
 // ── App updates (native only) — checks the sync server, see lib/updates.ts ──
+// Download progress (updateDownload) is a module-level singleton shared with
+// App.vue's background auto-check, so this page reflects an in-flight
+// download it didn't start itself instead of kicking off a second one.
 const updateCheck = ref<UpdateCheck | null>(null);
 const updateChecking = ref(false);
 const updateError = ref('');
-const updateInstalling = ref(false);
+
+// A previously-downloaded APK is only safe to install as-is if it matches
+// the build this check just reported — otherwise the server published a
+// newer one since and the stale download needs replacing first.
+const downloadReadyForCheck = computed(
+  () => updateDownload.ready && updateCheck.value != null && updateDownload.versionName === updateCheck.value.versionName,
+);
+const downloadPct = computed(() =>
+  updateDownload.totalBytes > 0 ? Math.min(100, Math.round((updateDownload.bytesWritten / updateDownload.totalBytes) * 100)) : null,
+);
 
 async function checkUpdate(): Promise<void> {
   updateChecking.value = true;
@@ -184,15 +202,19 @@ async function checkUpdate(): Promise<void> {
   }
 }
 
-async function doInstallUpdate(): Promise<void> {
+async function doDownloadOrInstall(): Promise<void> {
   if (!updateCheck.value) return;
-  updateInstalling.value = true;
-  try {
-    await installUpdate(updateCheck.value.downloadUrl);
-  } catch (err) {
-    showToast(`Update failed: ${err instanceof Error ? err.message : err}`, 'error');
-  } finally {
-    updateInstalling.value = false;
+  if (downloadReadyForCheck.value) {
+    try {
+      await installDownloadedUpdate();
+    } catch (err) {
+      showToast(`Install failed: ${err instanceof Error ? err.message : err}`, 'error');
+    }
+    return;
+  }
+  await downloadUpdate(updateCheck.value);
+  if (updateDownload.error) {
+    showToast(`Download failed: ${updateDownload.error}`, 'error');
   }
 }
 
@@ -1049,12 +1071,23 @@ async function onImportFile(e: Event): Promise<void> {
         <p class="text-slate-500">Installed: {{ updateCheck.currentVersionName }}</p>
         <template v-if="updateCheck.available">
           <p class="mt-1 font-medium text-emerald-400">Update available: {{ updateCheck.versionName }}</p>
+          <div v-if="updateDownload.active" class="mt-2">
+            <div class="h-2 w-full overflow-hidden rounded-full bg-slate-800">
+              <div
+                class="h-full rounded-full bg-emerald-600 transition-all"
+                :style="{ width: (downloadPct ?? 0) + '%' }"
+              />
+            </div>
+            <p class="mt-1 text-xs text-slate-500">
+              {{ downloadPct != null ? `${downloadPct}%` : `${(updateDownload.bytesWritten / 1e6).toFixed(1)} MB` }}
+            </p>
+          </div>
           <button
-            class="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
-            :disabled="updateInstalling"
-            @click="doInstallUpdate"
+            v-else
+            class="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+            @click="doDownloadOrInstall"
           >
-            {{ updateInstalling ? 'Downloading…' : 'Download & install' }}
+            {{ downloadReadyForCheck ? 'Install update' : 'Download update' }}
           </button>
         </template>
         <p v-else class="mt-1 text-slate-400">Up to date.</p>

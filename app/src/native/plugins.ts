@@ -114,7 +114,14 @@ export interface ScreenPluginApi {
 /** Self-update: reads this install's version, downloads + installs a newer APK — see UpdaterPlugin.kt. */
 export interface UpdaterPluginApi {
   getCurrentVersion(): Promise<{ versionCode: number; versionName: string }>;
-  downloadAndInstall(options: { url: string }): Promise<void>;
+  /** Downloads to the app cache with periodic progress events; call install() separately once resolved. */
+  download(options: { url: string }): Promise<void>;
+  /** Launches the system installer for the most recently downloaded update. */
+  install(): Promise<void>;
+  addListener(
+    eventName: 'updateDownloadProgress',
+    listener: (data: { bytesWritten: number; totalBytes: number }) => void,
+  ): Promise<{ remove: () => Promise<void> }>;
 }
 
 export const MyPos = registerPlugin<MyPosPluginApi>('MyPos');
