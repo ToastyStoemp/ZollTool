@@ -112,14 +112,15 @@ const stats = computed(() => {
   return { count: active.length, revenue, items, cash, card };
 });
 
-// ── Best sellers: by product (qty), by product type, or by revenue ──────────
-type BestMode = 'products' | 'types' | 'revenue';
+// ── Best sellers: by product or type, sorted by qty or revenue ──────────────
+type BestMode = 'products' | 'types' | 'revenue' | 'revenueByType';
 const bestMode = ref<BestMode>('products');
 const bestExpanded = ref(false);
 const bestModes: Array<{ id: BestMode; label: string }> = [
   { id: 'products', label: 'Products' },
   { id: 'types', label: 'Types' },
   { id: 'revenue', label: 'Revenue' },
+  { id: 'revenueByType', label: 'Revenue by type' },
 ];
 
 /** pid → product type, resolved from the catalog (sold items don't store it). */
@@ -131,7 +132,8 @@ const typeByPid = computed(() => {
 
 const bestAll = computed(() => {
   const map = new Map<string, { label: string; type?: string; qty: number; value: number }>();
-  const byType = bestMode.value === 'types';
+  const byType = bestMode.value === 'types' || bestMode.value === 'revenueByType';
+  const byRevenue = bestMode.value === 'revenue' || bestMode.value === 'revenueByType';
   for (const tx of scopedTransactions.value) {
     if (tx.revertedBy) continue;
     for (const item of tx.items) {
@@ -152,7 +154,7 @@ const bestAll = computed(() => {
     }
   }
   const list = [...map.values()];
-  list.sort(bestMode.value === 'revenue' ? (a, b) => b.value - a.value : (a, b) => b.qty - a.qty);
+  list.sort(byRevenue ? (a, b) => b.value - a.value : (a, b) => b.qty - a.qty);
   return list;
 });
 
@@ -266,6 +268,7 @@ async function printDayReport(): Promise<void> {
 }
 
 /** Revenue per day for a simple bar chart (divs — no chart lib needed here). */
+const compareDaily = ref(false);
 const daily = computed(() => {
   const map = new Map<string, number>();
   for (const tx of scopedTransactions.value) {
@@ -275,7 +278,15 @@ const daily = computed(() => {
   }
   const entries = [...map.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   const max = Math.max(1, ...entries.map(([, v]) => v));
-  return entries.map(([day, value]) => ({ day, value, pct: (value / max) * 100 }));
+  // "Day before" = the previous entry in this (possibly sparse) list, not
+  // necessarily the literal preceding calendar date — for the common case
+  // (a multi-day convention selling daily) these are the same thing.
+  return entries.map(([day, value], i) => {
+    const prev = i > 0 ? entries[i - 1]![1] : null;
+    const delta = prev != null ? round2(value - prev) : null;
+    const deltaPct = prev ? Math.round((delta! / prev) * 100) : null;
+    return { day, value, pct: (value / max) * 100, delta, deltaPct };
+  });
 });
 
 async function doRevert(): Promise<void> {
@@ -442,7 +453,17 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
 
       <!-- Daily chart -->
       <div class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <h2 class="mb-2 text-sm font-semibold text-slate-300">Revenue per day</h2>
+        <div class="mb-2 flex items-center gap-2">
+          <h2 class="text-sm font-semibold text-slate-300">Revenue per day</h2>
+          <button
+            v-if="daily.length > 1"
+            class="ml-auto rounded-md px-2 py-1 text-[11px]"
+            :class="compareDaily ? 'bg-slate-600 font-semibold' : 'bg-slate-800 text-slate-400'"
+            @click="compareDaily = !compareDaily"
+          >
+            vs. day before
+          </button>
+        </div>
         <p v-if="!daily.length" class="text-xs text-slate-500">No sales yet.</p>
         <div class="space-y-1.5">
           <div v-for="d in daily" :key="d.day" class="flex items-center gap-2 text-xs">
@@ -450,6 +471,13 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
             <div class="h-4 flex-1 overflow-hidden rounded bg-slate-800">
               <div class="h-full rounded bg-emerald-500/70" :style="{ width: d.pct + '%' }" />
             </div>
+            <span
+              v-if="compareDaily && d.delta != null"
+              class="w-14 shrink-0 text-right"
+              :class="d.delta > 0 ? 'text-emerald-400' : d.delta < 0 ? 'text-red-400' : 'text-slate-500'"
+            >
+              {{ d.delta > 0 ? '+' : '' }}{{ d.deltaPct }}%
+            </span>
             <span class="w-20 text-right font-medium">{{ fmtPrice(d.value, revenueCurrency) }}</span>
           </div>
         </div>
@@ -461,7 +489,7 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
       <div class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
         <h2 class="mb-2 text-sm font-semibold text-slate-300">Revenue per hour</h2>
         <p v-if="!hourly.length" class="text-xs text-slate-500">No sales yet.</p>
-        <div v-else class="flex h-28 items-end gap-1">
+        <div v-else class="flex h-28 items-stretch gap-1">
           <div v-for="b in hourly" :key="b.h" class="flex min-w-0 flex-1 flex-col items-center gap-1">
             <div class="flex w-full flex-1 items-end">
               <div
