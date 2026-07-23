@@ -25,6 +25,8 @@ export interface SalesEvent {
   roundingIncrement?: number;
   /** Manual local-currency price overrides, keyed by stockKey ("pid" or "pid:vid"). */
   localPriceOverrides?: Record<string, number>;
+  /** Manual local-currency tiered-discount bundle-total overrides, keyed by "ruleId:tierIndex". */
+  localTierOverrides?: Record<string, number>;
   status: EventStatus;
   /** Per-event customs state (edec, form1174) — ported in Phase 6. */
   customs?: Record<string, unknown>;

@@ -301,9 +301,9 @@ function publishCart(paid?: { total: number }): void {
       lineTotal: l.lineTotal,
     })),
     discounts: [
-      ...cart.totals.ruleDiscounts.map((r) => ({
+      ...cart.chargeRuleDiscounts.map((r) => ({
         name: r.rule.name,
-        amount: round2(r.amount * cart.chargeRate),
+        amount: r.amount,
       })),
       ...(cart.totals.customDiscountAmount > 0.001
         ? [
@@ -826,12 +826,12 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
               <span>{{ fmtPrice(cart.chargeSubtotal, cart.chargeCurrency) }}</span>
             </div>
             <div
-              v-for="r in cart.totals.ruleDiscounts"
+              v-for="r in cart.chargeRuleDiscounts"
               :key="r.rule.id"
               class="flex justify-between text-emerald-400"
             >
               <span>{{ r.rule.name }}</span>
-              <span>− {{ fmtPrice(round2(r.amount * cart.chargeRate), cart.chargeCurrency) }}</span>
+              <span>− {{ fmtPrice(r.amount, cart.chargeCurrency) }}</span>
             </div>
             <div v-if="cart.totals.customDiscountAmount > 0.001" class="flex justify-between text-emerald-400">
               <span>{{ cart.customDiscount?.name }}</span>

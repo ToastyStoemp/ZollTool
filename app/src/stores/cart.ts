@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 import type { PaymentLeg, PaymentMethod, Transaction } from '@zolltool/shared';
 import {
   computeCartTotals,
+  computeRuleDiscounts,
   distributeTotal,
   type CartLine,
   type CustomDiscount,
@@ -106,15 +107,42 @@ export const useCartStore = defineStore('cart', () => {
   /** Sum of the (possibly overridden) line prices — the authoritative basis for what's charged. */
   const chargeSubtotal = computed(() => chargeLines.value.reduce((s, l) => s + l.lineTotal, 0));
 
-  const chargeDiscountTotal = computed(() =>
-    round2(
-      (totals.value.ruleDiscountTotal + totals.value.customDiscountAmount) * chargeRate.value,
+  /**
+   * Discount rules with tiered bundle totals ("3 for 10 CHF") converted to
+   * the charge currency — a manual override (Price compare) if set, else
+   * rate-converted + rounded, same as product prices. bxgy/nth_pct rules
+   * carry no currency amount of their own, so they pass through unchanged.
+   */
+  const localDiscountRules = computed(() =>
+    data.discounts.map((rule) =>
+      rule.type === 'tiered' && rule.tiers?.length
+        ? { ...rule, tiers: rule.tiers.map((t, i) => ({ ...t, total: data.localTierTotal(rule.id, i, t.total) })) }
+        : rule,
     ),
   );
 
+  /**
+   * Rule discounts computed directly against the local (override-aware) line
+   * prices and local tier totals — not derived by scaling the base-currency
+   * discount amount, so an overridden bundle price lands exactly where set
+   * instead of drifting from independent per-item rounding.
+   */
+  const chargeRuleDiscounts = computed(() =>
+    computeRuleDiscounts(chargeLines.value, localDiscountRules.value).map((r) => ({
+      ...r,
+      amount: round2(r.amount),
+    })),
+  );
+
+  const chargeDiscountTotal = computed(() => {
+    const ruleTotal = chargeRuleDiscounts.value.reduce((s, r) => s + r.amount, 0);
+    const customTotal = round2(totals.value.customDiscountAmount * chargeRate.value);
+    return round2(ruleTotal + customTotal);
+  });
+
   /** Final safety-net rounding for any residual cents left after discounts — a no-op when the line prices are already round. */
   const chargeGrandTotal = computed(() =>
-    roundToIncrement(chargeSubtotal.value - chargeDiscountTotal.value, chargeIncrement.value),
+    roundToIncrement(Math.max(0, chargeSubtotal.value - chargeDiscountTotal.value), chargeIncrement.value),
   );
 
   /** Delta between (line prices − discounts) and the actually-charged total, shown transparently. */
@@ -186,6 +214,7 @@ export const useCartStore = defineStore('cart', () => {
     const t = totals.value;
     const local = data.hasLocalCurrency;
     const rate = chargeRate.value;
+    const localRuleAmounts = new Map(chargeRuleDiscounts.value.map((r) => [r.rule.id, r.amount]));
 
     const baseItems = distributeTotal(
       lines.value.map((l) => ({
@@ -235,7 +264,7 @@ export const useCartStore = defineStore('cart', () => {
         ...t.ruleDiscounts.map((r) => ({
           id: r.rule.id,
           name: r.rule.name,
-          amount: local ? round2(r.amount * rate) : r.amount,
+          amount: local ? (localRuleAmounts.get(r.rule.id) ?? round2(r.amount * rate)) : r.amount,
         })),
         ...(t.customDiscountAmount > 0.001
           ? [
@@ -270,6 +299,8 @@ export const useCartStore = defineStore('cart', () => {
     chargeIncrement,
     chargeLines,
     chargeSubtotal,
+    localDiscountRules,
+    chargeRuleDiscounts,
     chargeDiscountTotal,
     chargeGrandTotal,
     chargeRoundingAdjustment,
