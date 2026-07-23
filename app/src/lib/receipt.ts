@@ -33,7 +33,10 @@ export interface ArtistInfo {
 
 export const RECEIPT_KEYS = {
   artist: 'customs.artistDefaults',
+  /** Flattened onto white for thermal printing — see processLogoFile. */
   logoB64: 'receipt.logoB64',
+  /** Same source image, transparency preserved — for on-screen use (customer display). */
+  logoScreenB64: 'receipt.logoScreenB64',
   footerText: 'receipt.footerText',
   autoPrint: 'receipt.autoPrint',
   /** MAC address + display name of a paired Bluetooth ESC/POS printer. */
@@ -83,12 +86,14 @@ function row(left: string, right: string): string {
 export async function loadReceiptConfig(): Promise<{
   artist: ArtistInfo;
   logoB64: string;
+  logoScreenB64: string;
   footerText: string;
   autoPrint: boolean;
 }> {
   return {
     artist: (await getSetting<ArtistInfo>(RECEIPT_KEYS.artist)) ?? {},
     logoB64: (await getSetting<string>(RECEIPT_KEYS.logoB64)) ?? '',
+    logoScreenB64: (await getSetting<string>(RECEIPT_KEYS.logoScreenB64)) ?? '',
     footerText: (await getSetting<string>(RECEIPT_KEYS.footerText)) ?? '',
     autoPrint: (await getSetting<boolean>(RECEIPT_KEYS.autoPrint)) ?? false,
   };
@@ -174,6 +179,24 @@ export async function processLogoFile(file: Blob): Promise<string> {
   const ctx = canvas.getContext('2d')!;
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  return canvas.toDataURL('image/png').split(',')[1] ?? '';
+}
+
+/**
+ * Prepare the same picked logo for on-screen use (customer display): scaled
+ * down but with transparency preserved, unlike processLogoFile — a light or
+ * white-on-transparent logo would otherwise disappear once flattened onto
+ * the white background thermal printing requires.
+ */
+export async function processLogoForScreen(file: Blob): Promise<string> {
+  const bitmap = await createImageBitmap(file);
+  const scale = Math.min(1, LOGO_MAX_PX / bitmap.width);
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  const ctx = canvas.getContext('2d')!;
   ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
   bitmap.close();
   return canvas.toDataURL('image/png').split(',')[1] ?? '';

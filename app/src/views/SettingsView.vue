@@ -20,6 +20,7 @@ import {
   printReceipt,
   printingAvailable,
   processLogoFile,
+  processLogoForScreen,
   type ArtistInfo,
   type ReceiptLine,
 } from '@/lib/receipt';
@@ -324,6 +325,7 @@ async function onLogoFile(e: Event): Promise<void> {
   try {
     receiptLogo.value = await processLogoFile(file);
     await setSyncedSetting(RECEIPT_KEYS.logoB64, receiptLogo.value);
+    await setSyncedSetting(RECEIPT_KEYS.logoScreenB64, await processLogoForScreen(file));
   } catch (err) {
     showToast(`Logo failed: ${err}`, 'error');
   }
@@ -332,6 +334,7 @@ async function onLogoFile(e: Event): Promise<void> {
 async function removeLogo(): Promise<void> {
   receiptLogo.value = '';
   await setSyncedSetting(RECEIPT_KEYS.logoB64, '');
+  await setSyncedSetting(RECEIPT_KEYS.logoScreenB64, '');
 }
 
 async function toggleAutoPrint(): Promise<void> {

@@ -8,7 +8,7 @@ import {
   type CartLine,
   type CustomDiscount,
 } from '@/lib/discounts';
-import { round2, roundToIncrement } from '@/lib/money';
+import { round2 } from '@/lib/money';
 import { uuidv7 } from '@/lib/uuid';
 import { recordTransaction } from '@/db/repo';
 import { useDataStore, stockKey } from './data';
@@ -140,9 +140,15 @@ export const useCartStore = defineStore('cart', () => {
     return round2(ruleTotal + customTotal);
   });
 
-  /** Final safety-net rounding for any residual cents left after discounts — a no-op when the line prices are already round. */
+  /**
+   * Cents-only cleanup for the total — NOT increment rounding. Re-rounding the
+   * aggregate to the increment would be a no-op for purely auto-rounded lines
+   * (a sum of multiples of the increment is itself a multiple of it), but an
+   * override can be any value on purpose, and re-rounding the total would
+   * silently override the override.
+   */
   const chargeGrandTotal = computed(() =>
-    roundToIncrement(Math.max(0, chargeSubtotal.value - chargeDiscountTotal.value), chargeIncrement.value),
+    round2(Math.max(0, chargeSubtotal.value - chargeDiscountTotal.value)),
   );
 
   /** Delta between (line prices − discounts) and the actually-charged total, shown transparently. */

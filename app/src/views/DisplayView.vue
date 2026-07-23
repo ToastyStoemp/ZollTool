@@ -36,7 +36,7 @@ let btCartListener: { remove: () => Promise<void> } | null = null;
 onMounted(async () => {
   clock = setInterval(() => (now.value = Date.now()), 5000);
   void loadReceiptConfig().then((config) => {
-    logoB64.value = config.logoB64;
+    logoB64.value = config.logoScreenB64;
     companyName.value = config.artist.companyName ?? '';
   });
   if (hasNativePlugin('DisplayLink')) {
@@ -167,7 +167,7 @@ watch(
       <img
         v-if="logoB64"
         :src="`data:image/png;base64,${logoB64}`"
-        class="max-h-40 max-w-[80%] rounded-lg bg-white p-3"
+        class="max-h-40 max-w-[80%]"
       />
       <p v-if="companyName" class="text-2xl font-semibold text-slate-200">{{ companyName }}</p>
       <p v-if="!syncState.enabled && !btServerActive" class="max-w-sm text-sm text-slate-500">
