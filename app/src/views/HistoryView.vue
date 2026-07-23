@@ -43,7 +43,7 @@ const scopedTransactions = computed(() => {
 });
 
 /** Charge/local currency for the scope — what was physically collected (cash drawer, card terminal). */
-const currency = computed(() => scopeEvent.value?.currency ?? data.currency);
+const currency = computed(() => scopeEvent.value?.localCurrency || scopeEvent.value?.currency || data.currency);
 
 function eventName(eventId: string): string {
   return data.events.find((e) => e.id === eventId)?.name ?? '(deleted event)';
