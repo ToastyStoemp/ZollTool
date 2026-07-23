@@ -14,7 +14,7 @@ import { sendDisplayCart } from '@/sync/engine';
 import { DisplayLink } from '@/native/plugins';
 import { DISPLAY_KEYS } from '@/lib/display';
 import type { DisplayCart, DisplayCartMessage } from '@zolltool/shared';
-import { MyPos, hasNativePlugin } from '@/native/plugins';
+import { MyPos, Screen, hasNativePlugin } from '@/native/plugins';
 import { buildReceiptLines, loadReceiptConfig, printReceipt, printingAvailable } from '@/lib/receipt';
 import { ArrowLeft, ChartLine, Check, CreditCard, Printer, ShoppingCart, Undo2, X } from 'lucide-vue-next';
 import ModalShell from '@/components/ModalShell.vue';
@@ -335,6 +335,15 @@ watch(
       if (Date.now() < thankYouUntil && !cart.lines.length) return;
       publishCart();
     }, 250);
+  },
+);
+
+// Standalone mode (Carbon used directly as the register): wake the screen the
+// moment the cart goes from empty to non-empty, in case it had dimmed/locked.
+watch(
+  () => cart.itemCount,
+  (n, prev) => {
+    if (n > 0 && prev === 0 && hasNativePlugin('Screen')) void Screen.wake();
   },
 );
 onMounted(() => publishCart());

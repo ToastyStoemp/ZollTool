@@ -106,6 +106,11 @@ export interface DisplayLinkPluginApi {
   ): Promise<{ remove: () => Promise<void> }>;
 }
 
+/** Wakes the screen from off/locked — see ScreenPlugin.kt. */
+export interface ScreenPluginApi {
+  wake(): Promise<void>;
+}
+
 export const MyPos = registerPlugin<MyPosPluginApi>('MyPos');
 export const CarbonPayment = registerPlugin<CarbonPaymentPluginApi>('CarbonPayment');
 export const GlassPayment = registerPlugin<GlassPaymentPluginApi>('GlassPayment');
@@ -113,6 +118,7 @@ export const DisplayLink = registerPlugin<DisplayLinkPluginApi>('DisplayLink');
 export const ThermalPrinter = registerPlugin<ThermalPrinterPluginApi>('ThermalPrinter');
 export const FileShare = registerPlugin<FileSharePluginApi>('FileShare');
 export const SumUp = registerPlugin<SumUpPluginApi>('SumUp');
+export const Screen = registerPlugin<ScreenPluginApi>('Screen');
 
 export function hasNativePlugin(name: string): boolean {
   return isNative && Capacitor.isPluginAvailable(name);

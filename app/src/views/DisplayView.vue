@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { X } from 'lucide-vue-next';
 import type { DisplayCartMessage } from '@zolltool/shared';
 import { displayCarts, syncState } from '@/sync/engine';
-import { DisplayLink, hasNativePlugin } from '@/native/plugins';
+import { DisplayLink, Screen, hasNativePlugin } from '@/native/plugins';
 import { fmtPrice } from '@/lib/money';
 
 /**
@@ -25,12 +25,6 @@ let btCartListener: { remove: () => Promise<void> } | null = null;
 
 onMounted(async () => {
   clock = setInterval(() => (now.value = Date.now()), 5000);
-  // Keep the screen on where supported (Android WebView 84+, desktop browsers)
-  try {
-    wakeLock = await (navigator as Navigator & { wakeLock?: { request(t: string): Promise<never> } }).wakeLock?.request?.('screen') ?? null;
-  } catch {
-    /* unsupported or denied — non-essential */
-  }
   if (hasNativePlugin('DisplayLink')) {
     try {
       btCartListener = await DisplayLink.addListener('displayCart', ({ json }) => {
@@ -71,6 +65,32 @@ const current = computed(() => {
 const stale = computed(() => !!current.value && now.value - current.value.receivedAt > 90_000);
 const showThanks = computed(
   () => !!current.value?.paid && !current.value.lines.length,
+);
+
+/** There's something worth showing — an in-progress cart or a just-completed sale. */
+const hasActiveCart = computed(() => !!current.value && (current.value.lines.length > 0 || !!current.value.paid));
+
+// Screen stays awake only while there's something to show — off/dim the rest
+// of the time so the terminal isn't lit up sitting idle between sales, and
+// explicitly wakes (even from locked/off) the moment a cart appears.
+watch(
+  hasActiveCart,
+  async (active, wasActive) => {
+    if (active) {
+      if (hasNativePlugin('Screen')) void Screen.wake();
+      if (!wakeLock) {
+        try {
+          wakeLock = await (navigator as Navigator & { wakeLock?: { request(t: string): Promise<never> } }).wakeLock?.request?.('screen') ?? null;
+        } catch {
+          /* unsupported or denied — non-essential */
+        }
+      }
+    } else if (wasActive) {
+      void wakeLock?.release().catch(() => {});
+      wakeLock = null;
+    }
+  },
+  { immediate: true },
 );
 </script>
 
