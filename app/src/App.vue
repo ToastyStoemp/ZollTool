@@ -2,11 +2,12 @@
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { CalendarDays, ChartLine, Lock, Package, Settings } from 'lucide-vue-next';
-import { toasts } from '@/lib/toast';
+import { showToast, toasts } from '@/lib/toast';
 import { loadPin, pinState, tryUnlock } from '@/lib/pin';
 import { useSettingsStore } from '@/stores/settings';
 import { syncState } from '@/sync/engine';
 import { isNative } from '@/native/plugins';
+import { checkForUpdate, currentFlavor, installUpdate } from '@/lib/updates';
 import OnboardingWizard from '@/components/OnboardingWizard.vue';
 import WebAuthGate from '@/components/WebAuthGate.vue';
 
@@ -55,7 +56,30 @@ const pinPromptVisible = computed(
 const pinInput = ref('');
 const pinError = ref(false);
 
-onMounted(() => void loadPin());
+onMounted(() => {
+  void loadPin();
+  void autoUpdateCheck();
+});
+
+/**
+ * Auto-update: compat flavor only, for now — those tablets are the ones
+ * least likely to have anyone regularly opening Settings to check by hand.
+ * Carbon/full stay manual (Settings → App updates) since an unprompted
+ * install intent taking over the screen mid-sale would be disruptive on a
+ * device actively used for a live transaction.
+ */
+async function autoUpdateCheck(): Promise<void> {
+  if (!isNative || currentFlavor() !== 'compat') return;
+  try {
+    const check = await checkForUpdate(settings.serverUrl);
+    if (check?.available) {
+      showToast(`Updating to ${check.versionName}…`, 'info');
+      await installUpdate(check.downloadUrl);
+    }
+  } catch {
+    /* silent — background convenience check, not a user-initiated action */
+  }
+}
 
 async function submitPin(): Promise<void> {
   if (await tryUnlock(pinInput.value)) {
