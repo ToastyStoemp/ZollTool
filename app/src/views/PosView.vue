@@ -352,21 +352,31 @@ onMounted(() => publishCart());
 function openDiscountForm(): void {
   const current = cart.customDiscount;
   discountForm.type = current?.type ?? 'amount';
-  discountForm.value = current ? String(current.value) : '';
+  // Stored in base currency (matches computeCartTotals, which runs on base-currency
+  // lines); shown in the charge currency like everything else on screen.
+  const shown =
+    current && current.type === 'amount' && data.hasLocalCurrency
+      ? current.value * cart.chargeRate
+      : current?.value;
+  discountForm.value = current ? String(round2(shown ?? current.value)) : '';
   discountForm.name = current?.name ?? '';
   showDiscountForm.value = true;
 }
 
 function applyDiscount(): void {
-  const value = parseFloat(discountForm.value) || 0;
-  if (value <= 0) {
+  const entered = parseFloat(discountForm.value) || 0;
+  if (entered <= 0) {
     showToast('Enter a discount value.', 'error');
     return;
   }
-  if (discountForm.type === 'percent' && value > 100) {
+  if (discountForm.type === 'percent' && entered > 100) {
     showToast('Percent discount cannot be over 100%.', 'error');
     return;
   }
+  // Entered in the charge currency (same as everything else on screen); convert
+  // back to base currency on the way in, same as addMisc's price field.
+  const value =
+    discountForm.type === 'amount' && data.hasLocalCurrency ? entered / cart.chargeRate : entered;
   cart.customDiscount = {
     type: discountForm.type,
     value,
@@ -1042,7 +1052,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
             :class="discountForm.type === 'amount' ? 'bg-emerald-600 text-white ring-emerald-500' : 'bg-slate-800 ring-slate-700'"
           >
             <input v-model="discountForm.type" type="radio" value="amount" class="hidden" />
-            Amount ({{ data.currency }})
+            Amount ({{ cart.chargeCurrency }})
           </label>
           <label
             class="flex-1 cursor-pointer rounded-lg px-3 py-2 text-center text-sm ring-1"
