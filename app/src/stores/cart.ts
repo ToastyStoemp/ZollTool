@@ -108,17 +108,22 @@ export const useCartStore = defineStore('cart', () => {
   const chargeSubtotal = computed(() => chargeLines.value.reduce((s, l) => s + l.lineTotal, 0));
 
   /**
-   * Discount rules with tiered bundle totals ("3 for 10 CHF") converted to
-   * the charge currency — a manual override (Price compare) if set, else
-   * rate-converted + rounded, same as product prices. bxgy/nth_pct rules
-   * carry no currency amount of their own, so they pass through unchanged.
+   * Discount rules with tiered bundle totals ("3 for 10 CHF") and combo
+   * bundle discounts converted to the charge currency — a manual override
+   * (Price compare) if set, else rate-converted + rounded, same as product
+   * prices. bxgy/nth_pct rules carry no currency amount of their own, so
+   * they pass through unchanged.
    */
   const localDiscountRules = computed(() =>
-    data.discounts.map((rule) =>
-      rule.type === 'tiered' && rule.tiers?.length
-        ? { ...rule, tiers: rule.tiers.map((t, i) => ({ ...t, total: data.localTierTotal(rule.id, i, t.total) })) }
-        : rule,
-    ),
+    data.discounts.map((rule) => {
+      if (rule.type === 'tiered' && rule.tiers?.length) {
+        return { ...rule, tiers: rule.tiers.map((t, i) => ({ ...t, total: data.localTierTotal(rule.id, i, t.total) })) };
+      }
+      if (rule.type === 'combo' && rule.comboDiscountAmount != null) {
+        return { ...rule, comboDiscountAmount: data.localTierTotal(rule.id, 'combo', rule.comboDiscountAmount) };
+      }
+      return rule;
+    }),
   );
 
   /**

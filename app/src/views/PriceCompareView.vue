@@ -221,6 +221,56 @@ const typeGroups = computed(() => {
 
 const tierRows = computed(() => buildTierRows());
 
+// ── Combo/set bundle discounts ("Bear Bundle: -10 when both present") ──────
+interface ComboRow {
+  key: string;
+  ruleId: string;
+  ruleName: string;
+  base: number;
+  converted: number;
+  autoRounded: number;
+  effective: number;
+  backConverted: number;
+  drift: number;
+}
+
+function buildComboRows(): ComboRow[] {
+  const event = currentEvent.value;
+  if (!event || !hasLocal.value) return [];
+  const rate = event.exchangeRate!;
+  const increment = event.roundingIncrement ?? 0;
+  const overrides = event.localTierOverrides ?? {};
+
+  const rows: ComboRow[] = [];
+  for (const rule of data.discounts) {
+    if (rule.type !== 'combo' || !rule.comboDiscountAmount) continue;
+    const key = `${rule.id}:combo`;
+    const converted = round2(rule.comboDiscountAmount * rate);
+    const autoRounded = toLocalPrice(rule.comboDiscountAmount, rate, increment);
+    const override = overrides[key];
+    const effective = override ?? autoRounded;
+    const backConverted = round2(effective / rate);
+    rows.push({
+      key,
+      ruleId: rule.id,
+      ruleName: rule.name,
+      base: rule.comboDiscountAmount,
+      converted,
+      autoRounded,
+      effective,
+      backConverted,
+      drift: round2(backConverted - rule.comboDiscountAmount),
+    });
+  }
+  return rows;
+}
+
+const comboRows = computed(() =>
+  [...buildComboRows()].sort((a, b) =>
+    sortByDrift.value ? Math.abs(b.drift) - Math.abs(a.drift) : a.ruleName.localeCompare(b.ruleName),
+  ),
+);
+
 /** Tier rows grouped by their parent discount rule, tiers sorted by qty within each. */
 const ruleGroups = computed(() => {
   const groups = new Map<string, TierRow[]>();
@@ -280,7 +330,8 @@ function clearOverride(row: Row): void {
   void saveOverride(row);
 }
 
-async function saveTierOverride(row: TierRow): Promise<void> {
+/** Shared by tiered tier rows and combo bundle rows — both are just "ruleId:suffix" keyed overrides. */
+async function saveTierOverride(row: { key: string }): Promise<void> {
   const event = currentEvent.value;
   if (!event) return;
   const raw = tierDrafts[row.key]?.trim() ?? '';
@@ -299,7 +350,7 @@ async function saveTierOverride(row: TierRow): Promise<void> {
   await upsertEvent({ ...event, localTierOverrides: overrides, updatedAt: Date.now() });
 }
 
-function clearTierOverride(row: TierRow): void {
+function clearTierOverride(row: { key: string }): void {
   tierDrafts[row.key] = '';
   void saveTierOverride(row);
 }
@@ -479,6 +530,69 @@ function clearTierOverride(row: TierRow): void {
           can be overridden the same way. The discount actually charged at checkout is computed
           directly against this local bundle total, not by converting the base-currency discount
           amount — so an override here lands exactly at checkout.
+        </p>
+      </template>
+
+      <template v-if="comboRows.length">
+        <h2 class="text-sm font-semibold text-slate-300">Bundle discounts</h2>
+        <div class="overflow-x-auto rounded-xl bg-slate-900 ring-1 ring-slate-800">
+          <table class="w-full min-w-[820px] text-sm">
+            <thead>
+              <tr class="border-b border-slate-800 text-left text-xs text-slate-400">
+                <th class="px-3 py-2">Bundle</th>
+                <th class="px-3 py-2 text-right">Base ({{ currentEvent.currency }})</th>
+                <th class="px-3 py-2 text-right">Converted</th>
+                <th class="px-3 py-2 text-right">Auto-rounded ({{ currentEvent.localCurrency }})</th>
+                <th class="px-3 py-2 text-right">Override</th>
+                <th class="px-3 py-2 text-right">Back to {{ currentEvent.currency }}</th>
+                <th class="px-3 py-2 text-right">Drift</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="r in comboRows"
+                :key="r.key"
+                class="border-b border-slate-800/60 last:border-0"
+                :class="tierDrafts[r.key] ? 'bg-emerald-950/20' : ''"
+              >
+                <td class="px-3 py-2">{{ r.ruleName }}</td>
+                <td class="px-3 py-2 text-right text-slate-400">{{ fmtPrice(r.base, currentEvent.currency) }}</td>
+                <td class="px-3 py-2 text-right text-slate-500">{{ fmtPrice(r.converted, currentEvent.localCurrency!) }}</td>
+                <td class="px-3 py-2 text-right">{{ fmtPrice(r.autoRounded, currentEvent.localCurrency!) }}</td>
+                <td class="px-3 py-2 text-right">
+                  <div class="flex items-center justify-end gap-1">
+                    <input
+                      v-model="tierDrafts[r.key]"
+                      :placeholder="String(r.autoRounded)"
+                      inputmode="decimal"
+                      class="w-20 rounded-md bg-slate-800 px-2 py-1 text-right text-sm"
+                      @change="saveTierOverride(r)"
+                    />
+                    <button
+                      v-if="tierDrafts[r.key]"
+                      class="text-xs text-slate-500 hover:text-red-400"
+                      title="Clear override"
+                      @click="clearTierOverride(r)"
+                    >
+                      ×
+                    </button>
+                  </div>
+                </td>
+                <td class="px-3 py-2 text-right text-slate-400">{{ fmtPrice(r.backConverted, currentEvent.currency) }}</td>
+                <td
+                  class="px-3 py-2 text-right font-medium"
+                  :class="Math.abs(r.drift) < 0.005 ? 'text-slate-600' : Math.abs(r.drift) < 0.5 ? 'text-amber-400' : 'text-red-400'"
+                >
+                  {{ r.drift > 0 ? '+' : '' }}{{ fmtPrice(r.drift, currentEvent.currency) }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-xs text-slate-500">
+          Bundle discount amounts convert and round the same way as product prices, and can be
+          overridden the same way — an override here lands exactly at checkout, same as tiered
+          bundles above.
         </p>
       </template>
     </template>

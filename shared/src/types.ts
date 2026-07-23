@@ -78,7 +78,7 @@ export interface EventStock {
   updatedAt: number;
 }
 
-export type DiscountType = 'bxgy' | 'nth_pct' | 'tiered';
+export type DiscountType = 'bxgy' | 'nth_pct' | 'tiered' | 'combo';
 
 export interface DiscountTier {
   qty: number;
@@ -89,17 +89,19 @@ export interface DiscountRule {
   id: string;
   name: string;
   type: DiscountType;
-  /** Products the rule applies to (all their variants included). */
+  /** Products the rule applies to (all their variants included). For type='combo', each entry is a required bundle member. */
   productIds: string[];
-  /** Specific variants, as "productId:variantId" keys. */
+  /** Specific variants, as "productId:variantId" keys. For type='combo', each entry is a required bundle member. */
   variantIds: string[];
-  /** Product types (Product.type) the rule applies to — matches every product of that type. */
+  /** Product types (Product.type) the rule applies to — matches every product of that type. For type='combo', each entry is a required bundle member. */
   productTypes?: string[];
   buyQty?: number;
   freeQty?: number;
   nth?: number;
   percent?: number;
   tiers?: DiscountTier[];
+  /** For type='combo': flat amount off (base currency) per complete set — every productIds/variantIds/productTypes member needs qty >= 1. */
+  comboDiscountAmount?: number;
   tierContinue?: boolean;
   /** Don't show the derived "+N" quick-add chips on POS product cards. */
   hideQuickAdd?: boolean;

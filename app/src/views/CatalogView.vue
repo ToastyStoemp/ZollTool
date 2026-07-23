@@ -387,6 +387,7 @@ const discountForm = reactive({
   tiers: [] as { qty: string; total: string }[],
   tierContinue: false,
   hideQuickAdd: false,
+  comboDiscountAmount: '',
 });
 
 /** Distinct product types available as discount targets. */
@@ -456,6 +457,7 @@ function openNewDiscount(): void {
     tiers: [{ qty: '3', total: '' }],
     tierContinue: false,
     hideQuickAdd: false,
+    comboDiscountAmount: '',
   });
   editingDiscount.value = true;
 }
@@ -476,6 +478,7 @@ function openEditDiscount(d: DiscountRule): void {
     tiers: (d.tiers ?? []).map((t) => ({ qty: String(t.qty), total: String(t.total) })),
     tierContinue: !!d.tierContinue,
     hideQuickAdd: !!d.hideQuickAdd,
+    comboDiscountAmount: d.comboDiscountAmount ? String(d.comboDiscountAmount) : '',
   });
   editingDiscount.value = true;
 }
@@ -487,6 +490,14 @@ async function saveDiscount(): Promise<void> {
   }
   if (!discountForm.productIds.length && !discountForm.variantIds.length && !discountForm.productTypes.length) {
     showToast('Select at least one product type, product or variant.', 'error');
+    return;
+  }
+  if (discountForm.type === 'combo' && discountTargetCount.value < 2) {
+    showToast('A bundle needs at least two members (products, variants or types).', 'error');
+    return;
+  }
+  if (discountForm.type === 'combo' && !(parseFloat(discountForm.comboDiscountAmount) > 0)) {
+    showToast('Enter a bundle discount amount.', 'error');
     return;
   }
   const rule: DiscountRule = {
@@ -510,6 +521,7 @@ async function saveDiscount(): Promise<void> {
       .filter((t) => t.qty > 1 && t.total > 0),
     tierContinue: discountForm.tierContinue,
     hideQuickAdd: discountForm.hideQuickAdd || undefined,
+    comboDiscountAmount: parseFloat(discountForm.comboDiscountAmount) || 0,
     updatedAt: Date.now(),
   };
   await upsertDiscount(rule);
@@ -520,6 +532,7 @@ async function saveDiscount(): Promise<void> {
 function discountSummary(d: DiscountRule): string {
   if (d.type === 'bxgy') return `Buy ${d.buyQty}, get ${d.freeQty} free`;
   if (d.type === 'nth_pct') return `Every ${d.nth} items, cheapest is ${d.percent}% off`;
+  if (d.type === 'combo') return `Bundle: −${d.comboDiscountAmount} when all present`;
   return (d.tiers ?? []).map((t) => `${t.qty} for ${t.total}`).join(' · ') || 'Tiered';
 }
 
@@ -962,6 +975,7 @@ function discountTargets(d: DiscountRule): string {
             <option value="bxgy">Buy X get Y free</option>
             <option value="nth_pct">Every Nth item % off</option>
             <option value="tiered">Tiered (e.g. 3 for 25)</option>
+            <option value="combo">Bundle (all items must be present)</option>
           </select>
         </label>
 
@@ -987,7 +1001,7 @@ function discountTargets(d: DiscountRule): string {
           </label>
         </div>
 
-        <div v-else class="space-y-2">
+        <div v-else-if="discountForm.type === 'tiered'" class="space-y-2">
           <div v-for="(t, i) in discountForm.tiers" :key="i" class="flex items-center gap-2 text-sm">
             <input v-model="t.qty" type="number" min="2" placeholder="Qty" class="w-20 rounded-lg bg-slate-800 px-3 py-2" />
             <span class="text-slate-400">for</span>
@@ -1007,9 +1021,27 @@ function discountTargets(d: DiscountRule): string {
           </label>
         </div>
 
+        <div v-else-if="discountForm.type === 'combo'" class="space-y-2">
+          <p class="text-xs text-slate-500">
+            Triggers once for every complete set of the selected products/variants/types found in
+            the cart — e.g. 2 purses + 3 wallets makes 2 bundles, one wallet left unbundled. Pick
+            at least two members below.
+          </p>
+          <label class="block text-sm">
+            <span class="text-slate-400">Bundle discount amount ({{ data.currency }}, off the total per bundle)</span>
+            <input
+              v-model="discountForm.comboDiscountAmount"
+              type="number"
+              min="0"
+              step="0.05"
+              class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2"
+            />
+          </label>
+        </div>
+
         <div class="rounded-lg bg-slate-800/50 p-3">
           <div class="flex items-center gap-2">
-            <span class="text-sm font-semibold">Applies to</span>
+            <span class="text-sm font-semibold">{{ discountForm.type === 'combo' ? 'Bundle members (all required)' : 'Applies to' }}</span>
             <span v-if="discountTargetCount" class="text-xs text-emerald-400">{{ discountTargetCount }} selected</span>
           </div>
 

@@ -168,6 +168,42 @@ describe('computeRuleDiscounts', () => {
     const r2 = rule({ id: 'y', productIds: ['a'], deletedAt: 123, buyQty: 1, freeQty: 1 });
     expect(computeRuleDiscounts(lines, [r1, r2])).toHaveLength(0);
   });
+
+  it('combo: scales by the minimum count across all required members', () => {
+    // 2 purses + 3 wallets = 2 complete bundles, one wallet left over unbundled
+    const lines = [line('purse', null, 2, 40), line('wallet', null, 3, 25)];
+    const r = rule({ type: 'combo', productIds: ['purse', 'wallet'], comboDiscountAmount: 10 });
+    const res = computeRuleDiscounts(lines, [r]);
+    expect(res).toHaveLength(1);
+    expect(res[0]!.amount).toBe(20);
+  });
+
+  it('combo: does not trigger unless every member has at least one', () => {
+    const lines = [line('purse', null, 3, 40)]; // no wallets at all
+    const r = rule({ type: 'combo', productIds: ['purse', 'wallet'], comboDiscountAmount: 10 });
+    expect(computeRuleDiscounts(lines, [r])).toHaveLength(0);
+  });
+
+  it('combo: matches specific variants and product types as members too', () => {
+    const lines = [
+      { ...line('purse', 'red', 1, 40), type: 'Bags' },
+      { ...line('hat', null, 1, 20), type: 'Hats' },
+    ];
+    const r = rule({
+      type: 'combo',
+      productIds: [],
+      variantIds: ['purse:red'],
+      productTypes: ['Hats'],
+      comboDiscountAmount: 5,
+    });
+    expect(computeRuleDiscounts(lines, [r])[0]!.amount).toBe(5);
+  });
+
+  it('combo: a single member never triggers (needs >= 2 distinct members)', () => {
+    const lines = [line('purse', null, 5, 40)];
+    const r = rule({ type: 'combo', productIds: ['purse'], comboDiscountAmount: 10 });
+    expect(computeRuleDiscounts(lines, [r])).toHaveLength(0);
+  });
 });
 
 describe('computeCustomDiscount', () => {

@@ -57,8 +57,12 @@ export const useDataStore = defineStore('data', () => {
 
   const localTierOverrides = computed(() => activeEvent.value?.localTierOverrides ?? {});
 
-  /** Local bundle total for a tiered-discount tier: manual override if set, else rate-converted + rounded. */
-  function localTierTotal(ruleId: string, tierIndex: number, baseTotal: number): number {
+  /**
+   * Local bundle total for a discount rule's currency amount — a tiered
+   * tier's total (tierIndex = its index) or a combo rule's flat discount
+   * (tierIndex = 'combo'): manual override if set, else rate-converted + rounded.
+   */
+  function localTierTotal(ruleId: string, tierIndex: number | string, baseTotal: number): number {
     const override = localTierOverrides.value[`${ruleId}:${tierIndex}`];
     if (override != null) return override;
     return toLocalPrice(baseTotal, exchangeRate.value, roundingIncrement.value);

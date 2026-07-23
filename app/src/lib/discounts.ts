@@ -33,6 +33,35 @@ function ruleTargetsLine(rule: DiscountRule, line: CartLine): boolean {
 }
 
 /**
+ * Combo/set bundle: every listed product/variant/type must have at least one
+ * matching item in the cart. Scales by the minimum available count across all
+ * members (2 purses + 3 wallets = 2 complete bundles, one wallet left over
+ * unbundled), each worth comboDiscountAmount off. Needs >= 2 distinct members
+ * — a single-item "bundle" isn't one.
+ */
+function computeComboDiscount(lines: CartLine[], rule: DiscountRule): number {
+  if (!rule.comboDiscountAmount || rule.comboDiscountAmount <= 0) return 0;
+
+  const memberQtyFor = (matches: (line: CartLine) => boolean): number =>
+    lines.reduce((sum, l) => (l.qty && matches(l) ? sum + l.qty : sum), 0);
+
+  const memberCounts: number[] = [
+    ...rule.productIds.map((pid) => memberQtyFor((l) => l.pid === pid)),
+    ...rule.variantIds.map((key) => {
+      const idx = key.indexOf(':');
+      const pid = key.slice(0, idx);
+      const vid = key.slice(idx + 1);
+      return memberQtyFor((l) => l.pid === pid && l.vid === vid);
+    }),
+    ...(rule.productTypes ?? []).map((type) => memberQtyFor((l) => l.type === type)),
+  ];
+  if (memberCounts.length < 2) return 0;
+
+  const bundleCount = Math.min(...memberCounts);
+  return bundleCount > 0 ? bundleCount * rule.comboDiscountAmount : 0;
+}
+
+/**
  * Port of pos.html calculateDiscounts(): for each rule, collect the unit price
  * of every matching item (expanded per quantity), sort cheapest-first, and
  * apply the rule's math:
@@ -45,12 +74,20 @@ function ruleTargetsLine(rule: DiscountRule, line: CartLine): boolean {
  *   (v2 change: tierContinue only prices the remainder once at least one full
  *   tier group is reached — legacy handed out the bundle unit price even when
  *   the customer never hit any tier)
+ * - combo: not a pooled-items rule (see computeComboDiscount) — every listed
+ *   member must be present at least once; flat amount off per complete set
  */
 export function computeRuleDiscounts(lines: CartLine[], rules: DiscountRule[]): RuleDiscountResult[] {
   const results: RuleDiscountResult[] = [];
   for (const rule of rules) {
     if (rule.deletedAt) continue;
     if (!rule.productIds.length && !rule.variantIds.length && !rule.productTypes?.length) continue;
+
+    if (rule.type === 'combo') {
+      const amount = computeComboDiscount(lines, rule);
+      if (amount > 0.001) results.push({ rule, amount });
+      continue;
+    }
 
     const items: number[] = [];
     for (const line of lines) {
