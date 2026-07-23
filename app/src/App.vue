@@ -6,10 +6,17 @@ import { toasts } from '@/lib/toast';
 import { loadPin, pinState, tryUnlock } from '@/lib/pin';
 import { useSettingsStore } from '@/stores/settings';
 import { syncState } from '@/sync/engine';
+import { isNative } from '@/native/plugins';
 import OnboardingWizard from '@/components/OnboardingWizard.vue';
+import WebAuthGate from '@/components/WebAuthGate.vue';
 
 const route = useRoute();
 const settings = useSettingsStore();
+
+// The web build is served publicly from the sync server's own domain, so
+// anyone who finds the URL could otherwise use the full offline-capable POS
+// with no account. The Android app stays offline-first, unaffected.
+const showWebAuthGate = computed(() => !isNative && settings.ready && !settings.syncUser);
 
 // At-a-glance sync health: amber = changes waiting, red = last sync failed.
 const syncBadge = computed<null | { cls: string; title: string }>(() => {
@@ -137,6 +144,9 @@ async function submitPin(): Promise<void> {
         </button>
       </form>
     </div>
+
+    <!-- Web login gate: browser access only, above everything else -->
+    <WebAuthGate v-if="showWebAuthGate" />
 
     <!-- First-run setup guide -->
     <OnboardingWizard v-if="settings.ready && !settings.onboardingDone" />

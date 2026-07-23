@@ -24,7 +24,7 @@ import {
   type ArtistInfo,
   type ReceiptLine,
 } from '@/lib/receipt';
-import { ThermalPrinter, hasNativePlugin } from '@/native/plugins';
+import { ThermalPrinter, hasNativePlugin, isNative } from '@/native/plugins';
 import { Camera, QrCode } from 'lucide-vue-next';
 import ModalShell from '@/components/ModalShell.vue';
 
@@ -158,7 +158,9 @@ async function submitAuth(): Promise<void> {
 
 async function doLogout(): Promise<void> {
   await settings.logoutFromServer();
-  showToast('Logged out — the app keeps working offline', 'info');
+  // On web, logging out immediately re-shows the login gate (App.vue) — it
+  // does not keep working offline the way the native app does.
+  showToast(isNative ? 'Logged out — the app keeps working offline' : 'Logged out', 'info');
 }
 
 // ── Quick connect via QR ────────────────────────────────────────────────────
@@ -913,7 +915,10 @@ async function onImportFile(e: Event): Promise<void> {
         </div>
       </template>
 
-      <!-- Logged out -->
+      <!-- Logged out, web: the login gate (App.vue) takes over as soon as this renders — nothing to show here. -->
+      <p v-else-if="!isNative" class="text-xs text-slate-500">Logging you out…</p>
+
+      <!-- Logged out, native app: sync is optional, log in/register right here. -->
       <template v-else>
         <p class="mb-3 text-xs text-slate-500">
           Optional: connect to a ZollTool server so several devices can sell into the same event.
