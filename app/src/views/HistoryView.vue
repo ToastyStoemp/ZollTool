@@ -173,10 +173,17 @@ const hourly = computed(() => {
   const from = active[0]!.h;
   const to = active[active.length - 1]!.h;
   const max = Math.max(...buckets);
+  const span = to - from + 1;
+  // Thin hour labels only once there are enough bars that showing every one
+  // would crowd the axis — anchored to position (i=0 always labeled), not
+  // absolute hour-of-day, which could otherwise skip labeling every bar in a
+  // short range (e.g. only "12" happens to be divisible by 3 in a 4-bar span).
+  const labelEvery = span > 16 ? 3 : span > 8 ? 2 : 1;
   return buckets.slice(from, to + 1).map((v, i) => ({
     h: from + i,
     v,
     pct: Math.round((v / max) * 100),
+    showLabel: i % labelEvery === 0,
   }));
 });
 
@@ -498,7 +505,7 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
                 :title="`${b.h}:00 — ${fmtPrice(b.v, revenueCurrency)}`"
               />
             </div>
-            <span class="text-[9px] text-slate-500">{{ b.h % 3 === 0 ? b.h : '' }}</span>
+            <span class="text-[9px] text-slate-500">{{ b.showLabel ? b.h : '' }}</span>
           </div>
         </div>
       </div>

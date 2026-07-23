@@ -8,8 +8,8 @@ android {
         applicationId "com.getupgames.zolltool"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 29746751
-        versionName "2026-07-23 11:11"
+        versionCode 29746768
+        versionName "2026-07-23 11:28"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
