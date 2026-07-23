@@ -10,7 +10,8 @@ export type OpType =
   | 'stock.set'
   | 'discount.upsert'
   | 'discount.delete'
-  | 'image.meta';
+  | 'image.meta'
+  | 'setting.upsert';
 
 export interface Op {
   /** uuidv7, client-generated, globally unique — the idempotency key. */

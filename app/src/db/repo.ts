@@ -45,6 +45,20 @@ export async function setSetting(key: string, value: unknown): Promise<void> {
   await db.settings.put({ key, value });
 }
 
+/**
+ * Like setSetting, but also pushed through the sync outbox so other devices
+ * on the account pick it up (last-write-wins by `updatedAt`). Only for
+ * account-wide settings (branding, business defaults) — never device
+ * identity, auth/session tokens, hardware pairings, or other per-device state.
+ */
+export async function setSyncedSetting(key: string, value: unknown): Promise<void> {
+  const updatedAt = Date.now();
+  await db.transaction('rw', [db.settings, db.ops], async () => {
+    await db.settings.put({ key, value, updatedAt });
+    await appendOp('setting.upsert', { key, value, updatedAt });
+  });
+}
+
 export async function ensureDeviceId(): Promise<string> {
   let id = await getSetting<string>('deviceId');
   if (!id) {

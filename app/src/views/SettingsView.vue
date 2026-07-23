@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
-import { getSetting, setSetting } from '@/db/repo';
+import { getSetting, setSetting, setSyncedSetting } from '@/db/repo';
 import { allProviders } from '@/payments/registry';
 import { SUMUP_KEY_SETTING } from '@/payments/sumup';
 import type { PaymentProviderId, ProviderStatus } from '@/payments/provider';
@@ -72,7 +72,7 @@ onMounted(async () => {
 });
 
 async function saveSumupKey(): Promise<void> {
-  await setSetting(SUMUP_KEY_SETTING, sumupKey.value.trim());
+  await setSyncedSetting(SUMUP_KEY_SETTING, sumupKey.value.trim());
   showToast('SumUp affiliate key saved', 'success');
 }
 onUnmounted(() => {
@@ -310,8 +310,8 @@ async function testPrint(): Promise<void> {
 }
 
 async function saveArtistInfo(): Promise<void> {
-  await setSetting(RECEIPT_KEYS.artist, { ...artistDraft });
-  await setSetting(RECEIPT_KEYS.footerText, receiptFooterDraft.value);
+  await setSyncedSetting(RECEIPT_KEYS.artist, { ...artistDraft });
+  await setSyncedSetting(RECEIPT_KEYS.footerText, receiptFooterDraft.value);
   artistSaved.value = true;
   setTimeout(() => (artistSaved.value = false), 2000);
 }
@@ -323,7 +323,7 @@ async function onLogoFile(e: Event): Promise<void> {
   if (!file) return;
   try {
     receiptLogo.value = await processLogoFile(file);
-    await setSetting(RECEIPT_KEYS.logoB64, receiptLogo.value);
+    await setSyncedSetting(RECEIPT_KEYS.logoB64, receiptLogo.value);
   } catch (err) {
     showToast(`Logo failed: ${err}`, 'error');
   }
@@ -331,7 +331,7 @@ async function onLogoFile(e: Event): Promise<void> {
 
 async function removeLogo(): Promise<void> {
   receiptLogo.value = '';
-  await setSetting(RECEIPT_KEYS.logoB64, '');
+  await setSyncedSetting(RECEIPT_KEYS.logoB64, '');
 }
 
 async function toggleAutoPrint(): Promise<void> {

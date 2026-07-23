@@ -1,8 +1,9 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
+import { liveQuery } from 'dexie';
 import type { AuthUser } from '@zolltool/shared';
 import { db } from '@/db/schema';
-import { ensureDeviceId, getSetting, setSetting } from '@/db/repo';
+import { ensureDeviceId, getSetting, setSetting, setSyncedSetting } from '@/db/repo';
 import { migrateV1IfNeeded } from '@/db/migrate-v1';
 import type { PaymentProviderId } from '@/payments/provider';
 import { onActiveProviderChanged } from '@/payments/registry';
@@ -25,6 +26,19 @@ export const useSettingsStore = defineStore('settings', () => {
   const defaultCurrency = ref('CHF');
   /** Prefill for new events' local-currency rounding increment (0 = off). */
   const defaultRoundingIncrement = ref(0);
+
+  // These three are synced across the account's devices (see setSyncedSetting) —
+  // live-subscribe so a change applied from another device shows up here too,
+  // not just changes made on this device.
+  liveQuery(() => db.settings.get('defaultCurrency')).subscribe((row) => {
+    if (row?.value != null) defaultCurrency.value = row.value as string;
+  });
+  liveQuery(() => db.settings.get('defaultRoundingIncrement')).subscribe((row) => {
+    if (row?.value != null) defaultRoundingIncrement.value = row.value as number;
+  });
+  liveQuery(() => db.settings.get('customPaymentMethods')).subscribe((row) => {
+    if (row?.value != null) customPaymentMethods.value = row.value as string[];
+  });
 
   async function init(): Promise<void> {
     deviceId.value = await ensureDeviceId();
@@ -56,12 +70,12 @@ export const useSettingsStore = defineStore('settings', () => {
     const trimmed = name.trim();
     if (!trimmed || customPaymentMethods.value.some((m) => m.toLowerCase() === trimmed.toLowerCase())) return;
     customPaymentMethods.value = [...customPaymentMethods.value, trimmed];
-    await setSetting('customPaymentMethods', [...customPaymentMethods.value]);
+    await setSyncedSetting('customPaymentMethods', [...customPaymentMethods.value]);
   }
 
   async function removeCustomPaymentMethod(name: string): Promise<void> {
     customPaymentMethods.value = customPaymentMethods.value.filter((m) => m !== name);
-    await setSetting('customPaymentMethods', [...customPaymentMethods.value]);
+    await setSyncedSetting('customPaymentMethods', [...customPaymentMethods.value]);
   }
 
   async function completeOnboarding(): Promise<void> {
@@ -108,13 +122,13 @@ export const useSettingsStore = defineStore('settings', () => {
   async function setDefaultCurrency(currency: string): Promise<void> {
     const normalized = currency.trim().toUpperCase() || 'CHF';
     defaultCurrency.value = normalized;
-    await setSetting('defaultCurrency', normalized);
+    await setSyncedSetting('defaultCurrency', normalized);
   }
 
   async function setDefaultRoundingIncrement(increment: number): Promise<void> {
     const normalized = Number.isFinite(increment) && increment > 0 ? increment : 0;
     defaultRoundingIncrement.value = normalized;
-    await setSetting('defaultRoundingIncrement', normalized);
+    await setSyncedSetting('defaultRoundingIncrement', normalized);
   }
 
   async function setPaymentProvider(id: PaymentProviderId): Promise<void> {

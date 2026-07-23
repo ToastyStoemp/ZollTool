@@ -14,7 +14,7 @@ import {
 import type { SalesEvent } from '@zolltool/shared';
 import { useSettingsStore } from '@/stores/settings';
 import { useDataStore } from '@/stores/data';
-import { getSetting, setSetting, upsertEvent } from '@/db/repo';
+import { getSetting, setSyncedSetting, upsertEvent } from '@/db/repo';
 import { importBackup } from '@/lib/export/backup-json';
 import { uuidv7 } from '@/lib/uuid';
 import { showToast } from '@/lib/toast';
@@ -124,7 +124,7 @@ async function saveArtistDefaults(): Promise<void> {
   // Merge: Settings may have stored extra fields here (e.g. the receipt VAT
   // number) that this shorter wizard form must not wipe.
   const existing = (await getSetting<Record<string, string>>('customs.artistDefaults')) ?? {};
-  await setSetting('customs.artistDefaults', { ...existing, ...artistForm });
+  await setSyncedSetting('customs.artistDefaults', { ...existing, ...artistForm });
 }
 
 // Prefill from data that already exists (saved artist defaults, known server).

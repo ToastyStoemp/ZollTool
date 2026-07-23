@@ -110,4 +110,30 @@ describe('applyRemoteOps', () => {
     );
     expect(again).toEqual([]);
   });
+
+  it('LWWs synced settings by updatedAt, leaving unrelated keys untouched', async () => {
+    await db.settings.put({ key: 'deviceName', value: 'Front counter' });
+
+    await applyRemoteOps(
+      [op('setting.upsert', { key: 'defaultCurrency', value: 'EUR', updatedAt: 2000 })],
+      OWN_DEVICE,
+    );
+    expect((await db.settings.get('defaultCurrency'))?.value).toBe('EUR');
+
+    // Stale incoming update must not overwrite the newer local value.
+    await applyRemoteOps(
+      [op('setting.upsert', { key: 'defaultCurrency', value: 'SEK', updatedAt: 1000 })],
+      OWN_DEVICE,
+    );
+    expect((await db.settings.get('defaultCurrency'))?.value).toBe('EUR');
+
+    await applyRemoteOps(
+      [op('setting.upsert', { key: 'defaultCurrency', value: 'USD', updatedAt: 3000 })],
+      OWN_DEVICE,
+    );
+    expect((await db.settings.get('defaultCurrency'))?.value).toBe('USD');
+
+    // A device-local key (never sent as a synced op in practice) is unaffected.
+    expect((await db.settings.get('deviceName'))?.value).toBe('Front counter');
+  });
 });

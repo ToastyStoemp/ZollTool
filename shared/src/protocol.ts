@@ -13,6 +13,7 @@ export const OpTypeSchema = z.enum([
   'discount.upsert',
   'discount.delete',
   'image.meta',
+  'setting.upsert',
 ]);
 
 export const OpSchema = z.object({

@@ -26,6 +26,8 @@ export interface OutboxOp extends Op {
 export interface SettingRow {
   key: string;
   value: unknown;
+  /** Set only for settings synced across devices (see setSyncedSetting) — LWW conflict resolution. */
+  updatedAt?: number;
 }
 
 export const db = new Dexie('zolltool_v2') as Dexie & {

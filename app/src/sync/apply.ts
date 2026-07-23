@@ -22,7 +22,7 @@ export async function applyRemoteOps(ops: ServerOp[], ownDeviceId: string): Prom
 
   await db.transaction(
     'rw',
-    [db.events, db.products, db.eventStock, db.transactions, db.discounts, db.images],
+    [db.events, db.products, db.eventStock, db.transactions, db.discounts, db.images, db.settings],
     async () => {
       for (const op of ops) {
         if (op.deviceId === ownDeviceId) continue;
@@ -101,6 +101,14 @@ export async function applyRemoteOps(ops: ServerOp[], ownDeviceId: string): Prom
                 updatedAt: meta.updatedAt,
               });
               wantFullImages.push(meta.imageId);
+            }
+            break;
+          }
+          case 'setting.upsert': {
+            const { key, value, updatedAt } = op.payload as { key: string; value: unknown; updatedAt: number };
+            const existing = await db.settings.get(key);
+            if (!existing || updatedAt >= (existing.updatedAt ?? 0)) {
+              await db.settings.put({ key, value, updatedAt });
             }
             break;
           }

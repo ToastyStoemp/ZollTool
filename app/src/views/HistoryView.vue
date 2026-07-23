@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import type { Transaction, TxDiscount, TxItem } from '@zolltool/shared';
 import { useDataStore } from '@/stores/data';
-import { getSetting, revertTransaction, setSetting } from '@/db/repo';
+import { getSetting, revertTransaction, setSyncedSetting } from '@/db/repo';
 import { fmtPrice, round2 } from '@/lib/money';
 import { transactionsToCsv } from '@/lib/export/csv';
 import { typeColor } from '@/lib/search';
@@ -193,7 +193,7 @@ watch(
 
 async function saveFloat(): Promise<void> {
   if (!scopeEvent.value) return;
-  await setSetting(`cashFloat.${scopeEvent.value.id}`, parseFloat(floatInput.value) || 0);
+  await setSyncedSetting(`cashFloat.${scopeEvent.value.id}`, parseFloat(floatInput.value) || 0);
 }
 
 /** Revenue split by payment leg: Cash / Card / each custom method by name. */
