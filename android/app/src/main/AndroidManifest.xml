@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Package visibility (Android 11+): the carbon flavor talks to the myPOS
          payment core, the full flavor to the myPOS Glass softPOS app; flavors
@@ -65,4 +66,16 @@
         android:name="android.permission.BLUETOOTH_SCAN"
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+
+    <!-- androidx.core auto-declares this self-signature permission (its
+         RECEIVER_NOT_EXPORTED backport for pre-API-33 registerReceiver calls) in
+         every app that depends on it. Every registerReceiver call in this app
+         explicitly uses RECEIVER_EXPORTED, not RECEIVER_NOT_EXPORTED, so it's
+         unused here — strip it from the merged manifest. -->
+    <permission
+        android:name="${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        tools:node="remove" />
+    <uses-permission
+        android:name="${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION"
+        tools:node="remove" />
 </manifest>
