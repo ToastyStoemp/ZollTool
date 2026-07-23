@@ -219,10 +219,24 @@ const typeGroups = computed(() => {
     }));
 });
 
-const tierRows = computed(() => {
-  const list = buildTierRows();
-  return [...list].sort((a, b) =>
-    sortByDrift.value ? Math.abs(b.drift) - Math.abs(a.drift) : a.ruleName.localeCompare(b.ruleName),
+const tierRows = computed(() => buildTierRows());
+
+/** Tier rows grouped by their parent discount rule, tiers sorted by qty within each. */
+const ruleGroups = computed(() => {
+  const groups = new Map<string, TierRow[]>();
+  for (const r of tierRows.value) {
+    const list = groups.get(r.ruleId) ?? [];
+    list.push(r);
+    groups.set(r.ruleId, list);
+  }
+  const entries = [...groups.entries()].map(([ruleId, groupRows]) => ({
+    ruleId,
+    ruleName: groupRows[0]!.ruleName,
+    maxDrift: Math.max(...groupRows.map((r) => Math.abs(r.drift))),
+    rows: [...groupRows].sort((a, b) => a.qty - b.qty),
+  }));
+  return entries.sort((a, b) =>
+    sortByDrift.value ? b.maxDrift - a.maxDrift : a.ruleName.localeCompare(b.ruleName),
   );
 });
 
@@ -403,59 +417,62 @@ function clearTierOverride(row: TierRow): void {
 
       <template v-if="tierRows.length">
         <h2 class="text-sm font-semibold text-slate-300">Tiered discount bundles</h2>
-        <div class="overflow-x-auto rounded-xl bg-slate-900 ring-1 ring-slate-800">
-          <table class="w-full min-w-[820px] text-sm">
-            <thead>
-              <tr class="border-b border-slate-800 text-left text-xs text-slate-400">
-                <th class="px-3 py-2">Bundle</th>
-                <th class="px-3 py-2 text-right">Base ({{ currentEvent.currency }})</th>
-                <th class="px-3 py-2 text-right">Converted</th>
-                <th class="px-3 py-2 text-right">Auto-rounded ({{ currentEvent.localCurrency }})</th>
-                <th class="px-3 py-2 text-right">Override</th>
-                <th class="px-3 py-2 text-right">Back to {{ currentEvent.currency }}</th>
-                <th class="px-3 py-2 text-right">Drift</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="r in tierRows"
-                :key="r.key"
-                class="border-b border-slate-800/60 last:border-0"
-                :class="tierDrafts[r.key] ? 'bg-emerald-950/20' : ''"
-              >
-                <td class="px-3 py-2">{{ r.qty }}× {{ r.ruleName }}</td>
-                <td class="px-3 py-2 text-right text-slate-400">{{ fmtPrice(r.base, currentEvent.currency) }}</td>
-                <td class="px-3 py-2 text-right text-slate-500">{{ fmtPrice(r.converted, currentEvent.localCurrency!) }}</td>
-                <td class="px-3 py-2 text-right">{{ fmtPrice(r.autoRounded, currentEvent.localCurrency!) }}</td>
-                <td class="px-3 py-2 text-right">
-                  <div class="flex items-center justify-end gap-1">
-                    <input
-                      v-model="tierDrafts[r.key]"
-                      :placeholder="String(r.autoRounded)"
-                      inputmode="decimal"
-                      class="w-20 rounded-md bg-slate-800 px-2 py-1 text-right text-sm"
-                      @change="saveTierOverride(r)"
-                    />
-                    <button
-                      v-if="tierDrafts[r.key]"
-                      class="text-xs text-slate-500 hover:text-red-400"
-                      title="Clear override"
-                      @click="clearTierOverride(r)"
-                    >
-                      ×
-                    </button>
-                  </div>
-                </td>
-                <td class="px-3 py-2 text-right text-slate-400">{{ fmtPrice(r.backConverted, currentEvent.currency) }}</td>
-                <td
-                  class="px-3 py-2 text-right font-medium"
-                  :class="Math.abs(r.drift) < 0.005 ? 'text-slate-600' : Math.abs(r.drift) < 0.5 ? 'text-amber-400' : 'text-red-400'"
+        <div v-for="group in ruleGroups" :key="group.ruleId" class="space-y-2">
+          <h3 class="text-xs font-semibold text-slate-400">{{ group.ruleName }}</h3>
+          <div class="overflow-x-auto rounded-xl bg-slate-900 ring-1 ring-slate-800">
+            <table class="w-full min-w-[820px] text-sm">
+              <thead>
+                <tr class="border-b border-slate-800 text-left text-xs text-slate-400">
+                  <th class="px-3 py-2">Bundle</th>
+                  <th class="px-3 py-2 text-right">Base ({{ currentEvent.currency }})</th>
+                  <th class="px-3 py-2 text-right">Converted</th>
+                  <th class="px-3 py-2 text-right">Auto-rounded ({{ currentEvent.localCurrency }})</th>
+                  <th class="px-3 py-2 text-right">Override</th>
+                  <th class="px-3 py-2 text-right">Back to {{ currentEvent.currency }}</th>
+                  <th class="px-3 py-2 text-right">Drift</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="r in group.rows"
+                  :key="r.key"
+                  class="border-b border-slate-800/60 last:border-0"
+                  :class="tierDrafts[r.key] ? 'bg-emerald-950/20' : ''"
                 >
-                  {{ r.drift > 0 ? '+' : '' }}{{ fmtPrice(r.drift, currentEvent.currency) }}
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                  <td class="px-3 py-2">{{ r.qty }}×</td>
+                  <td class="px-3 py-2 text-right text-slate-400">{{ fmtPrice(r.base, currentEvent.currency) }}</td>
+                  <td class="px-3 py-2 text-right text-slate-500">{{ fmtPrice(r.converted, currentEvent.localCurrency!) }}</td>
+                  <td class="px-3 py-2 text-right">{{ fmtPrice(r.autoRounded, currentEvent.localCurrency!) }}</td>
+                  <td class="px-3 py-2 text-right">
+                    <div class="flex items-center justify-end gap-1">
+                      <input
+                        v-model="tierDrafts[r.key]"
+                        :placeholder="String(r.autoRounded)"
+                        inputmode="decimal"
+                        class="w-20 rounded-md bg-slate-800 px-2 py-1 text-right text-sm"
+                        @change="saveTierOverride(r)"
+                      />
+                      <button
+                        v-if="tierDrafts[r.key]"
+                        class="text-xs text-slate-500 hover:text-red-400"
+                        title="Clear override"
+                        @click="clearTierOverride(r)"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  </td>
+                  <td class="px-3 py-2 text-right text-slate-400">{{ fmtPrice(r.backConverted, currentEvent.currency) }}</td>
+                  <td
+                    class="px-3 py-2 text-right font-medium"
+                    :class="Math.abs(r.drift) < 0.005 ? 'text-slate-600' : Math.abs(r.drift) < 0.5 ? 'text-amber-400' : 'text-red-400'"
+                  >
+                    {{ r.drift > 0 ? '+' : '' }}{{ fmtPrice(r.drift, currentEvent.currency) }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
         <p class="text-xs text-slate-500">
           Bundle totals (e.g. "3 for 10 CHF") convert and round the same way as product prices, and
