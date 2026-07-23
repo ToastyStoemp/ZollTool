@@ -10,6 +10,7 @@ import { authenticate, registerAuthRoutes, seedOwner } from './auth';
 import { registerSyncRoutes } from './routes/sync';
 import { registerImageRoutes } from './routes/images';
 import { registerAdminRoutes } from './routes/admin';
+import { registerUpdateRoutes } from './routes/updates';
 import { Rooms, registerWs } from './ws';
 
 declare module 'fastify' {
@@ -29,6 +30,8 @@ export interface BuildOptions {
    * server. The app uses hash routing, so no history rewrites are needed.
    */
   webDir?: string;
+  /** Directory with committed self-update APKs + version.json (server/apk). */
+  apkDir?: string;
 }
 
 export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
@@ -48,6 +51,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   registerSyncRoutes(app, db, rooms);
   registerImageRoutes(app, db, opts.dataDir);
   registerAdminRoutes(app, db);
+  if (opts.apkDir) registerUpdateRoutes(app, opts.apkDir);
 
   app.get('/api/health', async () => ({ ok: true, ts: Date.now() }));
 

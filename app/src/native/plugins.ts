@@ -111,6 +111,12 @@ export interface ScreenPluginApi {
   wake(): Promise<void>;
 }
 
+/** Self-update: reads this install's version, downloads + installs a newer APK — see UpdaterPlugin.kt. */
+export interface UpdaterPluginApi {
+  getCurrentVersion(): Promise<{ versionCode: number; versionName: string }>;
+  downloadAndInstall(options: { url: string }): Promise<void>;
+}
+
 export const MyPos = registerPlugin<MyPosPluginApi>('MyPos');
 export const CarbonPayment = registerPlugin<CarbonPaymentPluginApi>('CarbonPayment');
 export const GlassPayment = registerPlugin<GlassPaymentPluginApi>('GlassPayment');
@@ -119,6 +125,7 @@ export const ThermalPrinter = registerPlugin<ThermalPrinterPluginApi>('ThermalPr
 export const FileShare = registerPlugin<FileSharePluginApi>('FileShare');
 export const SumUp = registerPlugin<SumUpPluginApi>('SumUp');
 export const Screen = registerPlugin<ScreenPluginApi>('Screen');
+export const Updater = registerPlugin<UpdaterPluginApi>('Updater');
 
 export function hasNativePlugin(name: string): boolean {
   return isNative && Capacitor.isPluginAvailable(name);

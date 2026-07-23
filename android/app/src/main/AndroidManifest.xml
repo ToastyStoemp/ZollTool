@@ -46,6 +46,10 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Self-update: install a newer APK downloaded from the sync server (see UpdaterPlugin.kt).
+         Still needs the user's one-time "allow installs from this app" consent — this permission
+         just lets the app trigger that system prompt. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Bluetooth for the myPOS GO2 / Carbon card terminals (see MyPosPlugin.kt) -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />

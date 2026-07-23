@@ -25,6 +25,7 @@ import {
   type ReceiptLine,
 } from '@/lib/receipt';
 import { ThermalPrinter, hasNativePlugin, isNative } from '@/native/plugins';
+import { checkForUpdate, installUpdate, type UpdateCheck } from '@/lib/updates';
 import { Camera, QrCode } from 'lucide-vue-next';
 import ModalShell from '@/components/ModalShell.vue';
 
@@ -161,6 +162,38 @@ async function doLogout(): Promise<void> {
   // On web, logging out immediately re-shows the login gate (App.vue) — it
   // does not keep working offline the way the native app does.
   showToast(isNative ? 'Logged out — the app keeps working offline' : 'Logged out', 'info');
+}
+
+// ── App updates (native only) — checks the sync server, see lib/updates.ts ──
+const updateCheck = ref<UpdateCheck | null>(null);
+const updateChecking = ref(false);
+const updateError = ref('');
+const updateInstalling = ref(false);
+
+async function checkUpdate(): Promise<void> {
+  updateChecking.value = true;
+  updateError.value = '';
+  updateCheck.value = null;
+  try {
+    updateCheck.value = await checkForUpdate(settings.serverUrl);
+    if (!updateCheck.value) updateError.value = 'No update info available — set a server URL under Server sync first.';
+  } catch (err) {
+    updateError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    updateChecking.value = false;
+  }
+}
+
+async function doInstallUpdate(): Promise<void> {
+  if (!updateCheck.value) return;
+  updateInstalling.value = true;
+  try {
+    await installUpdate(updateCheck.value.downloadUrl);
+  } catch (err) {
+    showToast(`Update failed: ${err instanceof Error ? err.message : err}`, 'error');
+  } finally {
+    updateInstalling.value = false;
+  }
 }
 
 // ── Quick connect via QR ────────────────────────────────────────────────────
@@ -995,6 +1028,37 @@ async function onImportFile(e: Event): Promise<void> {
           <input ref="scanInput" type="file" accept="image/*" capture="environment" class="hidden" @change="onScanFile" />
         </form>
       </template>
+    </section>
+
+    <!-- App updates (native only) -->
+    <section v-if="isNative" class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800 xl:mb-6 xl:break-inside-avoid">
+      <h2 class="mb-2 text-sm font-semibold text-slate-300">App updates</h2>
+      <p class="mb-3 text-xs text-slate-500">
+        Checks the sync server for a newer build than this device is running. Needs a server URL
+        set under Server sync above.
+      </p>
+      <button
+        class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
+        :disabled="updateChecking"
+        @click="checkUpdate"
+      >
+        {{ updateChecking ? 'Checking…' : 'Check for updates' }}
+      </button>
+      <p v-if="updateError" class="mt-2 text-xs text-red-400">{{ updateError }}</p>
+      <div v-if="updateCheck" class="mt-3 text-sm">
+        <p class="text-slate-500">Installed: {{ updateCheck.currentVersionName }}</p>
+        <template v-if="updateCheck.available">
+          <p class="mt-1 font-medium text-emerald-400">Update available: {{ updateCheck.versionName }}</p>
+          <button
+            class="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+            :disabled="updateInstalling"
+            @click="doInstallUpdate"
+          >
+            {{ updateInstalling ? 'Downloading…' : 'Download & install' }}
+          </button>
+        </template>
+        <p v-else class="mt-1 text-slate-400">Up to date.</p>
+      </div>
     </section>
 
     <!-- Security -->

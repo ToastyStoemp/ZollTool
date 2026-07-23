@@ -20,11 +20,15 @@ const webDir = process.env.WEB_DIR
   ? resolve(process.env.WEB_DIR)
   : (unpackWebDist(zipPath, unpackDir) ?? resolve('../app/dist'));
 
+// Committed self-update APKs (server/apk/*.apk + version.json via `npm run pack:apk`).
+const apkDir = fileURLToPath(new URL('../apk', import.meta.url));
+
 const app = await buildApp({
   dataDir: process.env.DATA_DIR || './data',
   jwtSecret,
   logger: true,
   webDir,
+  apkDir,
 });
 
 const port = Number(process.env.PORT || 8787);

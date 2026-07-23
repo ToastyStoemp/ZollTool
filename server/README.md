@@ -68,6 +68,29 @@ The rebuild is fast — only COPY layers change; npm deps stay cached (BuildKit 
 What gets served, in order of precedence: explicit `WEB_DIR` env → the committed zip →
 `../app/dist` (dev fallback). With none of these the server is API-only.
 
+## Android app self-updates
+
+The server also hosts the Android APKs for in-app self-update (Settings → App updates on the
+device). Same pattern as the web build — **built on a dev machine, committed to git**, no
+per-device file transfer:
+
+```sh
+# on the dev machine, from the repo root
+npx cap sync android
+cd android && .\gradlew.bat assembleDebug && cd ..   # builds all 3 flavors
+npm run pack:apk              # copies them + writes server/apk/version.json
+git add server/apk && git commit -m "app update" && git push
+
+# on the server
+git pull
+docker compose -f server/docker-compose.yml --env-file server/.env up -d --build
+```
+
+Each device downloads only its own flavor (detected at runtime from which native payment
+plugin is present). Installing still needs the user's one-time "allow installs from this app"
+consent — Android doesn't let an app silently replace itself. `server/apk/` is empty until the
+first `pack:apk` run; devices just see "no update published" until then.
+
 ## Accounts
 
 - The **owner** account is seeded from `OWNER_EMAIL` / `OWNER_PASSWORD` on first boot.

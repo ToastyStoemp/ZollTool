@@ -17,6 +17,7 @@
     "typecheck": "npm run typecheck -w app && npm run typecheck -w server",
     "android:sync": "npm run build && npx cap sync android",
     "android:apk": "npm run android:sync && cd android && .\\gradlew.bat assembleDebug",
+    "pack:apk": "node scripts/pack-apk.mjs",
     "android:open": "npx cap open android",
     "android:live": "npx cap run android --live-reload --host=0.0.0.0"
   },
