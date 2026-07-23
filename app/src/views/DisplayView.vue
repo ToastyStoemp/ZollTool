@@ -5,7 +5,8 @@ import { X } from 'lucide-vue-next';
 import type { DisplayCartMessage } from '@zolltool/shared';
 import { displayCarts, syncState } from '@/sync/engine';
 import { DisplayLink, Screen, hasNativePlugin } from '@/native/plugins';
-import { fmtPrice } from '@/lib/money';
+import { fmtAmount, fmtPrice } from '@/lib/money';
+import { loadReceiptConfig } from '@/lib/receipt';
 
 /**
  * Customer display mode: this device mirrors another register's cart live,
@@ -13,10 +14,19 @@ import { fmtPrice } from '@/lib/money';
  * broadcasting; the newest one is followed automatically otherwise.
  */
 
+/** How long "Thank you!" stays up if the register doesn't move on to a new sale. */
+const THANKS_DISPLAY_MS = 8_000;
+/** How long the idle/logo screen stays lit before the display is allowed to sleep. */
+const IDLE_SCREEN_MS = 60_000;
+
 const router = useRouter();
 const now = ref(Date.now());
 let clock: ReturnType<typeof setInterval> | null = null;
 let wakeLock: { release(): Promise<void> } | null = null;
+
+// Branding for the idle screen — reuses the same logo/company name set up for receipts.
+const logoB64 = ref('');
+const companyName = ref('');
 
 // Bluetooth channel: accept a register directly (no internet needed). Frames
 // carry the same DisplayCartMessage as the WS relay and land in the same store.
@@ -25,6 +35,10 @@ let btCartListener: { remove: () => Promise<void> } | null = null;
 
 onMounted(async () => {
   clock = setInterval(() => (now.value = Date.now()), 5000);
+  void loadReceiptConfig().then((config) => {
+    logoB64.value = config.logoB64;
+    companyName.value = config.artist.companyName ?? '';
+  });
   if (hasNativePlugin('DisplayLink')) {
     try {
       btCartListener = await DisplayLink.addListener('displayCart', ({ json }) => {
@@ -46,6 +60,8 @@ onMounted(async () => {
 });
 onUnmounted(() => {
   if (clock) clearInterval(clock);
+  if (thanksTimer) clearTimeout(thanksTimer);
+  if (sleepTimer) clearTimeout(sleepTimer);
   void wakeLock?.release().catch(() => {});
   void btCartListener?.remove().catch(() => {});
   if (btServerActive.value) void DisplayLink.stopServer().catch(() => {});
@@ -63,20 +79,47 @@ const current = computed(() => {
 
 /** No update for a while — the register is gone or offline. */
 const stale = computed(() => !!current.value && now.value - current.value.receivedAt > 90_000);
-const showThanks = computed(
-  () => !!current.value?.paid && !current.value.lines.length,
-);
 
-/** There's something worth showing — an in-progress cart or a just-completed sale. */
-const hasActiveCart = computed(() => !!current.value && (current.value.lines.length > 0 || !!current.value.paid));
+// "Thank you!" clears itself after THANKS_DISPLAY_MS even if the register
+// never publishes a follow-up update (e.g. the cashier walks away).
+const showThanksRaw = computed(() => !!current.value?.paid && !current.value.lines.length);
+const thanksExpired = ref(false);
+let thanksTimer: ReturnType<typeof setTimeout> | null = null;
 
-// Screen stays awake only while there's something to show — off/dim the rest
-// of the time so the terminal isn't lit up sitting idle between sales, and
-// explicitly wakes (even from locked/off) the moment a cart appears.
+watch(showThanksRaw, (isThanks) => {
+  if (thanksTimer) {
+    clearTimeout(thanksTimer);
+    thanksTimer = null;
+  }
+  if (isThanks) {
+    thanksExpired.value = false;
+    thanksTimer = setTimeout(() => (thanksExpired.value = true), THANKS_DISPLAY_MS);
+  }
+});
+
+const showThanks = computed(() => showThanksRaw.value && !thanksExpired.value);
+const hasCartToShow = computed(() => !!current.value && current.value.lines.length > 0);
+
+type ScreenState = 'idle' | 'thanks' | 'cart';
+const screenState = computed<ScreenState>(() => {
+  if (showThanks.value) return 'thanks';
+  if (hasCartToShow.value) return 'cart';
+  return 'idle';
+});
+
+// Screen power: wake immediately (even from locked/off) whenever there's a
+// cart or a sale to show. Once idle, keep the logo screen lit for a while
+// before finally letting the display sleep, rather than blanking instantly.
+let sleepTimer: ReturnType<typeof setTimeout> | null = null;
+
 watch(
-  hasActiveCart,
-  async (active, wasActive) => {
-    if (active) {
+  screenState,
+  async (state) => {
+    if (state !== 'idle') {
+      if (sleepTimer) {
+        clearTimeout(sleepTimer);
+        sleepTimer = null;
+      }
       if (hasNativePlugin('Screen')) void Screen.wake();
       if (!wakeLock) {
         try {
@@ -85,9 +128,12 @@ watch(
           /* unsupported or denied — non-essential */
         }
       }
-    } else if (wasActive) {
-      void wakeLock?.release().catch(() => {});
-      wakeLock = null;
+    } else if (!sleepTimer) {
+      sleepTimer = setTimeout(() => {
+        sleepTimer = null;
+        void wakeLock?.release().catch(() => {});
+        wakeLock = null;
+      }, IDLE_SCREEN_MS);
     }
   },
   { immediate: true },
@@ -116,27 +162,29 @@ watch(
       <X class="h-4 w-4" />
     </button>
 
-    <!-- Waiting states -->
-    <div v-if="!syncState.enabled && !btServerActive" class="m-auto max-w-sm text-center text-slate-400">
-      <p class="text-xl font-semibold">Not connected</p>
-      <p class="mt-2 text-sm">
+    <!-- Idle: no cart worth showing right now — branded logo screen -->
+    <div v-if="screenState === 'idle'" class="m-auto flex flex-col items-center gap-4 text-center">
+      <img
+        v-if="logoB64"
+        :src="`data:image/png;base64,${logoB64}`"
+        class="max-h-40 max-w-[80%] rounded-lg bg-white p-3"
+      />
+      <p v-if="companyName" class="text-2xl font-semibold text-slate-200">{{ companyName }}</p>
+      <p v-if="!syncState.enabled && !btServerActive" class="max-w-sm text-sm text-slate-500">
         Log in to the sync server under Settings, or pair this device with the register via
         Bluetooth (the register selects it under Settings → Customer display).
       </p>
-    </div>
-    <div v-else-if="!current" class="m-auto text-center text-slate-500">
-      <p class="text-2xl font-semibold">Welcome!</p>
-      <p class="mt-2 animate-pulse text-sm">Waiting for a register…</p>
+      <p v-else class="animate-pulse text-sm text-slate-500">Waiting for the next sale…</p>
     </div>
 
     <!-- Thank-you state right after a sale -->
-    <div v-else-if="showThanks" class="m-auto text-center">
+    <div v-else-if="screenState === 'thanks' && current" class="m-auto text-center">
       <p class="text-4xl font-bold text-emerald-400">Thank you!</p>
       <p class="mt-4 text-6xl font-bold">{{ fmtPrice(current.paid!.total, current.currency) }}</p>
     </div>
 
     <!-- Live cart -->
-    <template v-else>
+    <template v-else-if="current">
       <p class="text-center text-lg text-slate-400">
         {{ current.eventName }}
         <span v-if="stale" class="ml-2 rounded bg-amber-950 px-2 py-0.5 text-xs text-amber-400">register offline?</span>
@@ -151,13 +199,13 @@ watch(
         <div v-for="d in current.discounts" :key="d.name" class="flex justify-between text-2xl text-emerald-400">
           <span>{{ d.name }}</span><span>− {{ fmtPrice(d.amount, current.currency) }}</span>
         </div>
-        <p v-if="!current.lines.length" class="pt-16 text-center text-3xl text-slate-500">Welcome!</p>
       </div>
       <div class="mx-auto w-full max-w-2xl border-t border-slate-700 pt-5">
-        <div class="flex items-baseline justify-between">
-          <span class="text-3xl text-slate-300">Total</span>
-          <span class="text-7xl font-bold text-emerald-400">{{ fmtPrice(current.total, current.currency) }}</span>
-        </div>
+        <p class="text-xl text-slate-400">Total</p>
+        <p class="mt-1 flex items-baseline justify-end gap-2">
+          <span class="text-2xl font-semibold text-emerald-400/70">{{ current.currency }}</span>
+          <span class="text-7xl font-bold tabular-nums text-emerald-400">{{ fmtAmount(current.total) }}</span>
+        </p>
       </div>
     </template>
   </div>
