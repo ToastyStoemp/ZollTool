@@ -1,15 +1,17 @@
 /**
  * Copy the built Android debug APKs (one per flavor) into server/apk/ and
- * write a version.json stamped with the current time.
+ * write version.json from whatever version is currently stamped into
+ * android/app/build.gradle (run `npm run bump:version` before building, so
+ * this always matches exactly what's embedded in the APKs being shipped).
  *
  * Committed to git the same way as server/web-dist.zip: the server serves
  * them straight from that directory, so shipping an app update to every
- * device is `npx cap sync android && gradlew assembleDebug`, `npm run
- * pack:apk`, commit, `git pull && docker compose up -d --build` on the
- * server — no scp, no per-device file transfer. Each device then downloads
- * its own flavor's APK from Settings → App updates.
+ * device is `npm run bump:version`, `npx cap sync android && gradlew
+ * assembleDebug`, `npm run pack:apk`, commit, `git pull && docker compose
+ * up -d --build` on the server — no scp, no per-device file transfer. Each
+ * device then downloads its own flavor's APK from Settings → App updates.
  */
-import { copyFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -35,9 +37,13 @@ if (!packed) {
   process.exit(1);
 }
 
-// Minutes-since-epoch: monotonically increasing, no state to track between runs.
-const versionCode = Math.floor(Date.now() / 60000);
-const versionName = new Date().toISOString().slice(0, 16).replace('T', ' ');
-writeFileSync(join(outDir, 'version.json'), JSON.stringify({ versionCode, versionName }, null, 2) + '\n');
+const gradleContent = readFileSync(join(root, 'android', 'app', 'build.gradle'), 'utf-8');
+const versionCode = Number(gradleContent.match(/versionCode (\d+)/)?.[1]);
+const versionName = gradleContent.match(/versionName "([^"]*)"/)?.[1];
+if (!versionCode || !versionName) {
+  console.error('Could not read versionCode/versionName from android/app/build.gradle — run `npm run bump:version` first.');
+  process.exit(1);
+}
 
-console.log(`Packed ${packed} APK(s) -> server/apk/ (versionCode ${versionCode}, ${versionName})`);
+writeFileSync(join(outDir, 'version.json'), JSON.stringify({ versionCode, versionName }, null, 2) + '\n');
+console.log(`Packed ${packed} APK(s) -> server/apk/ (versionCode ${versionCode}, "${versionName}")`);

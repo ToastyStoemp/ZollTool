@@ -76,15 +76,20 @@ per-device file transfer:
 
 ```sh
 # on the dev machine, from the repo root
+npm run bump:version          # stamps a fresh versionCode/versionName into android/app/build.gradle
 npx cap sync android
 cd android && .\gradlew.bat assembleDebug && cd ..   # builds all 3 flavors
-npm run pack:apk              # copies them + writes server/apk/version.json
-git add server/apk && git commit -m "app update" && git push
+npm run pack:apk              # copies them + writes server/apk/version.json from build.gradle
+git add server/apk android/app/build.gradle && git commit -m "app update" && git push
 
 # on the server
 git pull
 docker compose -f server/docker-compose.yml --env-file server/.env up -d --build
 ```
+
+`bump:version` matters — skip it and every build still reports itself as whatever
+versionCode/versionName was last committed, so the app never thinks it's caught up and
+"update available" never clears.
 
 Each device downloads only its own flavor (detected at runtime from which native payment
 plugin is present). Installing still needs the user's one-time "allow installs from this app"
