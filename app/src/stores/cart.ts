@@ -3,6 +3,7 @@ import { defineStore } from 'pinia';
 import type { PaymentLeg, PaymentMethod, Transaction } from '@zolltool/shared';
 import {
   computeCartTotals,
+  computeCustomDiscount,
   computeRuleDiscounts,
   distributeTotal,
   type CartLine,
@@ -139,10 +140,27 @@ export const useCartStore = defineStore('cart', () => {
     })),
   );
 
+  /**
+   * Custom discount amount computed directly against the charge-currency
+   * subtotal — not by converting the already-rounded base-currency amount,
+   * which double-rounds (round to base cents, multiply by rate, round again)
+   * and can drift a SEK entry like "150" to "149.99". customDiscount.value
+   * itself is stored in base currency (see applyDiscount in PosView), so it's
+   * converted to the charge currency here, then rounded exactly once.
+   */
+  const chargeCustomDiscountAmount = computed(() => {
+    const c = customDiscount.value;
+    if (!c) return 0;
+    const chargeValue = c.type === 'amount' ? c.value * chargeRate.value : c.value;
+    const afterRules = round2(
+      Math.max(0, chargeSubtotal.value - chargeRuleDiscounts.value.reduce((s, r) => s + r.amount, 0)),
+    );
+    return round2(computeCustomDiscount(afterRules, { ...c, value: chargeValue }));
+  });
+
   const chargeDiscountTotal = computed(() => {
     const ruleTotal = chargeRuleDiscounts.value.reduce((s, r) => s + r.amount, 0);
-    const customTotal = round2(totals.value.customDiscountAmount * chargeRate.value);
-    return round2(ruleTotal + customTotal);
+    return round2(ruleTotal + chargeCustomDiscountAmount.value);
   });
 
   /**
@@ -277,11 +295,11 @@ export const useCartStore = defineStore('cart', () => {
           name: r.rule.name,
           amount: local ? (localRuleAmounts.get(r.rule.id) ?? round2(r.amount * rate)) : r.amount,
         })),
-        ...(t.customDiscountAmount > 0.001
+        ...((local ? chargeCustomDiscountAmount.value : t.customDiscountAmount) > 0.001
           ? [
               {
                 name: customDiscount.value?.name || 'Custom discount',
-                amount: local ? round2(t.customDiscountAmount * rate) : t.customDiscountAmount,
+                amount: local ? chargeCustomDiscountAmount.value : t.customDiscountAmount,
                 custom: true,
               },
             ]
@@ -312,6 +330,7 @@ export const useCartStore = defineStore('cart', () => {
     chargeSubtotal,
     localDiscountRules,
     chargeRuleDiscounts,
+    chargeCustomDiscountAmount,
     chargeDiscountTotal,
     chargeGrandTotal,
     chargeRoundingAdjustment,

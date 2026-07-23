@@ -305,11 +305,11 @@ function publishCart(paid?: { total: number }): void {
         name: r.rule.name,
         amount: r.amount,
       })),
-      ...(cart.totals.customDiscountAmount > 0.001
+      ...(cart.chargeCustomDiscountAmount > 0.001
         ? [
             {
               name: cart.customDiscount?.name || 'Discount',
-              amount: round2(cart.totals.customDiscountAmount * cart.chargeRate),
+              amount: cart.chargeCustomDiscountAmount,
             },
           ]
         : []),
@@ -852,9 +852,9 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
               <span>{{ r.rule.name }}</span>
               <span>− {{ fmtPrice(r.amount, cart.chargeCurrency) }}</span>
             </div>
-            <div v-if="cart.totals.customDiscountAmount > 0.001" class="flex justify-between text-emerald-400">
+            <div v-if="cart.chargeCustomDiscountAmount > 0.001" class="flex justify-between text-emerald-400">
               <span>{{ cart.customDiscount?.name }}</span>
-              <span>− {{ fmtPrice(round2(cart.totals.customDiscountAmount * cart.chargeRate), cart.chargeCurrency) }}</span>
+              <span>− {{ fmtPrice(cart.chargeCustomDiscountAmount, cart.chargeCurrency) }}</span>
             </div>
             <div
               v-if="Math.abs(cart.chargeRoundingAdjustment) > 0.001"
