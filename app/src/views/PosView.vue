@@ -274,7 +274,15 @@ function addMiscItem(): void {
 // Two channels, both carrying the same DisplayCartMessage: the sync server's
 // WebSocket (any logged-in device in display mode) and — when a paired device
 // is selected in Settings — a direct Bluetooth link that needs no internet.
+// Both sends are fire-and-forget (no ack, no retry) — a single dropped frame
+// (WS mid-reconnect, a Bluetooth hiccup) used to leave the display stuck
+// showing stale content indefinitely, since nothing re-triggers a publish
+// until the cart changes again. The heartbeat below re-publishes the true
+// current state periodically regardless, so a missed update self-heals
+// within one interval instead of needing something else to jostle it.
 let displayTimer: ReturnType<typeof setTimeout> | null = null;
+let displayHeartbeat: ReturnType<typeof setInterval> | null = null;
+const DISPLAY_HEARTBEAT_MS = 15_000;
 let thankYouUntil = 0;
 const btDisplayReady = ref(false);
 
@@ -347,7 +355,14 @@ watch(
     if (n > 0 && prev === 0 && hasNativePlugin('Screen')) void Screen.wake();
   },
 );
-onMounted(() => publishCart());
+onMounted(() => {
+  publishCart();
+  displayHeartbeat = setInterval(() => {
+    // Don't clobber the post-sale thank-you display mid-window.
+    if (Date.now() < thankYouUntil) return;
+    publishCart();
+  }, DISPLAY_HEARTBEAT_MS);
+});
 
 // ── Discount form ──────────────────────────────────────────────────────────
 function openDiscountForm(): void {
@@ -443,6 +458,7 @@ onMounted(async () => {
 
 onUnmounted(() => {
   if (statusTimer) window.clearInterval(statusTimer);
+  if (displayHeartbeat) window.clearInterval(displayHeartbeat);
   void statusListener?.remove().catch(() => {});
 });
 
