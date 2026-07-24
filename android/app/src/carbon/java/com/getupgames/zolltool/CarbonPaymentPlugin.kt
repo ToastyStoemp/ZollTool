@@ -19,7 +19,9 @@ import com.mypos.smartsdk.Currency
 import com.mypos.smartsdk.MyPOSAPI
 import com.mypos.smartsdk.MyPOSPayment
 import com.mypos.smartsdk.MyPOSUtil
+import com.mypos.smartsdk.OnPOSInfoListener
 import com.mypos.smartsdk.TransactionProcessingResult
+import com.mypos.smartsdk.data.POSInfo
 import com.mypos.smartsdk.print.PrinterCommand
 import com.mypos.smartsdk.print.PrinterStatus
 import java.util.UUID
@@ -40,6 +42,12 @@ class CarbonPaymentPlugin : Plugin() {
         private const val PAYMENT_REQUEST_CODE = 4801
 
         private var pendingCall: PluginCall? = null
+
+        // registerPOSInfo appears to be a persistent listener registration rather
+        // than a one-shot request, so it's registered once (lazily) and the most
+        // recent value cached — repeat callers just read the cache.
+        private var posInfo: POSInfo? = null
+        private var posInfoRegistered = false
 
         /** Routed from MainActivity.onActivityResult via the flavor's PaymentSdks. */
         fun handleActivityResult(requestCode: Int, resultCode: Int, data: Intent?): Boolean {
@@ -74,6 +82,44 @@ class CarbonPaymentPlugin : Plugin() {
             }
             return true
         }
+    }
+
+    /**
+     * The terminal's own settlement currency (set on myPOS's side, not by this
+     * app) — MyPOSAPI.openPaymentActivity silently refuses a mismatched
+     * currency (the activity finishes instantly with RESULT_CANCELED, no card
+     * screen ever shown), which surfaced as a confusing generic "Payment
+     * cancelled". Checking this first lets startPayment() give a real reason.
+     */
+    @PluginMethod
+    fun getPosInfo(call: PluginCall) {
+        posInfo?.let { call.resolve(posInfoResult(it)); return }
+        if (!posInfoRegistered) {
+            posInfoRegistered = true
+            MyPOSAPI.registerPOSInfo(activity.applicationContext, object : OnPOSInfoListener {
+                override fun onReceive(info: POSInfo) {
+                    posInfo = info
+                }
+            })
+        }
+        val handler = Handler(Looper.getMainLooper())
+        var attempts = 0
+        lateinit var check: Runnable
+        check = Runnable {
+            val info = posInfo
+            when {
+                info != null -> call.resolve(posInfoResult(info))
+                attempts++ < 20 -> handler.postDelayed(check, 250) // ~5s total
+                else -> call.reject("Terminal did not report POS info")
+            }
+        }
+        handler.post(check)
+    }
+
+    private fun posInfoResult(info: POSInfo) = JSObject().apply {
+        put("tid", info.getTID())
+        put("currencyName", info.getCurrencyName())
+        put("currencyCode", info.getCurrencyCode())
     }
 
     @PluginMethod

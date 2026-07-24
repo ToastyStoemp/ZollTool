@@ -28,6 +28,8 @@ export interface CarbonPaymentPluginApi {
   startPayment(options: { amount: number; currency: string }): Promise<NativePaymentResult>;
   /** Print pre-formatted lines on the terminal's built-in printer (see lib/receipt.ts). */
   printReceipt(options: { lines: NativeReceiptLine[] }): Promise<{ printed: boolean; status: number; error?: string }>;
+  /** The terminal's own settlement currency — set on myPOS's side, not by this app. */
+  getPosInfo(): Promise<{ tid: string; currencyName: string; currencyCode: string }>;
 }
 
 export interface FileSharePluginApi {
