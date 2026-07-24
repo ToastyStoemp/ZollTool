@@ -19,20 +19,21 @@ docker compose -f server/docker-compose.yml --env-file server/.env up -d --build
 ```
 
 The server listens on port 8787 (HTTP + WebSocket). Put a TLS-terminating reverse proxy
-(Caddy, nginx, Traefik) in front of it for internet use. All state lives in `server/data/`
-(SQLite database + image files) — back that folder up.
+(Caddy, nginx, Traefik) in front of it for internet use — the container is always named
+`zolltool` (pinned in `docker-compose.yml`), so a `reverse_proxy zolltool:8787` directive
+keeps working across rebuilds without depending on Compose's project-name-derived default.
+All state lives in `server/data/` (SQLite database + image files) — back that folder up.
 
 ### Machine-specific compose settings
 
 Don't edit `docker-compose.yml` on the server — git pulls will conflict. Put host-specific
-additions (proxy networks, container_name, …) in `server/docker-compose.override.yml`
+additions (e.g. joining the reverse proxy's network) in `server/docker-compose.override.yml`
 (gitignored) and pass both files:
 
 ```yaml
 # server/docker-compose.override.yml — example: join the reverse proxy's network
 services:
   zolltool:
-    container_name: zolltool
     networks: [default, zollnet]
 networks:
   zollnet:
@@ -95,6 +96,38 @@ Each device downloads only its own flavor (detected at runtime from which native
 plugin is present). Installing still needs the user's one-time "allow installs from this app"
 consent — Android doesn't let an app silently replace itself. `server/apk/` is empty until the
 first `pack:apk` run; devices just see "no update published" until then.
+
+## Auto-deploy from GitHub
+
+Every push to `carbon-app` runs `.github/workflows/deploy-server.yml`, which SSHes into the
+server and runs `server/deploy.sh` — but that script is itself gated on `AUTO_DEPLOY=1` in the
+server's own `server/.env`, so **pushing to GitHub never touches a server that hasn't opted in
+locally**. Nothing about this is automatic until you add that line yourself:
+
+```sh
+# on the server, one-time
+echo "AUTO_DEPLOY=1" >> server/.env
+```
+
+To wire up the GitHub side, add these as repo secrets (Settings → Secrets and variables →
+Actions on GitHub — this repo, not the server):
+
+- `DEPLOY_HOST` — the server's hostname or IP
+- `DEPLOY_USER` — the SSH user to log in as
+- `DEPLOY_SSH_KEY` — a **dedicated** private key (don't reuse a personal one) whose matching
+  public key is in that user's `~/.ssh/authorized_keys` on the server
+- `DEPLOY_PATH` — absolute path to this repo's checkout on the server
+- `DEPLOY_PORT` — optional, only needed if SSH isn't on port 22
+
+`server/deploy.sh` does `git pull --ff-only` then the same `docker compose … up -d --build` from
+the sections above (including `docker-compose.override.yml` if present) — so it fails loudly
+instead of doing something surprising if the server's checkout has diverged (uncommitted local
+changes, a manually-checked-out different branch, etc.). You can also trigger it manually from
+the Actions tab (`workflow_dispatch`) without waiting for a push.
+
+**Before turning this on**, make sure the server actually accepts SSH connections from GitHub's
+runners — GitHub Actions uses a wide, changing range of IPs, so a firewall that only allows
+specific known IPs will need adjusting (or skip auto-deploy and keep pulling by hand).
 
 ## Diagnostic logs
 

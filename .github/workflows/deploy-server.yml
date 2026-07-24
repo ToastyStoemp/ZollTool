@@ -1,0 +1,31 @@
+name: Deploy sync server
+
+# Every push to carbon-app SSHes into the server and runs server/deploy.sh —
+# which is itself gated on AUTO_DEPLOY=1 in the server's own server/.env, so
+# this workflow is a no-op until the server owner opts in locally. See
+# server/README.md "Auto-deploy from GitHub" for the one-time setup.
+
+on:
+  push:
+    branches: [carbon-app]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH and run the (self-gated) deploy script
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script: |
+            set -e
+            cd "${{ secrets.DEPLOY_PATH }}"
+            bash server/deploy.sh

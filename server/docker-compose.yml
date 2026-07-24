@@ -1,6 +1,7 @@
 # Run from the repo root:  docker compose -f server/docker-compose.yml up -d --build
 services:
   zolltool:
+    container_name: zolltool
     build:
       context: ..
       dockerfile: server/Dockerfile
