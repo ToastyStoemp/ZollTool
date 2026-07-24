@@ -112,6 +112,48 @@ const stats = computed(() => {
   return { count: active.length, revenue, items, cash, card };
 });
 
+// ── Compare to another event (e.g. the same convention's previous edition) ──
+// Always in base currency, regardless of the Local/Base toggle above — two
+// different events may use different local currencies (or none), so base is
+// the only basis that's actually comparable.
+const compareEventId = ref('');
+const compareableEvents = computed(() => data.events.filter((e) => e.id !== scope.value));
+
+function eventStats(eventId: string): { revenue: number; count: number; items: number; days: number } {
+  const txs = data.allTransactions.filter((t) => t.eventId === eventId && !t.revertedBy);
+  const revenue = txs.reduce((s, t) => s + (t.baseTotal ?? t.total), 0);
+  const items = txs.reduce((s, t) => s + t.items.reduce((si, i) => si + i.qty, 0), 0);
+  const days = new Set(txs.map((t) => new Date(t.timestamp).toISOString().slice(0, 10))).size || 1;
+  return { revenue, count: txs.length, items, days };
+}
+
+function deltaPct(cur: number, other: number): number | null {
+  return other ? Math.round(((cur - other) / other) * 100) : null;
+}
+
+interface CompareMetric {
+  label: string;
+  cur: number;
+  other: number;
+  deltaPct: number | null;
+  money?: boolean;
+}
+
+const eventComparison = computed(() => {
+  if (!compareEventId.value || allMode.value) return null;
+  const cur = eventStats(scope.value);
+  const other = eventStats(compareEventId.value);
+  const curPerDay = cur.revenue / cur.days;
+  const otherPerDay = other.revenue / other.days;
+  const metrics: CompareMetric[] = [
+    { label: 'Revenue', cur: cur.revenue, other: other.revenue, deltaPct: deltaPct(cur.revenue, other.revenue), money: true },
+    { label: 'Revenue / day', cur: curPerDay, other: otherPerDay, deltaPct: deltaPct(curPerDay, otherPerDay), money: true },
+    { label: 'Sales', cur: cur.count, other: other.count, deltaPct: deltaPct(cur.count, other.count) },
+    { label: 'Items sold', cur: cur.items, other: other.items, deltaPct: deltaPct(cur.items, other.items) },
+  ];
+  return { otherName: eventName(compareEventId.value), curDays: cur.days, otherDays: other.days, metrics };
+});
+
 // ── Best sellers: by product or type, sorted by qty or revenue ──────────────
 type BestMode = 'products' | 'types' | 'revenue' | 'revenueByType';
 const bestMode = ref<BestMode>('products');
@@ -453,6 +495,44 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
       <div class="rounded-xl bg-slate-900 p-3 ring-1 ring-slate-800">
         <p class="text-xs text-slate-400">Card</p>
         <p class="text-lg font-bold">{{ fmtPrice(stats.card, currency) }}</p>
+      </div>
+    </div>
+
+    <!-- Compare to another event -->
+    <div v-if="!allMode" class="mb-4 rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+      <div class="flex items-center gap-2">
+        <h2 class="text-sm font-semibold text-slate-300">Compare to</h2>
+        <select v-model="compareEventId" class="rounded-lg bg-slate-800 px-3 py-1.5 text-sm">
+          <option value="">Pick an event…</option>
+          <option v-for="e in compareableEvents" :key="e.id" :value="e.id">{{ e.name }}</option>
+        </select>
+      </div>
+      <div v-if="eventComparison" class="mt-3 space-y-1.5">
+        <div class="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 gap-y-1 text-xs text-slate-500">
+          <span></span>
+          <span class="text-right">This ({{ eventComparison.curDays }}d)</span>
+          <span class="text-right">{{ eventComparison.otherName }} ({{ eventComparison.otherDays }}d)</span>
+          <span class="text-right">Δ</span>
+        </div>
+        <div
+          v-for="m in eventComparison.metrics"
+          :key="m.label"
+          class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-4 gap-y-1 text-sm"
+        >
+          <span class="text-slate-400">{{ m.label }}</span>
+          <span class="text-right font-medium tabular-nums">
+            {{ m.money ? fmtPrice(m.cur, data.currency) : m.cur }}
+          </span>
+          <span class="text-right tabular-nums text-slate-400">
+            {{ m.money ? fmtPrice(m.other, data.currency) : m.other }}
+          </span>
+          <span
+            class="text-right tabular-nums"
+            :class="m.deltaPct == null ? 'text-slate-500' : m.deltaPct > 0 ? 'text-emerald-400' : m.deltaPct < 0 ? 'text-red-400' : 'text-slate-500'"
+          >
+            {{ m.deltaPct == null ? '—' : (m.deltaPct > 0 ? '+' : '') + m.deltaPct + '%' }}
+          </span>
+        </div>
       </div>
     </div>
 
