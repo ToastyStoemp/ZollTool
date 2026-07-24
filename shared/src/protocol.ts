@@ -136,6 +136,37 @@ export interface DisplayCartMessage {
   cart: DisplayCart;
 }
 
+// ── Remote payment trigger (register → satellite Carbon terminal) ──────────
+// Unlike DisplayCartMessage (broadcast to the whole account room), these are
+// point-to-point: `to` names the exact target device, and the server relays
+// only to that device rather than everyone. Never persisted.
+
+export interface PaymentTriggerMessage {
+  type: 'payment.trigger';
+  /** Stamped by the server from the sender's own deviceId. */
+  from?: string;
+  /** Target Carbon's deviceId. */
+  to: string;
+  requestId: string;
+  amount: number;
+  currency: string;
+  reference: string;
+}
+
+export interface PaymentResultMessage {
+  type: 'payment.result';
+  /** Stamped by the server from the sender's own deviceId. */
+  from?: string;
+  /** Target register's deviceId. */
+  to: string;
+  requestId: string;
+  approved: boolean;
+  txRef?: string;
+  cardBrand?: string;
+  authCode?: string;
+  error?: string;
+}
+
 // ── Admin (owner-only) ───────────────────────────────────────────────────────
 
 export interface AdminOverview {

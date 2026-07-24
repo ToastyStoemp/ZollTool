@@ -1,6 +1,13 @@
 import { reactive } from 'vue';
 import { liveQuery, type Subscription } from 'dexie';
-import type { DisplayCart, DisplayCartMessage, NudgeMessage, Op } from '@zolltool/shared';
+import type {
+  DisplayCart,
+  DisplayCartMessage,
+  NudgeMessage,
+  Op,
+  PaymentResultMessage,
+  PaymentTriggerMessage,
+} from '@zolltool/shared';
 import { db } from '@/db/schema';
 import { getSetting, setSetting } from '@/db/repo';
 import { SYNC_KEYS, fetchImage, getServerUrl, isLoggedIn, pullOps, pushOps, uploadImage } from './api';
@@ -33,6 +40,26 @@ export function sendDisplayCart(cart: DisplayCart): void {
     const msg: DisplayCartMessage = { type: 'display.cart', cart };
     ws.send(JSON.stringify(msg));
   }
+}
+
+// ── Remote payment trigger (point-to-point, unlike the broadcast cart relay) ─
+
+type PaymentMessage = PaymentTriggerMessage | PaymentResultMessage;
+const paymentListeners = new Set<(msg: PaymentMessage) => void>();
+
+/** Subscribe to incoming payment.trigger/payment.result frames over the sync WS. Returns an unsubscribe fn. */
+export function onPaymentMessage(cb: (msg: PaymentMessage) => void): () => void {
+  paymentListeners.add(cb);
+  return () => paymentListeners.delete(cb);
+}
+
+function emitPaymentMessage(msg: PaymentMessage): void {
+  for (const cb of paymentListeners) cb(msg);
+}
+
+/** Send a payment trigger/result over WS if connected — callers also send over Bluetooth (DisplayLink) as a fallback. */
+export function sendPaymentMessage(msg: PaymentMessage): void {
+  if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
 }
 
 const PUSH_BATCH = 200;
@@ -202,10 +229,12 @@ function connectWs(): void {
     };
     ws.onmessage = (ev) => {
       try {
-        const msg = JSON.parse(String(ev.data)) as NudgeMessage | DisplayCartMessage;
+        const msg = JSON.parse(String(ev.data)) as NudgeMessage | DisplayCartMessage | PaymentMessage;
         if (msg.type === 'nudge') void syncNow();
         else if (msg.type === 'display.cart' && msg.from && msg.cart) {
           displayCarts[msg.from] = { ...msg.cart, deviceId: msg.from, receivedAt: Date.now() };
+        } else if (msg.type === 'payment.trigger' || msg.type === 'payment.result') {
+          emitPaymentMessage(msg);
         }
       } catch {
         /* ignore malformed frames */

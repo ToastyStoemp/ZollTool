@@ -4,6 +4,7 @@ import { useSettingsStore } from '@/stores/settings';
 import { getSetting, setSetting, setSyncedSetting } from '@/db/repo';
 import { allProviders } from '@/payments/registry';
 import { SUMUP_KEY_SETTING } from '@/payments/sumup';
+import { REMOTE_CARBON_DEVICE_KEY } from '@/payments/mypos-carbon-remote';
 import type { PaymentProviderId, ProviderStatus } from '@/payments/provider';
 import { showToast } from '@/lib/toast';
 import { exportBackupJson, exportBackupZipTo, importBackup, importBackupZip } from '@/lib/export/backup-json';
@@ -73,16 +74,26 @@ async function refreshStatuses(): Promise<void> {
 }
 
 const sumupKey = ref('');
+const remoteCarbonDeviceId = ref('');
 
 onMounted(async () => {
   refreshStatuses();
   pollTimer = setInterval(refreshStatuses, 5000);
   sumupKey.value = (await getSetting<string>(SUMUP_KEY_SETTING)) ?? '';
+  remoteCarbonDeviceId.value = (await getSetting<string>(REMOTE_CARBON_DEVICE_KEY)) ?? '';
 });
 
 async function saveSumupKey(): Promise<void> {
   await setSyncedSetting(SUMUP_KEY_SETTING, sumupKey.value.trim());
   showToast('SumUp affiliate key saved', 'success');
+}
+
+// Local per-device, not synced — different registers may pair with different
+// physical Carbon terminals, same reasoning as the Bluetooth display address.
+async function saveRemoteCarbonDeviceId(): Promise<void> {
+  await setSetting(REMOTE_CARBON_DEVICE_KEY, remoteCarbonDeviceId.value.trim());
+  showToast('Remote Carbon device ID saved', 'success');
+  refreshStatuses();
 }
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer);
@@ -704,6 +715,16 @@ async function onImportFile(e: Event): Promise<void> {
           placeholder="From the SumUp developer dashboard"
           class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2 font-mono text-xs"
           @change="saveSumupKey"
+        />
+      </label>
+      <label v-if="settings.paymentProviderId === 'mypos-carbon-remote'" class="mt-3 block text-sm">
+        <span class="text-slate-400">Remote Carbon device ID</span>
+        <input
+          v-model="remoteCarbonDeviceId"
+          type="text"
+          placeholder="Find this in Settings on the Carbon itself"
+          class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2 font-mono text-xs"
+          @change="saveRemoteCarbonDeviceId"
         />
       </label>
     </section>

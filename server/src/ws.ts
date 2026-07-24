@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import websocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
-import type { DisplayCartMessage, NudgeMessage } from '@zolltool/shared';
+import type { DisplayCartMessage, NudgeMessage, PaymentResultMessage, PaymentTriggerMessage } from '@zolltool/shared';
 import type { JwtClaims } from './auth';
+
+type PaymentMessage = PaymentTriggerMessage | PaymentResultMessage;
 
 /**
  * WebSocket is a doorbell only: after a push, every *other* connected device
@@ -45,6 +47,21 @@ export class Rooms {
       if (socket.readyState === socket.OPEN) socket.send(json);
     }
   }
+
+  /**
+   * Point-to-point relay for the remote payment trigger/result handshake —
+   * only the named target device gets the message, unlike the broadcast
+   * relayDisplayCart. Ephemeral — nothing is stored.
+   */
+  relayToDevice(accountId: string, fromDeviceId: string, msg: PaymentMessage): void {
+    const room = this.byAccount.get(accountId);
+    if (!room) return;
+    const stamped: PaymentMessage = { ...msg, from: fromDeviceId };
+    const json = JSON.stringify(stamped);
+    for (const { socket, deviceId } of room) {
+      if (deviceId === msg.to && socket.readyState === socket.OPEN) socket.send(json);
+    }
+  }
 }
 
 export async function registerWs(app: FastifyInstance, rooms: Rooms): Promise<void> {
@@ -61,12 +78,19 @@ export async function registerWs(app: FastifyInstance, rooms: Rooms): Promise<vo
     }
     rooms.add(claims.accountId, deviceId ?? 'unknown', socket);
     socket.on('message', (raw) => {
-      // Registers push ephemeral customer-display cart snapshots; everything
-      // else is ignored (sync data always travels over HTTP).
+      // Registers push ephemeral customer-display cart snapshots and the
+      // remote-payment trigger/result handshake; everything else is ignored
+      // (sync data always travels over HTTP).
       try {
-        const msg = JSON.parse(String(raw)) as DisplayCartMessage;
+        const msg = JSON.parse(String(raw)) as DisplayCartMessage | PaymentMessage;
         if (msg?.type === 'display.cart' && msg.cart && typeof msg.cart === 'object') {
           rooms.relayDisplayCart(claims.accountId, deviceId ?? 'unknown', msg.cart);
+        } else if (
+          (msg?.type === 'payment.trigger' || msg?.type === 'payment.result') &&
+          typeof msg.to === 'string' &&
+          typeof msg.requestId === 'string'
+        ) {
+          rooms.relayToDevice(claims.accountId, deviceId ?? 'unknown', msg);
         }
       } catch {
         /* not JSON — ignore */

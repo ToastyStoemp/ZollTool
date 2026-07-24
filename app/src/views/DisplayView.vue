@@ -2,11 +2,14 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { X } from 'lucide-vue-next';
-import type { DisplayCartMessage } from '@zolltool/shared';
-import { displayCarts, syncState } from '@/sync/engine';
+import type { DisplayCartMessage, PaymentResultMessage, PaymentTriggerMessage } from '@zolltool/shared';
+import { displayCarts, onPaymentMessage, sendPaymentMessage, syncState } from '@/sync/engine';
 import { DisplayLink, Screen, hasNativePlugin } from '@/native/plugins';
 import { fmtAmount, fmtPrice } from '@/lib/money';
 import { loadReceiptConfig } from '@/lib/receipt';
+import { useSettingsStore } from '@/stores/settings';
+import { myposCarbonProvider } from '@/payments/mypos-carbon';
+import { logDiagnostic } from '@/lib/diagnostics';
 
 /**
  * Customer display mode: this device mirrors another register's cart live,
@@ -20,6 +23,7 @@ const THANKS_DISPLAY_MS = 8_000;
 const IDLE_SCREEN_MS = 60_000;
 
 const router = useRouter();
+const settings = useSettingsStore();
 const now = ref(Date.now());
 let clock: ReturnType<typeof setInterval> | null = null;
 let wakeLock: { release(): Promise<void> } | null = null;
@@ -32,6 +36,44 @@ const companyName = ref('');
 // carry the same DisplayCartMessage as the WS relay and land in the same store.
 const btServerActive = ref(false);
 let btCartListener: { remove: () => Promise<void> } | null = null;
+let unsubscribePayment: (() => void) | null = null;
+
+/**
+ * Remote payment trigger: a register asked THIS device (a satellite Carbon)
+ * to charge a card, over whichever channel it arrived on (WS or Bluetooth —
+ * both funnel here). Runs the exact same on-device flow/currency-check as a
+ * local sale (myposCarbonProvider), then relays the result back over both
+ * channels so it gets there regardless of which one the register is watching.
+ */
+async function handleIncomingPayment(msg: PaymentTriggerMessage): Promise<void> {
+  if (msg.to !== settings.deviceId || !msg.from) return;
+  logDiagnostic(`payment.trigger received amount=${msg.amount} currency=${msg.currency} from=${msg.from}`);
+
+  const available = await myposCarbonProvider.isAvailable();
+  const result: Omit<PaymentResultMessage, 'from'> = available
+    ? await myposCarbonProvider.startPayment({ amount: msg.amount, currency: msg.currency, reference: msg.reference }).then((r) => ({
+        type: 'payment.result' as const,
+        to: msg.from!,
+        requestId: msg.requestId,
+        approved: r.approved,
+        txRef: r.txRef,
+        cardBrand: r.cardBrand,
+        authCode: r.authCode,
+        error: r.error,
+      }))
+    : {
+        type: 'payment.result' as const,
+        to: msg.from,
+        requestId: msg.requestId,
+        approved: false,
+        error: 'This device cannot process card payments',
+      };
+
+  sendPaymentMessage({ ...result, from: settings.deviceId });
+  if (btServerActive.value) {
+    void DisplayLink.send({ json: JSON.stringify({ ...result, from: settings.deviceId }) }).catch(() => {});
+  }
+}
 
 onMounted(async () => {
   clock = setInterval(() => (now.value = Date.now()), 5000);
@@ -39,13 +81,18 @@ onMounted(async () => {
     logoB64.value = config.logoScreenB64;
     companyName.value = config.artist.companyName ?? '';
   });
+  unsubscribePayment = onPaymentMessage((msg) => {
+    if (msg.type === 'payment.trigger') void handleIncomingPayment(msg);
+  });
   if (hasNativePlugin('DisplayLink')) {
     try {
       btCartListener = await DisplayLink.addListener('displayCart', ({ json }) => {
         try {
-          const msg = JSON.parse(json) as DisplayCartMessage;
+          const msg = JSON.parse(json) as DisplayCartMessage | PaymentTriggerMessage;
           if (msg.type === 'display.cart' && msg.from && msg.cart) {
             displayCarts[msg.from] = { ...msg.cart, deviceId: msg.from, receivedAt: Date.now() };
+          } else if (msg.type === 'payment.trigger') {
+            void handleIncomingPayment(msg);
           }
         } catch {
           /* malformed frame */
@@ -63,6 +110,7 @@ onUnmounted(() => {
   if (thanksTimer) clearTimeout(thanksTimer);
   if (sleepTimer) clearTimeout(sleepTimer);
   void wakeLock?.release().catch(() => {});
+  unsubscribePayment?.();
   void btCartListener?.remove().catch(() => {});
   if (btServerActive.value) void DisplayLink.stopServer().catch(() => {});
 });
