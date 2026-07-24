@@ -62,16 +62,17 @@ onMounted(() => {
 });
 
 /**
- * Auto-update: compat flavor only, for now — those tablets are the ones
- * least likely to have anyone regularly opening Settings to check by hand.
- * Carbon/full stay manual (Settings → App updates). Downloads in the
- * background and stops there — installing still needs the user's explicit
- * tap (Settings → App updates), since the system's "install unknown app"
- * consent dialog and the intent taking over the screen would be disruptive
- * mid-sale on a device actively used for a live transaction.
+ * Auto-update: compat and carbon, not full — those are the devices least
+ * likely to have anyone regularly opening Settings to check by hand (a
+ * tablet nobody babysits, or a payment terminal with no easy USB/ADB path
+ * for manual sideloading). Downloads in the background and stops there —
+ * installing still needs the user's explicit tap (Settings → App updates),
+ * since the system's "install unknown app" consent dialog and the intent
+ * taking over the screen would be disruptive mid-sale on a device actively
+ * used for a live transaction.
  */
 async function autoUpdateCheck(): Promise<void> {
-  if (!isNative || currentFlavor() !== 'compat') return;
+  if (!isNative || !['compat', 'carbon'].includes(currentFlavor() ?? '')) return;
   try {
     const check = await checkForUpdate(settings.serverUrl);
     if (check?.available) {

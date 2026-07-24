@@ -32,6 +32,7 @@ import {
   updateDownload,
   type UpdateCheck,
 } from '@/lib/updates';
+import { sendDiagnosticLog } from '@/lib/diagnostics';
 import { Camera, QrCode } from 'lucide-vue-next';
 import ModalShell from '@/components/ModalShell.vue';
 
@@ -215,6 +216,23 @@ async function doDownloadOrInstall(): Promise<void> {
   await downloadUpdate(updateCheck.value);
   if (updateDownload.error) {
     showToast(`Download failed: ${updateDownload.error}`, 'error');
+  }
+}
+
+// ── Diagnostics ──────────────────────────────────────────────────────────────
+const diagnosticsSending = ref(false);
+const diagnosticsSent = ref(false);
+
+async function doSendDiagnostics(): Promise<void> {
+  diagnosticsSending.value = true;
+  diagnosticsSent.value = false;
+  try {
+    await sendDiagnosticLog('manual');
+    diagnosticsSent.value = true;
+  } catch (err) {
+    showToast(`Send failed: ${err instanceof Error ? err.message : err}`, 'error');
+  } finally {
+    diagnosticsSending.value = false;
   }
 }
 
@@ -1092,6 +1110,23 @@ async function onImportFile(e: Event): Promise<void> {
         </template>
         <p v-else class="mt-1 text-slate-400">Up to date.</p>
       </div>
+    </section>
+
+    <!-- Diagnostics -->
+    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800 xl:mb-6 xl:break-inside-avoid">
+      <h2 class="mb-2 text-sm font-semibold text-slate-300">Diagnostics</h2>
+      <p class="mb-3 text-xs text-slate-500">
+        Sends recent console warnings/errors from this device to the sync server, where the server
+        owner can download them from Admin. Needs a server URL set under Server sync above.
+      </p>
+      <button
+        class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
+        :disabled="diagnosticsSending"
+        @click="doSendDiagnostics"
+      >
+        {{ diagnosticsSending ? 'Sending…' : 'Send diagnostic log' }}
+      </button>
+      <p v-if="diagnosticsSent" class="mt-2 text-xs text-emerald-400">Sent.</p>
     </section>
 
     <!-- Security -->

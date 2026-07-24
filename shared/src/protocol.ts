@@ -76,6 +76,19 @@ export const RefreshRequestSchema = z.object({
 });
 export type RefreshRequest = z.infer<typeof RefreshRequestSchema>;
 
+// ── Diagnostic logs (client → server → /admin download) ─────────────────────
+
+export const LogUploadSchema = z.object({
+  deviceId: z.string().min(1),
+  deviceName: z.string().optional(),
+  flavor: z.string().optional(),
+  appVersion: z.string().optional(),
+  /** Why this was sent, e.g. "payment-failed" or "manual" — free text. */
+  reason: z.string().optional(),
+  log: z.string().min(1).max(2_000_000),
+});
+export type LogUpload = z.infer<typeof LogUploadSchema>;
+
 export type UserRole = 'owner' | 'admin' | 'member';
 
 export interface AuthUser {
@@ -160,4 +173,17 @@ export interface AdminMetricRow {
   syncPushes: number;
   opsReceived: number;
   txCount: number;
+}
+
+export interface AdminLogEntry {
+  id: string;
+  accountId: string;
+  accountName: string;
+  deviceId: string;
+  deviceName: string | null;
+  flavor: string | null;
+  appVersion: string | null;
+  reason: string | null;
+  size: number;
+  createdAt: number;
 }

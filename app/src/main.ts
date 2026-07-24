@@ -3,7 +3,10 @@ import { createPinia } from 'pinia';
 import App from './App.vue';
 import { router } from './router';
 import { useSettingsStore } from './stores/settings';
+import { installDiagnostics } from './lib/diagnostics';
 import './assets/main.css';
+
+installDiagnostics();
 
 const app = createApp(App).use(createPinia()).use(router);
 

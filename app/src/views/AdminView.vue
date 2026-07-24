@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { Copy } from 'lucide-vue-next';
-import type { AdminAccount, AdminAccountDetail, AdminMetricRow, AdminOverview } from '@zolltool/shared';
+import type { AdminAccount, AdminAccountDetail, AdminLogEntry, AdminMetricRow, AdminOverview } from '@zolltool/shared';
 import { useSettingsStore } from '@/stores/settings';
-import { apiJson } from '@/sync/api';
+import { apiFetch, apiJson } from '@/sync/api';
 import { showToast } from '@/lib/toast';
 
 const settings = useSettingsStore();
@@ -14,6 +14,7 @@ const loadError = ref('');
 const overview = ref<AdminOverview | null>(null);
 const accounts = ref<AdminAccount[]>([]);
 const metrics = ref<AdminMetricRow[]>([]);
+const logs = ref<AdminLogEntry[]>([]);
 const expandedId = ref<string | null>(null);
 const detail = ref<AdminAccountDetail | null>(null);
 const inviteCode = ref('');
@@ -23,16 +24,37 @@ async function load(): Promise<void> {
   loading.value = true;
   loadError.value = '';
   try {
-    [overview.value, accounts.value, metrics.value] = await Promise.all([
+    [overview.value, accounts.value, metrics.value, logs.value] = await Promise.all([
       apiJson<AdminOverview>('/api/admin/overview'),
       apiJson<AdminAccount[]>('/api/admin/accounts'),
       apiJson<AdminMetricRow[]>('/api/admin/metrics?days=30'),
+      apiJson<AdminLogEntry[]>('/api/admin/logs'),
     ]);
   } catch (err) {
     loadError.value = err instanceof Error ? err.message : String(err);
   } finally {
     loading.value = false;
   }
+}
+
+async function downloadLog(entry: AdminLogEntry): Promise<void> {
+  try {
+    const res = await apiFetch(`/api/admin/logs/${entry.id}`);
+    if (!res.ok) throw new Error(`Download failed (${res.status})`);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${entry.deviceName || entry.deviceId}-${entry.id.slice(0, 8)}.log`;
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : String(err), 'error');
+  }
+}
+
+function fmtBytes(n: number): string {
+  return n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`;
 }
 
 onMounted(() => {
@@ -221,6 +243,33 @@ const tiles = computed(() =>
                 </ul>
               </template>
             </div>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Diagnostic logs -->
+      <div class="mt-4 rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+        <h2 class="mb-2 text-sm font-semibold text-slate-300">Diagnostic logs</h2>
+        <p v-if="!logs.length" class="text-xs text-slate-500">No logs uploaded yet.</p>
+        <ul class="space-y-2">
+          <li
+            v-for="l in logs"
+            :key="l.id"
+            class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-800/50 p-3 text-xs ring-1 ring-slate-700"
+          >
+            <span class="min-w-0 flex-1 truncate font-medium">{{ l.deviceName || l.deviceId }}</span>
+            <span class="text-slate-400">{{ l.accountName }}</span>
+            <span v-if="l.flavor" class="rounded bg-slate-700 px-1.5 py-0.5 text-[10px] uppercase">{{ l.flavor }}</span>
+            <span v-if="l.appVersion" class="text-slate-500">{{ l.appVersion }}</span>
+            <span v-if="l.reason" class="text-amber-400">{{ l.reason }}</span>
+            <span class="text-slate-500">{{ fmtBytes(l.size) }}</span>
+            <span class="text-slate-500">{{ fmtWhen(l.createdAt) }}</span>
+            <button
+              class="rounded bg-slate-700 px-2 py-1 font-medium hover:bg-slate-600"
+              @click="downloadLog(l)"
+            >
+              Download
+            </button>
           </li>
         </ul>
       </div>

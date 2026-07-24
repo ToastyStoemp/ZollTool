@@ -1,5 +1,6 @@
 import type { PaymentProvider, PaymentRequest, PaymentResult, ProviderStatus } from './provider';
 import { CarbonPayment, hasNativePlugin } from '@/native/plugins';
+import { logDiagnostic } from '@/lib/diagnostics';
 
 /** MyPOS Carbon/Smart on-device payment via intent (CarbonPaymentPlugin.kt). */
 export const myposCarbonProvider: PaymentProvider = {
@@ -21,7 +22,12 @@ export const myposCarbonProvider: PaymentProvider = {
   },
 
   async startPayment(req: PaymentRequest): Promise<PaymentResult> {
+    logDiagnostic(`CarbonPayment.startPayment amount=${req.amount} currency=${req.currency}`);
     const result = await CarbonPayment.startPayment({ amount: req.amount, currency: req.currency });
+    logDiagnostic(
+      `CarbonPayment.startPayment result approved=${!!result.approved}` +
+        (result.error ? ` error=${result.error}` : ''),
+    );
     return {
       approved: !!result.approved,
       provider: 'mypos-carbon',

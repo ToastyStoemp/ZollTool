@@ -11,6 +11,7 @@ import { registerSyncRoutes } from './routes/sync';
 import { registerImageRoutes } from './routes/images';
 import { registerAdminRoutes } from './routes/admin';
 import { registerUpdateRoutes } from './routes/updates';
+import { registerLogRoutes } from './routes/logs';
 import { Rooms, registerWs } from './ws';
 
 declare module 'fastify' {
@@ -51,6 +52,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   registerSyncRoutes(app, db, rooms);
   registerImageRoutes(app, db, opts.dataDir);
   registerAdminRoutes(app, db);
+  registerLogRoutes(app, db, opts.dataDir);
   if (opts.apkDir) registerUpdateRoutes(app, opts.apkDir);
 
   app.get('/api/health', async () => ({ ok: true, ts: Date.now() }));

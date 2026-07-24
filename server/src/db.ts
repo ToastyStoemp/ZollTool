@@ -79,11 +79,26 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (accountId, day)
   );
   `,
+  // v2 — client-uploaded diagnostic logs (see routes/logs.ts)
+  `
+  CREATE TABLE logs (
+    id         TEXT PRIMARY KEY,
+    accountId  TEXT NOT NULL REFERENCES accounts(id),
+    deviceId   TEXT NOT NULL,
+    deviceName TEXT,
+    flavor     TEXT,
+    appVersion TEXT,
+    reason     TEXT,
+    size       INTEGER NOT NULL,
+    createdAt  INTEGER NOT NULL
+  );
+  `,
 ];
 
 export function openDb(dataDir: string): Database.Database {
   mkdirSync(dataDir, { recursive: true });
   mkdirSync(join(dataDir, 'images'), { recursive: true });
+  mkdirSync(join(dataDir, 'logs'), { recursive: true });
   const db = new Database(join(dataDir, 'zolltool.db'));
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');

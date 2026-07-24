@@ -15,6 +15,7 @@ import { DisplayLink } from '@/native/plugins';
 import { DISPLAY_KEYS } from '@/lib/display';
 import type { DisplayCart, DisplayCartMessage } from '@zolltool/shared';
 import { MyPos, Screen, hasNativePlugin } from '@/native/plugins';
+import { sendDiagnosticLog } from '@/lib/diagnostics';
 import { buildReceiptLines, loadReceiptConfig, printReceipt, printingAvailable } from '@/lib/receipt';
 import { ArrowLeft, ChartLine, Check, CreditCard, Printer, ShoppingCart, Undo2, X } from 'lucide-vue-next';
 import ModalShell from '@/components/ModalShell.vue';
@@ -483,6 +484,7 @@ function startPayment(method: PaymentMethod): void {
   payment.splitCash = '';
   payment.splitCard = '';
   payment.terminalError = '';
+  diagnosticsSent.value = false;
 
   if (method === 'card' && activeProvider.value.id !== 'manual') {
     payment.phase = 'terminal';
@@ -530,6 +532,21 @@ function retryTerminal(): void {
   payment.terminalError = '';
   payment.phase = 'terminal';
   void runTerminalPayment();
+}
+
+const sendingDiagnostics = ref(false);
+const diagnosticsSent = ref(false);
+
+async function sendPaymentDiagnostics(): Promise<void> {
+  sendingDiagnostics.value = true;
+  try {
+    await sendDiagnosticLog('payment-failed');
+    diagnosticsSent.value = true;
+  } catch (err) {
+    showToast(`Send failed: ${err instanceof Error ? err.message : err}`, 'error');
+  } finally {
+    sendingDiagnostics.value = false;
+  }
 }
 
 async function cancelPayment(): Promise<void> {
@@ -1133,6 +1150,13 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
           <p class="text-xs text-slate-500">
             Retry the card, or complete the sale manually if it was paid another way.
           </p>
+          <button
+            class="text-xs font-medium text-emerald-400 underline decoration-dotted disabled:opacity-40"
+            :disabled="sendingDiagnostics"
+            @click="sendPaymentDiagnostics"
+          >
+            {{ sendingDiagnostics ? 'Sending…' : diagnosticsSent ? 'Log sent' : 'Send log to support' }}
+          </button>
         </template>
 
         <!-- Cash -->

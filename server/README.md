@@ -96,6 +96,13 @@ plugin is present). Installing still needs the user's one-time "allow installs f
 consent — Android doesn't let an app silently replace itself. `server/apk/` is empty until the
 first `pack:apk` run; devices just see "no update published" until then.
 
+## Diagnostic logs
+
+Devices can upload recent console warnings/errors (Settings → Diagnostics, or straight from a
+failed card payment) via `POST /api/logs` — stored under `server/data/logs/`. Only the server
+owner can list or download them, from `/admin` in the app. Useful for devices where a real ADB
+session isn't practical, e.g. a locked-down payment terminal.
+
 ## Accounts
 
 - The **owner** account is seeded from `OWNER_EMAIL` / `OWNER_PASSWORD` on first boot.
