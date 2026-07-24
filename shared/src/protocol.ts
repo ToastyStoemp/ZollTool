@@ -36,9 +36,20 @@ export type ServerOp = z.infer<typeof ServerOpSchema>;
 export const PushRequestSchema = z.object({
   deviceId: z.string().min(1),
   deviceName: z.string().optional(),
+  /** 'carbon' | 'compat' | 'full' | 'web' — lets other devices on the account
+   *  find e.g. a Carbon terminal to target for a remote payment trigger. */
+  flavor: z.string().optional(),
   ops: z.array(OpSchema).max(500),
 });
 export type PushRequest = z.infer<typeof PushRequestSchema>;
+
+/** A device the account has seen, for pickers like "which Carbon to target". */
+export interface DeviceSummary {
+  id: string;
+  name: string | null;
+  flavor: string | null;
+  lastSeenAt: number;
+}
 
 export interface PushResponse {
   accepted: number;

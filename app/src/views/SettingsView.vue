@@ -10,6 +10,8 @@ import { showToast } from '@/lib/toast';
 import { exportBackupJson, exportBackupZipTo, importBackup, importBackupZip } from '@/lib/export/backup-json';
 import { saveTextFile, createFileWriter } from '@/lib/download';
 import { syncState, syncNow } from '@/sync/engine';
+import { listDevices } from '@/sync/api';
+import type { DeviceSummary } from '@zolltool/shared';
 import { connectQrDataUrl, decodeConnectQr } from '@/lib/qr';
 import { hashPin, pinState, setPin } from '@/lib/pin';
 import { MonitorSmartphone } from 'lucide-vue-next';
@@ -75,17 +77,34 @@ async function refreshStatuses(): Promise<void> {
 
 const sumupKey = ref('');
 const remoteCarbonDeviceId = ref('');
+const knownCarbons = ref<DeviceSummary[]>([]);
+const carbonsLoading = ref(false);
+const carbonsError = ref('');
 
 onMounted(async () => {
   refreshStatuses();
   pollTimer = setInterval(refreshStatuses, 5000);
   sumupKey.value = (await getSetting<string>(SUMUP_KEY_SETTING)) ?? '';
   remoteCarbonDeviceId.value = (await getSetting<string>(REMOTE_CARBON_DEVICE_KEY)) ?? '';
+  void refreshKnownCarbons();
 });
 
 async function saveSumupKey(): Promise<void> {
   await setSyncedSetting(SUMUP_KEY_SETTING, sumupKey.value.trim());
   showToast('SumUp affiliate key saved', 'success');
+}
+
+/** Devices that have shown up with flavor='carbon' on this account, newest-seen first. */
+async function refreshKnownCarbons(): Promise<void> {
+  carbonsLoading.value = true;
+  carbonsError.value = '';
+  try {
+    knownCarbons.value = (await listDevices()).filter((d) => d.flavor === 'carbon');
+  } catch (err) {
+    carbonsError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    carbonsLoading.value = false;
+  }
 }
 
 // Local per-device, not synced — different registers may pair with different
@@ -94,6 +113,15 @@ async function saveRemoteCarbonDeviceId(): Promise<void> {
   await setSetting(REMOTE_CARBON_DEVICE_KEY, remoteCarbonDeviceId.value.trim());
   showToast('Remote Carbon device ID saved', 'success');
   refreshStatuses();
+}
+
+function fmtLastSeen(ts: number): string {
+  const mins = Math.round((Date.now() - ts) / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.round(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  return `${Math.round(hours / 24)}d ago`;
 }
 onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer);
@@ -717,16 +745,44 @@ async function onImportFile(e: Event): Promise<void> {
           @change="saveSumupKey"
         />
       </label>
-      <label v-if="settings.paymentProviderId === 'mypos-carbon-remote'" class="mt-3 block text-sm">
-        <span class="text-slate-400">Remote Carbon device ID</span>
-        <input
+      <div v-if="settings.paymentProviderId === 'mypos-carbon-remote'" class="mt-3">
+        <div class="mb-1 flex items-center justify-between">
+          <span class="text-sm text-slate-400">Remote Carbon terminal</span>
+          <button
+            class="text-[11px] text-slate-500 hover:text-slate-300 disabled:opacity-40"
+            :disabled="carbonsLoading"
+            @click="refreshKnownCarbons"
+          >
+            {{ carbonsLoading ? 'Refreshing…' : 'Refresh' }}
+          </button>
+        </div>
+        <select
+          v-if="knownCarbons.length"
           v-model="remoteCarbonDeviceId"
-          type="text"
-          placeholder="Find this in Settings on the Carbon itself"
-          class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2 font-mono text-xs"
+          class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm"
           @change="saveRemoteCarbonDeviceId"
-        />
-      </label>
+        >
+          <option value="" disabled>Choose a Carbon…</option>
+          <option v-for="d in knownCarbons" :key="d.id" :value="d.id">
+            {{ d.name || d.id }} — seen {{ fmtLastSeen(d.lastSeenAt) }}
+          </option>
+        </select>
+        <p v-else-if="carbonsError" class="text-xs text-red-400">{{ carbonsError }}</p>
+        <p v-else class="text-xs text-slate-500">
+          No Carbon terminals seen on this account yet — open the app on it at least once, or
+          paste its Device ID manually below.
+        </p>
+        <label class="mt-2 block text-xs">
+          <span class="text-slate-500">{{ knownCarbons.length ? 'Or paste a Device ID manually' : 'Device ID' }}</span>
+          <input
+            v-model="remoteCarbonDeviceId"
+            type="text"
+            placeholder="Find this in Settings on the Carbon itself"
+            class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2 font-mono text-xs"
+            @change="saveRemoteCarbonDeviceId"
+          />
+        </label>
+      </div>
     </section>
 
     <!-- Custom payment methods -->

@@ -93,6 +93,9 @@ const MIGRATIONS: string[] = [
     createdAt  INTEGER NOT NULL
   );
   `,
+  // v3 — track each device's app flavor, so e.g. a register can list the
+  // account's Carbon terminals for the remote-payment-trigger picker.
+  `ALTER TABLE devices ADD COLUMN flavor TEXT;`,
 ];
 
 export function openDb(dataDir: string): Database.Database {
@@ -123,4 +126,28 @@ export function bumpMetric(db: Database.Database, accountId: string, field: Metr
     `INSERT INTO metrics (accountId, day, ${field}) VALUES (?, ?, ?)
      ON CONFLICT (accountId, day) DO UPDATE SET ${field} = ${field} + excluded.${field}`,
   ).run(accountId, day, delta);
+}
+
+/**
+ * Upsert device presence — called both from a sync push (routes/sync.ts) and
+ * a fresh WS connection (ws.ts), since a device that mostly just listens
+ * (e.g. a Carbon sitting in customer-display mode) may rarely push its own
+ * ops otherwise, leaving its lastSeenAt stale for the device picker.
+ */
+export function touchDevice(
+  db: Database.Database,
+  id: string,
+  accountId: string,
+  userId: string,
+  name: string | null,
+  flavor: string | null,
+  now: number,
+): void {
+  db.prepare(
+    `INSERT INTO devices (id, accountId, userId, name, flavor, lastSeenAt, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT (id) DO UPDATE SET
+       lastSeenAt = excluded.lastSeenAt,
+       name = COALESCE(excluded.name, name),
+       flavor = COALESCE(excluded.flavor, flavor)`,
+  ).run(id, accountId, userId, name, flavor, now, now);
 }

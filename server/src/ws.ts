@@ -1,8 +1,10 @@
 import type { FastifyInstance } from 'fastify';
 import websocket from '@fastify/websocket';
 import type { WebSocket } from 'ws';
+import type Database from 'better-sqlite3';
 import type { DisplayCartMessage, NudgeMessage, PaymentResultMessage, PaymentTriggerMessage } from '@zolltool/shared';
 import type { JwtClaims } from './auth';
+import { touchDevice } from './db';
 
 type PaymentMessage = PaymentTriggerMessage | PaymentResultMessage;
 
@@ -64,11 +66,11 @@ export class Rooms {
   }
 }
 
-export async function registerWs(app: FastifyInstance, rooms: Rooms): Promise<void> {
+export async function registerWs(app: FastifyInstance, rooms: Rooms, db: Database.Database): Promise<void> {
   await app.register(websocket);
 
   app.get('/api/sync/ws', { websocket: true }, (socket, req) => {
-    const { token, deviceId } = req.query as { token?: string; deviceId?: string };
+    const { token, deviceId, flavor } = req.query as { token?: string; deviceId?: string; flavor?: string };
     let claims: JwtClaims;
     try {
       claims = app.jwt.verify<JwtClaims>(token ?? '');
@@ -77,6 +79,16 @@ export async function registerWs(app: FastifyInstance, rooms: Rooms): Promise<vo
       return;
     }
     rooms.add(claims.accountId, deviceId ?? 'unknown', socket);
+    if (deviceId) {
+      // Best-effort presence touch — a device that mostly just listens (e.g.
+      // a Carbon in customer-display mode) may rarely push its own ops, so a
+      // WS connection is often the only signal that it's still around.
+      try {
+        touchDevice(db, deviceId, claims.accountId, claims.sub, null, flavor || null, Date.now());
+      } catch {
+        /* devices row requires an existing account/user FK — skip on any edge case */
+      }
+    }
     socket.on('message', (raw) => {
       // Registers push ephemeral customer-display cart snapshots and the
       // remote-payment trigger/result handshake; everything else is ignored

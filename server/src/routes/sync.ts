@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
 import { PushRequestSchema, type PullResponse, type PushResponse, type ServerOp } from '@zolltool/shared';
 import type { JwtClaims } from '../auth';
-import { bumpMetric } from '../db';
+import { bumpMetric, touchDevice } from '../db';
 import type { Rooms } from '../ws';
 
 export function registerSyncRoutes(app: FastifyInstance, db: Database.Database, rooms: Rooms): void {
@@ -11,16 +11,12 @@ export function registerSyncRoutes(app: FastifyInstance, db: Database.Database, 
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   );
   const maxSeq = db.prepare('SELECT COALESCE(MAX(seq), 0) AS m FROM ops WHERE accountId = ?');
-  const touchDevice = db.prepare(
-    `INSERT INTO devices (id, accountId, userId, name, lastSeenAt, createdAt) VALUES (?, ?, ?, ?, ?, ?)
-     ON CONFLICT (id) DO UPDATE SET lastSeenAt = excluded.lastSeenAt, name = COALESCE(excluded.name, name)`,
-  );
 
   app.post('/api/sync/push', { preHandler: app.authenticate }, async (req, reply) => {
     const claims = req.user as JwtClaims;
     const parsed = PushRequestSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid push' });
-    const { deviceId, deviceName, ops } = parsed.data;
+    const { deviceId, deviceName, flavor, ops } = parsed.data;
 
     let accepted = 0;
     let txCount = 0;
@@ -43,7 +39,7 @@ export function registerSyncRoutes(app: FastifyInstance, db: Database.Database, 
           if (op.type === 'tx.create') txCount++;
         }
       }
-      touchDevice.run(deviceId, claims.accountId, claims.sub, deviceName ?? null, Date.now(), Date.now());
+      touchDevice(db, deviceId, claims.accountId, claims.sub, deviceName ?? null, flavor ?? null, Date.now());
       return { accepted, duplicates: ops.length - accepted, latestSeq: seq };
     })();
 

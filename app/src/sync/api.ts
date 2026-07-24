@@ -1,5 +1,6 @@
 import type {
   AuthUser,
+  DeviceSummary,
   PullResponse,
   PushRequest,
   PushResponse,
@@ -142,6 +143,11 @@ export function pushOps(req: PushRequest): Promise<PushResponse> {
 
 export function pullOps(since: number): Promise<PullResponse> {
   return apiJson<PullResponse>(`/api/sync/pull?since=${since}`);
+}
+
+/** Devices this account has seen — backs pickers like "which Carbon to target". */
+export function listDevices(): Promise<DeviceSummary[]> {
+  return apiJson<DeviceSummary[]>('/api/devices');
 }
 
 export async function uploadImage(id: string, blob: Blob): Promise<void> {

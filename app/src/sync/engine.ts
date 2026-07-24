@@ -12,6 +12,13 @@ import { db } from '@/db/schema';
 import { getSetting, setSetting } from '@/db/repo';
 import { SYNC_KEYS, fetchImage, getServerUrl, isLoggedIn, pullOps, pushOps, uploadImage } from './api';
 import { applyRemoteOps } from './apply';
+import { currentFlavor } from '@/lib/updates';
+import { isNative } from '@/native/plugins';
+
+/** 'carbon' | 'compat' | 'full' | 'web' — lets other devices find e.g. a Carbon terminal to target. */
+function deviceFlavor(): string | undefined {
+  return currentFlavor() ?? (isNative ? undefined : 'web');
+}
 
 /**
  * Sync engine: push the outbox, pull what's new, repeat.
@@ -156,7 +163,7 @@ async function pushOutbox(): Promise<void> {
     if (!batch.length) break;
 
     const ops: Op[] = batch.map(({ opId, deviceId: d, ts, type, payload }) => ({ opId, deviceId: d, ts, type, payload }));
-    await pushOps({ deviceId, deviceName, ops });
+    await pushOps({ deviceId, deviceName, flavor: deviceFlavor(), ops });
     await db.ops
       .where('seq')
       .anyOf(batch.map((o) => o.seq!))
@@ -217,7 +224,10 @@ function connectWs(): void {
     const deviceId = await getSetting<string>('deviceId');
     if (!base || !token || !syncState.enabled) return;
 
-    const url = `${base.replace(/^http/, 'ws')}/api/sync/ws?token=${encodeURIComponent(token)}&deviceId=${deviceId}`;
+    const flavor = deviceFlavor();
+    const url =
+      `${base.replace(/^http/, 'ws')}/api/sync/ws?token=${encodeURIComponent(token)}&deviceId=${deviceId}` +
+      (flavor ? `&flavor=${encodeURIComponent(flavor)}` : '');
     try {
       ws = new WebSocket(url);
     } catch {
