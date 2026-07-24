@@ -147,7 +147,7 @@ async function submitPin(): Promise<void> {
     <!-- PIN lock: covers the management views until unlocked -->
     <div
       v-if="pinPromptVisible"
-      class="fixed inset-0 z-[65] flex flex-col items-center justify-center gap-4 bg-slate-950/95 p-6 backdrop-blur-sm"
+      class="fixed inset-0 z-[65] flex flex-col items-center justify-center gap-4 bg-slate-950/95 p-6"
     >
       <Lock class="h-8 w-8 text-slate-500" />
       <p class="text-sm text-slate-300">This area is PIN-protected</p>

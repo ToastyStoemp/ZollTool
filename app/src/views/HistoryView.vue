@@ -160,31 +160,69 @@ const bestAll = computed(() => {
 
 const bestSellers = computed(() => (bestExpanded.value ? bestAll.value : bestAll.value.slice(0, 8)));
 
-/** Revenue per hour of day — find the peak selling times. */
+/**
+ * Revenue per hour of day — find the peak selling times. Aggregated across
+ * every day in scope by default; "vs. day before" instead isolates the most
+ * recent active day (an aggregate of several days has no single "day
+ * before" to compare against) and overlays each hour's value from the day
+ * before as a marker line, scaled against the same max as the bars so the
+ * two stay visually comparable.
+ */
+const compareHourly = ref(false);
 const hourly = computed(() => {
-  const buckets = new Array(24).fill(0) as number[];
+  const byDayHour = new Map<string, number[]>();
   for (const tx of scopedTransactions.value) {
     if (tx.revertedBy) continue;
-    buckets[new Date(tx.timestamp).getHours()] += amountOf(tx);
+    const d = new Date(tx.timestamp);
+    const day = d.toISOString().slice(0, 10);
+    let bucket = byDayHour.get(day);
+    if (!bucket) {
+      bucket = new Array(24).fill(0);
+      byDayHour.set(day, bucket);
+    }
+    bucket[d.getHours()] += amountOf(tx);
   }
-  const active = buckets.map((v, h) => ({ h, v })).filter((b) => b.v > 0);
+  const days = [...byDayHour.keys()].sort();
+  if (!days.length) return [];
+
+  let buckets: number[];
+  let prevBuckets: number[] | null = null;
+  if (compareHourly.value) {
+    buckets = byDayHour.get(days[days.length - 1]!)!;
+    prevBuckets = days.length > 1 ? byDayHour.get(days[days.length - 2]!)! : null;
+  } else {
+    buckets = new Array(24).fill(0);
+    for (const b of byDayHour.values()) {
+      for (let h = 0; h < 24; h++) buckets[h] += b[h]!;
+    }
+  }
+
+  // Show the contiguous range from first to last active hour (either series).
+  const active = buckets
+    .map((v, h) => ({ h, v }))
+    .filter((b) => b.v > 0 || (prevBuckets && prevBuckets[b.h]! > 0));
   if (!active.length) return [];
-  // Show the contiguous range from first to last active hour
   const from = active[0]!.h;
   const to = active[active.length - 1]!.h;
-  const max = Math.max(...buckets);
+  const max = Math.max(...buckets, ...(prevBuckets ?? [0]));
   const span = to - from + 1;
   // Thin hour labels only once there are enough bars that showing every one
   // would crowd the axis — anchored to position (i=0 always labeled), not
   // absolute hour-of-day, which could otherwise skip labeling every bar in a
   // short range (e.g. only "12" happens to be divisible by 3 in a 4-bar span).
   const labelEvery = span > 16 ? 3 : span > 8 ? 2 : 1;
-  return buckets.slice(from, to + 1).map((v, i) => ({
-    h: from + i,
-    v,
-    pct: Math.round((v / max) * 100),
-    showLabel: i % labelEvery === 0,
-  }));
+  return buckets.slice(from, to + 1).map((v, i) => {
+    const h = from + i;
+    const prevV = prevBuckets ? prevBuckets[h]! : null;
+    return {
+      h,
+      v,
+      pct: Math.round((v / max) * 100),
+      prevPct: prevV != null ? Math.round((prevV / max) * 100) : null,
+      prevV,
+      showLabel: i % labelEvery === 0,
+    };
+  });
 });
 
 // ── Cash drawer: float, expected cash and a printable day report ────────────
@@ -494,20 +532,39 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
     <div class="mb-4 grid gap-3 md:grid-cols-2">
       <!-- Hourly revenue: when do people actually buy -->
       <div class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <h2 class="mb-2 text-sm font-semibold text-slate-300">Revenue per hour</h2>
+        <div class="mb-2 flex items-center gap-2">
+          <h2 class="text-sm font-semibold text-slate-300">Revenue per hour</h2>
+          <button
+            v-if="daily.length > 1"
+            class="ml-auto rounded-md px-2 py-1 text-[11px]"
+            :class="compareHourly ? 'bg-slate-600 font-semibold' : 'bg-slate-800 text-slate-400'"
+            @click="compareHourly = !compareHourly"
+          >
+            vs. day before
+          </button>
+        </div>
         <p v-if="!hourly.length" class="text-xs text-slate-500">No sales yet.</p>
         <div v-else class="flex h-28 items-stretch gap-1">
           <div v-for="b in hourly" :key="b.h" class="flex min-w-0 flex-1 flex-col items-center gap-1">
-            <div class="flex w-full flex-1 items-end">
+            <div class="relative flex w-full flex-1 items-end">
               <div
                 class="w-full rounded-t bg-emerald-500/70"
                 :style="{ height: b.pct + '%' }"
                 :title="`${b.h}:00 — ${fmtPrice(b.v, revenueCurrency)}`"
               />
+              <div
+                v-if="compareHourly && b.prevPct != null"
+                class="absolute inset-x-0 h-0.5 bg-amber-400"
+                :style="{ bottom: b.prevPct + '%' }"
+                :title="`${b.h}:00 day before — ${fmtPrice(b.prevV ?? 0, revenueCurrency)}`"
+              />
             </div>
-            <span class="text-[9px] text-slate-500">{{ b.showLabel ? b.h : '' }}</span>
+            <span class="text-[9px] text-slate-500" :class="{ invisible: !b.showLabel }">{{ b.h }}</span>
           </div>
         </div>
+        <p v-if="compareHourly" class="mt-2 text-[10px] text-slate-500">
+          <span class="inline-block h-0.5 w-3 translate-y-[-3px] bg-amber-400"></span> day before
+        </p>
       </div>
 
       <!-- Cash drawer / day report (per event) -->
