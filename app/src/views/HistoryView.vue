@@ -49,31 +49,25 @@ function eventName(eventId: string): string {
   return data.events.find((e) => e.id === eventId)?.name ?? '(deleted event)';
 }
 
-// ── Local / base currency toggle ────────────────────────────────────────────
-// Only shown when at least one transaction in scope was charged in a
-// converted local currency (i.e. this feature was actually used). Applies to
-// revenue-style figures (what did I sell); cash/card/drawer reconciliation
-// always stays in whatever was physically collected.
-type AmountView = 'local' | 'base';
-const amountView = ref<AmountView>('local');
-const hasBaseData = computed(() => scopedTransactions.value.some((t) => t.baseCurrency));
-
-const revenueCurrency = computed(() =>
-  amountView.value === 'base' ? (scopeEvent.value?.currency ?? data.currency) : currency.value,
-);
+// ── Revenue-style figures: always base currency ─────────────────────────────
+// Two events (or "all events") may use different local currencies or none at
+// all, so base is the only basis that's comparable across the page — matches
+// the event-comparison card below. Cash/card/drawer reconciliation is a
+// separate concern and always stays in whatever was physically collected
+// (see `currency`, untouched by any of this).
+const revenueCurrency = computed(() => scopeEvent.value?.currency ?? data.currency);
 
 function amountOf(tx: Transaction): number {
-  return amountView.value === 'base' && tx.baseTotal != null ? tx.baseTotal : tx.total;
+  return tx.baseTotal ?? tx.total;
 }
 function currencyOf(tx: Transaction): string {
-  return amountView.value === 'base' ? (tx.baseCurrency ?? tx.currency) : tx.currency;
+  return tx.baseCurrency ?? tx.currency;
 }
 function itemAmountOf(item: TxItem): number {
-  return amountView.value === 'base' && item.baseLineTotal != null ? item.baseLineTotal : item.lineTotal;
+  return item.baseLineTotal ?? item.lineTotal;
 }
 function discountAmountOf(d: TxDiscount, tx: Transaction): number {
-  if (amountView.value !== 'base' || !tx.exchangeRate) return d.amount;
-  return round2(d.amount / tx.exchangeRate);
+  return tx.exchangeRate ? round2(d.amount / tx.exchangeRate) : d.amount;
 }
 
 const methodFilter = ref<string>('all');
@@ -439,26 +433,10 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
         <ArrowLeft class="h-4 w-4" /> POS
       </RouterLink>
       <h1 class="text-xl font-bold">Sales history</h1>
-      <select v-model="scope" class="rounded-lg bg-slate-800 px-3 py-1.5 text-sm">
+      <select v-model="scope" class="max-w-[55vw] rounded-lg bg-slate-800 px-3 py-1.5 text-sm sm:max-w-xs">
         <option value="all">All events</option>
         <option v-for="e in data.events" :key="e.id" :value="e.id">{{ e.name }}</option>
       </select>
-      <div v-if="hasBaseData" class="flex rounded-lg bg-slate-900 p-1 text-xs ring-1 ring-slate-800">
-        <button
-          class="rounded-md px-3 py-1"
-          :class="amountView === 'local' ? 'bg-slate-700 font-semibold' : 'text-slate-400'"
-          @click="amountView = 'local'"
-        >
-          Local
-        </button>
-        <button
-          class="rounded-md px-3 py-1"
-          :class="amountView === 'base' ? 'bg-slate-700 font-semibold' : 'text-slate-400'"
-          @click="amountView = 'base'"
-        >
-          Base
-        </button>
-      </div>
       <div class="ml-auto flex gap-2">
         <button
           class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-700 disabled:opacity-40"
@@ -500,24 +478,26 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
 
     <!-- Compare to another event -->
     <div v-if="!allMode" class="mb-4 rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2">
         <h2 class="text-sm font-semibold text-slate-300">Compare to</h2>
-        <select v-model="compareEventId" class="rounded-lg bg-slate-800 px-3 py-1.5 text-sm">
+        <select v-model="compareEventId" class="max-w-[55vw] rounded-lg bg-slate-800 px-3 py-1.5 text-sm sm:max-w-xs">
           <option value="">Pick an event…</option>
           <option v-for="e in compareableEvents" :key="e.id" :value="e.id">{{ e.name }}</option>
         </select>
       </div>
-      <div v-if="eventComparison" class="mt-3 space-y-1.5">
-        <div class="grid grid-cols-[1fr_auto_auto_auto] gap-x-4 gap-y-1 text-xs text-slate-500">
+      <div v-if="eventComparison" class="mt-3 space-y-1.5 overflow-x-auto">
+        <div class="grid grid-cols-[1fr_minmax(0,auto)_minmax(0,auto)_minmax(0,auto)] gap-x-4 gap-y-1 text-xs text-slate-500">
           <span></span>
           <span class="text-right">This ({{ eventComparison.curDays }}d)</span>
-          <span class="text-right">{{ eventComparison.otherName }} ({{ eventComparison.otherDays }}d)</span>
+          <span class="truncate text-right" :title="eventComparison.otherName">
+            {{ eventComparison.otherName }} ({{ eventComparison.otherDays }}d)
+          </span>
           <span class="text-right">Δ</span>
         </div>
         <div
           v-for="m in eventComparison.metrics"
           :key="m.label"
-          class="grid grid-cols-[1fr_auto_auto_auto] items-center gap-x-4 gap-y-1 text-sm"
+          class="grid grid-cols-[1fr_minmax(0,auto)_minmax(0,auto)_minmax(0,auto)] items-center gap-x-4 gap-y-1 text-sm"
         >
           <span class="text-slate-400">{{ m.label }}</span>
           <span class="text-right font-medium tabular-nums">

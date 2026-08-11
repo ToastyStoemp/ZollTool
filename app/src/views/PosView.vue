@@ -639,7 +639,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
     <template v-else>
       <!-- Product area -->
       <section class="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header class="flex items-center gap-2 border-b border-slate-800 px-4 py-3">
+        <header class="flex flex-wrap items-center gap-2 border-b border-slate-800 px-4 py-3">
           <RouterLink to="/events" class="shrink-0 rounded-lg px-1.5 py-1.5 text-slate-400 hover:bg-slate-800" title="Back to events">
             <ArrowLeft class="h-4 w-4" />
           </RouterLink>
@@ -677,7 +677,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
           <input
             v-model="search"
             placeholder="Search / scan…"
-            class="ml-auto w-40 rounded-lg bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-emerald-500 sm:w-64"
+            class="ml-auto min-w-0 w-40 rounded-lg bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-emerald-500 sm:w-64"
             @keydown.enter="submitSearch"
           />
           <div class="flex shrink-0 rounded-lg bg-slate-800 p-0.5 text-xs">

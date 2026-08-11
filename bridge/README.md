@@ -24,11 +24,19 @@ A tiny bridge app that connects myPOS or SumUp payment terminals to ZollTool run
   Unblock-File .\sdk\myPOSTerminal.dll
   ```
 
+### 2. Create your local config
+`config.json` holds real values (COM port, your SumUp secret key) and is gitignored —
+`config.example.json` is the tracked template:
+```
+copy config.example.json config.json
+```
+Edit the **copy** (`config.json`) in the steps below, never the tracked template.
+
 ---
 
 ## myPOS Carbon (USB)
 
-### 2a. Configure the COM port
+### 3a. Configure the COM port
 - Plug the Carbon into the PC via USB; set USB mode to **PTP/MTP** on the device
 - Open **Device Manager → Ports (COM & LPT)** and note which COM port appears (e.g. COM3, COM5)
 - Edit `config.json`:
@@ -40,7 +48,7 @@ A tiny bridge app that connects myPOS or SumUp payment terminals to ZollTool run
 
 ## myPOS Go2 (Bluetooth)
 
-### 2b. Pair and configure Bluetooth
+### 3b. Pair and configure Bluetooth
 1. On the Go2, open **Settings → Bluetooth** and make it discoverable
 2. On the PC, open **Settings → Bluetooth & devices → Add a device**
 3. Pair the Go2 — Windows will install a virtual COM port
@@ -57,7 +65,7 @@ A tiny bridge app that connects myPOS or SumUp payment terminals to ZollTool run
 
 ## SumUp Solo
 
-### 2c. Configure SumUp
+### 3c. Configure SumUp
 - Create an API key at https://developer.sumup.com (use a **secret/personal** key starting with `sup_sk_`)
 - Find your merchant code in the SumUp dashboard
 - Find your reader ID in the hardware section of the dashboard
