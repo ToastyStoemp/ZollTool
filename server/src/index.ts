@@ -1,7 +1,11 @@
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { loadDotEnv } from './env';
 import { buildApp } from './app';
 import { unpackWebDist } from './webdist';
+
+// Load server/.env (if present) before reading any config. Shell env wins.
+loadDotEnv();
 
 const jwtSecret = process.env.JWT_SECRET;
 if (!jwtSecret || jwtSecret.length < 16) {

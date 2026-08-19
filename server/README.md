@@ -144,6 +144,23 @@ session isn't practical, e.g. a locked-down payment terminal.
   owner-only, `newAccount: true` — create a brand-new account.
 - Set `REGISTRATION_OPEN=1` to let anyone create an account without an invite.
 
+## Data read API
+
+A small JWT-authenticated, account-scoped read API exposes the account's events
+and transactions, materialized on read from the op-log (`src/reduce.ts`). It
+backs external tooling — e.g. the accounting bridge that matches convention
+payment clusters to ZollTool events and books them into Lexware.
+
+| Endpoint | Returns |
+|----------|---------|
+| `GET /api/data/events` | Current (non-deleted) `SalesEvent[]`. |
+| `GET /api/data/events/:eventId/transactions` | That event's `Transaction[]` (reverts marked). |
+| `GET /api/data/transactions?from&to` | Transactions across events, optionally windowed by date (`YYYY-MM-DD`). |
+
+Authenticate with a bearer token from `POST /api/auth/login`. For a back-office
+tool, create a **dedicated account** (its own login) and give the tool those
+credentials; the API only ever returns that account's own data.
+
 ## Development
 
 ```sh
@@ -152,4 +169,5 @@ npm run test -w server      # integration tests (in-memory data dir)
 ```
 
 Required env: `JWT_SECRET`. Optional: `PORT` (8787), `DATA_DIR` (./data),
-`OWNER_EMAIL`/`OWNER_PASSWORD`, `REGISTRATION_OPEN`.
+`OWNER_EMAIL`/`OWNER_PASSWORD`, `REGISTRATION_OPEN`. A local `server/.env` is
+loaded automatically (`src/env.ts`).
