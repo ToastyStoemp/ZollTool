@@ -150,6 +150,43 @@ export function listDevices(): Promise<DeviceSummary[]> {
   return apiJson<DeviceSummary[]>('/api/devices');
 }
 
+/** A scoped read-only API token as returned by the list endpoint (no secret). */
+export interface ApiTokenSummary {
+  id: string;
+  name: string;
+  scopes: string;
+  createdAt: number;
+  lastUsedAt: number | null;
+  revokedAt: number | null;
+}
+
+/** Freshly minted token — `token` is the plaintext `zt_…`, shown exactly once. */
+export interface MintedApiToken {
+  id: string;
+  token: string;
+  name: string;
+  scopes: string;
+}
+
+/** Read-only API tokens for the account, newest first (owner/admin only). */
+export function listApiTokens(): Promise<ApiTokenSummary[]> {
+  return apiJson<ApiTokenSummary[]>('/api/tokens');
+}
+
+/** Mint a scoped read-only token. The plaintext is returned once — store it now. */
+export function createApiToken(name?: string): Promise<MintedApiToken> {
+  return apiJson<MintedApiToken>('/api/tokens', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ name }),
+  });
+}
+
+/** Revoke a token by id — it stops authenticating immediately. */
+export function revokeApiToken(id: string): Promise<{ revoked: boolean }> {
+  return apiJson<{ revoked: boolean }>(`/api/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
 export async function uploadImage(id: string, blob: Blob): Promise<void> {
   const res = await apiFetch(`/api/images/${id}`, {
     method: 'PUT',

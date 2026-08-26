@@ -96,6 +96,22 @@ const MIGRATIONS: string[] = [
   // v3 — track each device's app flavor, so e.g. a register can list the
   // account's Carbon terminals for the remote-payment-trigger picker.
   `ALTER TABLE devices ADD COLUMN flavor TEXT;`,
+  // v4 — scoped, revocable API tokens for machine access (e.g. the ZollTax
+  // accounting bridge) — read-only, so no account password lives in a config.
+  `
+  CREATE TABLE api_tokens (
+    id         TEXT PRIMARY KEY,
+    accountId  TEXT NOT NULL REFERENCES accounts(id),
+    name       TEXT,
+    tokenHash  TEXT NOT NULL UNIQUE,
+    scopes     TEXT NOT NULL DEFAULT 'data:read',
+    createdBy  TEXT REFERENCES users(id),
+    createdAt  INTEGER NOT NULL,
+    lastUsedAt INTEGER,
+    revokedAt  INTEGER
+  );
+  CREATE INDEX idx_api_tokens_account ON api_tokens(accountId);
+  `,
 ];
 
 export function openDb(dataDir: string): Database.Database {

@@ -6,7 +6,7 @@ import jwt from '@fastify/jwt';
 import fastifyStatic from '@fastify/static';
 import type Database from 'better-sqlite3';
 import { openDb } from './db';
-import { authenticate, registerAuthRoutes, seedOwner } from './auth';
+import { authenticate, authenticateApiOrJwt, registerAuthRoutes, seedOwner } from './auth';
 import { registerSyncRoutes } from './routes/sync';
 import { registerImageRoutes } from './routes/images';
 import { registerAdminRoutes } from './routes/admin';
@@ -19,6 +19,7 @@ import { Rooms, registerWs } from './ws';
 declare module 'fastify' {
   interface FastifyInstance {
     authenticate: typeof authenticate;
+    authenticateApiOrJwt: typeof authenticateApiOrJwt;
     db: Database.Database;
   }
 }
@@ -45,6 +46,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   await app.register(cors, { origin: true });
   await app.register(jwt, { secret: opts.jwtSecret });
   app.decorate('authenticate', authenticate);
+  app.decorate('authenticateApiOrJwt', authenticateApiOrJwt);
 
   await seedOwner(db);
 

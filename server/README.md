@@ -157,9 +157,26 @@ payment clusters to ZollTool events and books them into Lexware.
 | `GET /api/data/events/:eventId/transactions` | That event's `Transaction[]` (reverts marked). |
 | `GET /api/data/transactions?from&to` | Transactions across events, optionally windowed by date (`YYYY-MM-DD`). |
 
-Authenticate with a bearer token from `POST /api/auth/login`. For a back-office
-tool, create a **dedicated account** (its own login) and give the tool those
-credentials; the API only ever returns that account's own data.
+### Authentication — scoped API tokens (preferred)
+
+Instead of giving a back-office tool an account password, mint a **read-only API
+token**. As an owner/admin (logged in), create one:
+
+```sh
+# get an access token
+JWT=$(curl -s -X POST "$URL/api/auth/login" -H 'content-type: application/json' \
+  -d '{"email":"you@example.com","password":"…"}' | jq -r .accessToken)
+# mint a scoped token (shown once)
+curl -s -X POST "$URL/api/tokens" -H "authorization: Bearer $JWT" \
+  -H 'content-type: application/json' -d '{"name":"ZollTax"}'
+# → { "id": "...", "token": "zt_…", "scopes": "data:read" }
+```
+
+The `zt_…` token authenticates the read API (`Authorization: Bearer zt_…`),
+**scoped to `data:read` only** — it can read this account's data and nothing
+else, and is revocable (`DELETE /api/tokens/{id}`; list with `GET /api/tokens`).
+Only its SHA-256 hash is stored. The tool (e.g. ZollTax) sets `ZOLLTOOL_API_TOKEN`
+to it, so no password lives in any config. A normal JWT login still works too.
 
 ## Development
 

@@ -188,10 +188,75 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database):
     );
     return { code, expiresInDays: 14 };
   });
+
+  // ── Scoped API tokens (machine access, e.g. the ZollTax accounting bridge) ──
+  // Admins/owners mint a read-only token so a config never holds a password.
+  app.post('/api/tokens', { preHandler: app.authenticate }, async (req, reply) => {
+    const claims = req.user as JwtClaims;
+    if (claims.role === 'member') return reply.code(403).send({ error: 'Only admins or the owner can create tokens' });
+    const body = (req.body ?? {}) as { name?: string; scopes?: string };
+    const scopes = body.scopes?.trim() || 'data:read';
+    const token = `zt_${randomBytes(24).toString('hex')}`;
+    const id = randomUUID();
+    db.prepare(
+      'INSERT INTO api_tokens (id, accountId, name, tokenHash, scopes, createdBy, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run(id, claims.accountId, body.name?.trim() || 'API token', sha256(token), scopes, claims.sub, Date.now());
+    // The plaintext token is shown exactly once — only its hash is stored.
+    return { id, token, name: body.name?.trim() || 'API token', scopes };
+  });
+
+  app.get('/api/tokens', { preHandler: app.authenticate }, async (req) => {
+    const claims = req.user as JwtClaims;
+    return db
+      .prepare(
+        'SELECT id, name, scopes, createdAt, lastUsedAt, revokedAt FROM api_tokens WHERE accountId = ? ORDER BY createdAt DESC',
+      )
+      .all(claims.accountId);
+  });
+
+  app.delete('/api/tokens/:id', { preHandler: app.authenticate }, async (req, reply) => {
+    const claims = req.user as JwtClaims;
+    if (claims.role === 'member') return reply.code(403).send({ error: 'Only admins or the owner can revoke tokens' });
+    const { id } = req.params as { id: string };
+    const info = db
+      .prepare('UPDATE api_tokens SET revokedAt = ? WHERE id = ? AND accountId = ? AND revokedAt IS NULL')
+      .run(Date.now(), id, claims.accountId);
+    if (!info.changes) return reply.code(404).send({ error: 'Token not found' });
+    return { revoked: true };
+  });
 }
 
 /** Fastify decorator: verifies the bearer token, populates req.user with JwtClaims. */
 export async function authenticate(this: FastifyInstance, req: FastifyRequest, reply: FastifyReply): Promise<void> {
+  try {
+    await req.jwtVerify();
+  } catch {
+    reply.code(401).send({ error: 'Not authenticated' });
+  }
+}
+
+/**
+ * Accepts EITHER a `zt_…` API token (read-only, `data:read`) OR a normal JWT.
+ * Used by the read-only data API so machine clients need a scoped token, not an
+ * account password. On success `req.user` is populated with JwtClaims.
+ */
+export async function authenticateApiOrJwt(
+  this: FastifyInstance,
+  req: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
+  const m = /^Bearer\s+(zt_[A-Za-z0-9]+)$/.exec(req.headers.authorization ?? '');
+  if (m) {
+    const row = this.db
+      .prepare('SELECT id, accountId, scopes FROM api_tokens WHERE tokenHash = ? AND revokedAt IS NULL')
+      .get(sha256(m[1])) as { id: string; accountId: string; scopes: string } | undefined;
+    if (!row) return reply.code(401).send({ error: 'Invalid or revoked API token' });
+    const scopes = String(row.scopes || '').split(/[\s,]+/).filter(Boolean);
+    if (!scopes.includes('data:read')) return reply.code(403).send({ error: 'Token lacks the data:read scope' });
+    this.db.prepare('UPDATE api_tokens SET lastUsedAt = ? WHERE id = ?').run(Date.now(), row.id);
+    req.user = { sub: `token:${row.id}`, accountId: row.accountId, role: 'member' } as JwtClaims;
+    return;
+  }
   try {
     await req.jwtVerify();
   } catch {

@@ -32,7 +32,7 @@ const dayEnd = (d: string): number => Date.parse(/T/.test(d) ? d : `${d}T23:59:5
 
 export function registerDataRoutes(app: FastifyInstance, db: Database.Database): void {
   // Current (non-deleted) events for the account.
-  app.get('/api/data/events', { preHandler: app.authenticate }, async (req): Promise<SalesEvent[]> => {
+  app.get('/api/data/events', { preHandler: app.authenticateApiOrJwt }, async (req): Promise<SalesEvent[]> => {
     const claims = req.user as JwtClaims;
     const ops = loadOps(db, claims.accountId, ['event.upsert', 'event.close']);
     return reduceEvents(ops).filter((e) => !e.deletedAt);
@@ -41,7 +41,7 @@ export function registerDataRoutes(app: FastifyInstance, db: Database.Database):
   // Transactions belonging to one event.
   app.get(
     '/api/data/events/:eventId/transactions',
-    { preHandler: app.authenticate },
+    { preHandler: app.authenticateApiOrJwt },
     async (req): Promise<Transaction[]> => {
       const claims = req.user as JwtClaims;
       const { eventId } = req.params as { eventId: string };
@@ -51,7 +51,7 @@ export function registerDataRoutes(app: FastifyInstance, db: Database.Database):
   );
 
   // Transactions across all events, optionally windowed by timestamp.
-  app.get('/api/data/transactions', { preHandler: app.authenticate }, async (req): Promise<Transaction[]> => {
+  app.get('/api/data/transactions', { preHandler: app.authenticateApiOrJwt }, async (req): Promise<Transaction[]> => {
     const claims = req.user as JwtClaims;
     const { from, to } = req.query as { from?: string; to?: string };
     const fromTs = from ? dayStart(from) : -Infinity;

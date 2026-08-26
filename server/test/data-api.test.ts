@@ -133,4 +133,41 @@ describe('data read API', () => {
     });
     expect(res.json()).toEqual([]);
   });
+
+  it('reads via a scoped API token, and stops after revoke', async () => {
+    // Mint a read-only token for Alice's account.
+    const mint = await app.inject({
+      method: 'POST',
+      url: '/api/tokens',
+      headers: auth(),
+      payload: { name: 'ZollTax' },
+    });
+    expect(mint.statusCode).toBe(200);
+    const { id, token, scopes } = mint.json() as { id: string; token: string; scopes: string };
+    expect(token).toMatch(/^zt_/);
+    expect(scopes).toBe('data:read');
+
+    // The token reads the same account data as the JWT.
+    const withToken = await app.inject({
+      method: 'GET',
+      url: '/api/data/events',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(withToken.statusCode).toBe(200);
+    expect((withToken.json() as SalesEvent[]).map((e) => e.id).sort()).toEqual(['ev1', 'ev2']);
+
+    // A token cannot mint tokens (no JWT identity) — read-only surface only.
+    const badMint = await app.inject({ method: 'POST', url: '/api/tokens', headers: { authorization: `Bearer ${token}` } });
+    expect(badMint.statusCode).toBe(401);
+
+    // Revoke → the token stops working.
+    const del = await app.inject({ method: 'DELETE', url: `/api/tokens/${id}`, headers: auth() });
+    expect(del.statusCode).toBe(200);
+    const afterRevoke = await app.inject({
+      method: 'GET',
+      url: '/api/data/events',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(afterRevoke.statusCode).toBe(401);
+  });
 });

@@ -10,7 +10,14 @@ import { showToast } from '@/lib/toast';
 import { exportBackupJson, exportBackupZipTo, importBackup, importBackupZip } from '@/lib/export/backup-json';
 import { saveTextFile, createFileWriter } from '@/lib/download';
 import { syncState, syncNow } from '@/sync/engine';
-import { listDevices } from '@/sync/api';
+import {
+  listDevices,
+  listApiTokens,
+  createApiToken,
+  revokeApiToken,
+  type ApiTokenSummary,
+  type MintedApiToken,
+} from '@/sync/api';
 import type { DeviceSummary } from '@zolltool/shared';
 import { connectQrDataUrl, decodeConnectQr } from '@/lib/qr';
 import { hashPin, pinState, setPin } from '@/lib/pin';
@@ -87,6 +94,7 @@ onMounted(async () => {
   sumupKey.value = (await getSetting<string>(SUMUP_KEY_SETTING)) ?? '';
   remoteCarbonDeviceId.value = (await getSetting<string>(REMOTE_CARBON_DEVICE_KEY)) ?? '';
   void refreshKnownCarbons();
+  if (settings.syncUser && settings.syncUser.role !== 'member') void refreshApiTokens();
 });
 
 async function saveSumupKey(): Promise<void> {
@@ -208,6 +216,70 @@ async function doLogout(): Promise<void> {
   // On web, logging out immediately re-shows the login gate (App.vue) — it
   // does not keep working offline the way the native app does.
   showToast(isNative ? 'Logged out — the app keeps working offline' : 'Logged out', 'info');
+}
+
+// ── API access — scoped, read-only tokens for back-office tools (e.g. ZollTax) ─
+// Owner/admin only; the server returns the plaintext `zt_…` exactly once at
+// creation, so we surface it in-place with a copy affordance and never again.
+const apiTokens = ref<ApiTokenSummary[]>([]);
+const apiTokensLoading = ref(false);
+const apiTokensError = ref('');
+const newTokenName = ref('');
+const creatingToken = ref(false);
+const mintedToken = ref<MintedApiToken | null>(null);
+
+async function refreshApiTokens(): Promise<void> {
+  apiTokensLoading.value = true;
+  apiTokensError.value = '';
+  try {
+    apiTokens.value = await listApiTokens();
+  } catch (err) {
+    apiTokensError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    apiTokensLoading.value = false;
+  }
+}
+
+async function createToken(): Promise<void> {
+  creatingToken.value = true;
+  apiTokensError.value = '';
+  try {
+    mintedToken.value = await createApiToken(newTokenName.value.trim() || undefined);
+    newTokenName.value = '';
+    await refreshApiTokens();
+  } catch (err) {
+    apiTokensError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    creatingToken.value = false;
+  }
+}
+
+async function copyMintedToken(): Promise<void> {
+  if (!mintedToken.value) return;
+  try {
+    await navigator.clipboard.writeText(mintedToken.value.token);
+    showToast('Token copied to clipboard', 'success');
+  } catch {
+    showToast('Could not copy — select and copy it manually', 'error');
+  }
+}
+
+async function revokeToken(t: ApiTokenSummary): Promise<void> {
+  if (!confirm(`Revoke "${t.name}"? Any tool using it will immediately lose access.`)) return;
+  apiTokensError.value = '';
+  try {
+    await revokeApiToken(t.id);
+    if (mintedToken.value?.id === t.id) mintedToken.value = null;
+    await refreshApiTokens();
+    showToast('Token revoked', 'info');
+  } catch (err) {
+    apiTokensError.value = err instanceof Error ? err.message : String(err);
+  }
+}
+
+function fmtTokenTime(ts: number | null | undefined): string {
+  if (!ts) return 'never';
+  return new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
 
 // ── App updates (native only) — checks the sync server, see lib/updates.ts ──
@@ -1145,6 +1217,98 @@ async function onImportFile(e: Event): Promise<void> {
           <input ref="scanInput" type="file" accept="image/*" capture="environment" class="hidden" @change="onScanFile" />
         </form>
       </template>
+    </section>
+
+    <!-- API access — scoped read-only tokens (owner/admin only) -->
+    <section
+      v-if="settings.syncUser && settings.syncUser.role !== 'member'"
+      class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800 xl:mb-6 xl:break-inside-avoid"
+    >
+      <h2 class="mb-2 text-sm font-semibold text-slate-300">API access</h2>
+      <p class="mb-3 text-xs text-slate-500">
+        Read-only tokens let back-office tools (e.g. ZollTax) pull this account's events and
+        transactions without an account password. Each token is scoped to <code>data:read</code>
+        and can be revoked any time.
+      </p>
+
+      <!-- Create -->
+      <div class="mb-3 flex flex-wrap gap-2">
+        <input
+          v-model="newTokenName"
+          type="text"
+          placeholder="Token name, e.g. ZollTax"
+          class="min-w-0 flex-1 rounded-lg bg-slate-800 px-3 py-2 text-sm"
+          @keydown.enter.prevent="createToken"
+        />
+        <button
+          class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+          :disabled="creatingToken"
+          @click="createToken"
+        >
+          {{ creatingToken ? 'Creating…' : 'Create token' }}
+        </button>
+      </div>
+
+      <!-- Freshly minted secret — shown exactly once -->
+      <div v-if="mintedToken" class="mb-3 rounded-lg bg-emerald-950 p-3 ring-1 ring-emerald-800">
+        <p class="mb-1 text-xs font-medium text-emerald-300">
+          Copy this token now — it won't be shown again.
+        </p>
+        <div class="flex items-center gap-2">
+          <code class="min-w-0 flex-1 break-all rounded bg-slate-950 px-2 py-1.5 font-mono text-xs text-emerald-200">{{
+            mintedToken.token
+          }}</code>
+          <button
+            class="shrink-0 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium hover:bg-slate-700"
+            @click="copyMintedToken"
+          >
+            Copy
+          </button>
+          <button
+            class="shrink-0 rounded-lg px-2 py-1.5 text-xs text-slate-400 hover:text-slate-200"
+            title="Dismiss"
+            @click="mintedToken = null"
+          >
+            Done
+          </button>
+        </div>
+      </div>
+
+      <p v-if="apiTokensError" class="mb-2 text-xs text-red-400">{{ apiTokensError }}</p>
+
+      <!-- Existing tokens -->
+      <p v-if="apiTokensLoading" class="text-xs text-slate-500">Loading…</p>
+      <p v-else-if="!apiTokens.length" class="text-xs text-slate-500">No tokens yet.</p>
+      <ul v-else class="divide-y divide-slate-800 overflow-hidden rounded-lg ring-1 ring-slate-800">
+        <li
+          v-for="t in apiTokens"
+          :key="t.id"
+          class="flex items-center gap-3 bg-slate-900 px-3 py-2"
+          :class="t.revokedAt ? 'opacity-50' : ''"
+        >
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm font-medium">
+              {{ t.name }}
+              <span
+                v-if="t.revokedAt"
+                class="ml-1 rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-normal text-slate-400"
+                >revoked</span
+              >
+            </p>
+            <p class="truncate text-xs text-slate-500">
+              {{ t.scopes }} · created {{ fmtTokenTime(t.createdAt) }} · last used
+              {{ fmtTokenTime(t.lastUsedAt) }}
+            </p>
+          </div>
+          <button
+            v-if="!t.revokedAt"
+            class="shrink-0 rounded-lg px-3 py-1.5 text-xs text-red-400 hover:bg-red-950"
+            @click="revokeToken(t)"
+          >
+            Revoke
+          </button>
+        </li>
+      </ul>
     </section>
 
     <!-- App updates (native only) -->
