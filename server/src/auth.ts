@@ -15,6 +15,11 @@ import { bumpMetric } from './db';
 const ACCESS_TTL = '15m';
 const REFRESH_TTL_MS = 30 * 24 * 3600 * 1000;
 
+// A valid argon2id hash of a throwaway value. Verified against on login when the
+// email is unknown, so a missing user costs the same time as a wrong password —
+// closing the timing side-channel that would otherwise reveal which emails exist.
+const DUMMY_HASH = '$argon2id$v=19$m=65536,t=3,p=4$LNyRVyktowy+Cb4nmWxqVg$RYqS8odpvRgQmClUelVQI2+sTXtVDEmp7/ejvWlyryA';
+
 export interface JwtClaims {
   sub: string;
   accountId: string;
@@ -80,7 +85,24 @@ export async function seedOwner(db: Database.Database): Promise<void> {
 }
 
 export function registerAuthRoutes(app: FastifyInstance, db: Database.Database): void {
-  app.post('/api/auth/register', async (req, reply) => {
+  // Caps for the auth surface (per client IP). Login/register run an expensive
+  // argon2 hash, so this blunts both password brute-forcing and the CPU-DoS of
+  // hammering the hasher. Kept generous enough that a venue full of helper
+  // devices behind one NAT/WiFi (shared public IP) isn't locked out at shift
+  // start. Read at startup (env), so it's configurable per deployment. A
+  // per-account lockout is a stronger follow-up.
+  const AUTH_RATE_LIMIT = {
+    config: { rateLimit: { max: Number(process.env.AUTH_RATE_LIMIT_MAX || 20), timeWindow: '1 minute' } },
+  };
+  // Refresh is a cheap indexed lookup of a 256-bit unguessable token, so the
+  // only risk is flooding (already covered globally) — a higher cap avoids
+  // throttling several devices on one IP that all refresh their 15-min access
+  // token together.
+  const REFRESH_RATE_LIMIT = {
+    config: { rateLimit: { max: Number(process.env.REFRESH_RATE_LIMIT_MAX || 60), timeWindow: '1 minute' } },
+  };
+
+  app.post('/api/auth/register', AUTH_RATE_LIMIT, async (req, reply) => {
     const parsed = RegisterRequestSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid request' });
     const { email, password, inviteCode, accountName } = parsed.data;
@@ -133,13 +155,16 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database):
     return issueTokens(app, db, user);
   });
 
-  app.post('/api/auth/login', async (req, reply) => {
+  app.post('/api/auth/login', AUTH_RATE_LIMIT, async (req, reply) => {
     const parsed = LoginRequestSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'Invalid request' });
     const { email, password, deviceId, deviceName } = parsed.data;
 
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase()) as UserRow | undefined;
-    if (!user || !(await argon2.verify(user.passwordHash, password))) {
+    // Always run a verify — against the real hash or a dummy — so an unknown
+    // email takes the same time as a wrong password (no user-enumeration oracle).
+    const ok = await argon2.verify(user?.passwordHash ?? DUMMY_HASH, password).catch(() => false);
+    if (!user || !ok) {
       return reply.code(401).send({ error: 'Wrong email or password' });
     }
 
@@ -149,7 +174,7 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database):
     return issueTokens(app, db, user);
   });
 
-  app.post('/api/auth/refresh', async (req, reply) => {
+  app.post('/api/auth/refresh', REFRESH_RATE_LIMIT, async (req, reply) => {
     const parsed = RefreshRequestSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'Invalid request' });
 

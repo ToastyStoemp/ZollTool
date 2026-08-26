@@ -188,3 +188,22 @@ npm run test -w server      # integration tests (in-memory data dir)
 Required env: `JWT_SECRET`. Optional: `PORT` (8787), `DATA_DIR` (./data),
 `OWNER_EMAIL`/`OWNER_PASSWORD`, `REGISTRATION_OPEN`. A local `server/.env` is
 loaded automatically (`src/env.ts`).
+
+## Hardening
+
+The server ships security headers (`@fastify/helmet`) and per-client-IP rate
+limiting (`@fastify/rate-limit`): a coarse global ceiling plus tight caps on the
+credential endpoints, which run argon2 (so this blunts both password brute-force
+and the CPU-DoS of hammering the hasher). Login also runs a dummy hash for
+unknown emails, so response time doesn't reveal which accounts exist.
+
+| Env | Purpose |
+|-----|---------|
+| `TRUST_PROXY` | Trust `X-Forwarded-For` for the real client IP (default on; set `0` if no proxy fronts the server). |
+| `RATE_LIMIT_MAX` | Global requests/minute per IP (default 1000). |
+| `AUTH_RATE_LIMIT_MAX` | Login/register attempts/minute per IP (default 20 — kept generous for many devices behind one venue NAT). |
+| `REFRESH_RATE_LIMIT_MAX` | Token-refresh calls/minute per IP (default 60). |
+
+Volumetric DDoS still belongs at the edge — put Cloudflare or your reverse
+proxy's connection/rate limits + `fail2ban` in front. Rate-limit state is
+in-memory (per instance); a multi-node deployment needs a shared store.
