@@ -3,11 +3,22 @@ import { computed, onMounted, ref } from 'vue';
 import { Copy } from 'lucide-vue-next';
 import type { AdminAccount, AdminAccountDetail, AdminLogEntry, AdminMetricRow, AdminOverview } from '@zolltool/shared';
 import { useSettingsStore } from '@/stores/settings';
-import { apiFetch, apiJson } from '@/sync/api';
+import {
+  apiFetch,
+  apiJson,
+  listApiTokens,
+  createApiToken,
+  revokeApiToken,
+  type ApiTokenSummary,
+  type MintedApiToken,
+} from '@/sync/api';
+import { sendDiagnosticLog } from '@/lib/diagnostics';
 import { showToast } from '@/lib/toast';
 
 const settings = useSettingsStore();
 const isOwner = computed(() => settings.syncUser?.role === 'owner');
+// Minting API tokens is an owner/admin capability; the server enforces the same.
+const canManageTokens = computed(() => !!settings.syncUser && settings.syncUser.role !== 'member');
 
 const loading = ref(true);
 const loadError = ref('');
@@ -57,9 +68,89 @@ function fmtBytes(n: number): string {
   return n < 1024 ? `${n} B` : `${(n / 1024).toFixed(1)} KB`;
 }
 
+// ── Diagnostics — upload THIS device's recent console logs (any logged-in user).
+const diagnosticsSending = ref(false);
+const diagnosticsSent = ref(false);
+
+async function doSendDiagnostics(): Promise<void> {
+  diagnosticsSending.value = true;
+  diagnosticsSent.value = false;
+  try {
+    await sendDiagnosticLog('manual');
+    diagnosticsSent.value = true;
+  } catch (err) {
+    showToast(`Send failed: ${err instanceof Error ? err.message : err}`, 'error');
+  } finally {
+    diagnosticsSending.value = false;
+  }
+}
+
+// ── API access — scoped, read-only tokens for back-office tools (owner/admin).
+const apiTokens = ref<ApiTokenSummary[]>([]);
+const apiTokensLoading = ref(false);
+const apiTokensError = ref('');
+const newTokenName = ref('');
+const creatingToken = ref(false);
+const mintedToken = ref<MintedApiToken | null>(null);
+
+async function refreshApiTokens(): Promise<void> {
+  apiTokensLoading.value = true;
+  apiTokensError.value = '';
+  try {
+    apiTokens.value = await listApiTokens();
+  } catch (err) {
+    apiTokensError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    apiTokensLoading.value = false;
+  }
+}
+
+async function createToken(): Promise<void> {
+  creatingToken.value = true;
+  apiTokensError.value = '';
+  try {
+    mintedToken.value = await createApiToken(newTokenName.value.trim() || undefined);
+    newTokenName.value = '';
+    await refreshApiTokens();
+  } catch (err) {
+    apiTokensError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    creatingToken.value = false;
+  }
+}
+
+async function copyMintedToken(): Promise<void> {
+  if (!mintedToken.value) return;
+  try {
+    await navigator.clipboard.writeText(mintedToken.value.token);
+    showToast('Token copied to clipboard', 'success');
+  } catch {
+    showToast('Could not copy — select and copy it manually', 'error');
+  }
+}
+
+async function revokeToken(t: ApiTokenSummary): Promise<void> {
+  if (!confirm(`Revoke "${t.name}"? Any tool using it will immediately lose access.`)) return;
+  apiTokensError.value = '';
+  try {
+    await revokeApiToken(t.id);
+    if (mintedToken.value?.id === t.id) mintedToken.value = null;
+    await refreshApiTokens();
+    showToast('Token revoked', 'info');
+  } catch (err) {
+    apiTokensError.value = err instanceof Error ? err.message : String(err);
+  }
+}
+
+function fmtDay(ts: number | null | undefined): string {
+  if (!ts) return 'never';
+  return new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+}
+
 onMounted(() => {
   if (isOwner.value) void load();
   else loading.value = false;
+  if (canManageTokens.value) void refreshApiTokens();
 });
 
 async function toggleAccount(id: string): Promise<void> {
@@ -145,15 +236,101 @@ const tiles = computed(() =>
       </button>
     </div>
 
-    <p v-if="!isOwner" class="rounded-xl bg-slate-900 p-6 text-center text-sm text-slate-400">
-      This page is only available to the server owner.
-      <span v-if="!settings.syncUser"> Log in under Settings first.</span>
+    <p v-if="!settings.syncUser" class="rounded-xl bg-slate-900 p-6 text-center text-sm text-slate-400">
+      Log in under Settings first to use this page.
     </p>
 
-    <p v-else-if="loading" class="rounded-xl bg-slate-900 p-6 text-center text-sm text-slate-400">Loading…</p>
-    <p v-else-if="loadError" class="rounded-xl bg-red-950/40 p-6 text-center text-sm text-red-400">{{ loadError }}</p>
-
     <template v-else>
+      <!-- Diagnostics — upload THIS device's logs (any logged-in user) -->
+      <div class="mb-4 rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+        <h2 class="mb-2 text-sm font-semibold text-slate-300">Diagnostics — this device</h2>
+        <p class="mb-3 text-xs text-slate-500">
+          Sends recent console warnings/errors from <strong>this device</strong> to the sync server,
+          where the owner can download them below. Needs a server URL set under Settings → Server sync.
+        </p>
+        <button
+          class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
+          :disabled="diagnosticsSending"
+          @click="doSendDiagnostics"
+        >
+          {{ diagnosticsSending ? 'Sending…' : "Send this device's log" }}
+        </button>
+        <p v-if="diagnosticsSent" class="mt-2 text-xs text-emerald-400">Sent.</p>
+      </div>
+
+      <!-- API access — scoped read-only tokens (owner/admin) -->
+      <div v-if="canManageTokens" class="mb-4 rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+        <h2 class="mb-2 text-sm font-semibold text-slate-300">API access</h2>
+        <p class="mb-3 text-xs text-slate-500">
+          Read-only tokens let back-office tools (e.g. ZollTax) pull this account's events and
+          transactions without an account password. Each token is scoped to <code>data:read</code>
+          and can be revoked any time.
+        </p>
+
+        <div class="mb-3 flex flex-wrap gap-2">
+          <input
+            v-model="newTokenName"
+            type="text"
+            placeholder="Token name, e.g. ZollTax"
+            class="min-w-0 flex-1 rounded-lg bg-slate-800 px-3 py-2 text-sm"
+            @keydown.enter.prevent="createToken"
+          />
+          <button
+            class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+            :disabled="creatingToken"
+            @click="createToken"
+          >
+            {{ creatingToken ? 'Creating…' : 'Create token' }}
+          </button>
+        </div>
+
+        <div v-if="mintedToken" class="mb-3 rounded-lg bg-emerald-950 p-3 ring-1 ring-emerald-800">
+          <p class="mb-1 text-xs font-medium text-emerald-300">Copy this token now — it won't be shown again.</p>
+          <div class="flex items-center gap-2">
+            <code class="min-w-0 flex-1 break-all rounded bg-slate-950 px-2 py-1.5 font-mono text-xs text-emerald-200">{{ mintedToken.token }}</code>
+            <button class="shrink-0 rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium hover:bg-slate-700" @click="copyMintedToken">Copy</button>
+            <button class="shrink-0 rounded-lg px-2 py-1.5 text-xs text-slate-400 hover:text-slate-200" title="Dismiss" @click="mintedToken = null">Done</button>
+          </div>
+        </div>
+
+        <p v-if="apiTokensError" class="mb-2 text-xs text-red-400">{{ apiTokensError }}</p>
+
+        <p v-if="apiTokensLoading" class="text-xs text-slate-500">Loading…</p>
+        <p v-else-if="!apiTokens.length" class="text-xs text-slate-500">No tokens yet.</p>
+        <ul v-else class="divide-y divide-slate-800 overflow-hidden rounded-lg ring-1 ring-slate-800">
+          <li
+            v-for="t in apiTokens"
+            :key="t.id"
+            class="flex items-center gap-3 bg-slate-900 px-3 py-2"
+            :class="t.revokedAt ? 'opacity-50' : ''"
+          >
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-medium">
+                {{ t.name }}
+                <span v-if="t.revokedAt" class="ml-1 rounded bg-slate-800 px-1.5 py-0.5 text-[10px] font-normal text-slate-400">revoked</span>
+              </p>
+              <p class="truncate text-xs text-slate-500">
+                {{ t.scopes }} · created {{ fmtDay(t.createdAt) }} · last used {{ fmtDay(t.lastUsedAt) }}
+              </p>
+            </div>
+            <button
+              v-if="!t.revokedAt"
+              class="shrink-0 rounded-lg px-3 py-1.5 text-xs text-red-400 hover:bg-red-950"
+              @click="revokeToken(t)"
+            >
+              Revoke
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Server-wide management — owner only -->
+      <p v-if="!isOwner" class="rounded-xl bg-slate-900 p-4 text-xs text-slate-500">
+        Server-wide management (accounts, invites, activity, log downloads) is only available to the server owner.
+      </p>
+      <p v-else-if="loading" class="rounded-xl bg-slate-900 p-6 text-center text-sm text-slate-400">Loading…</p>
+      <p v-else-if="loadError" class="rounded-xl bg-red-950/40 p-6 text-center text-sm text-red-400">{{ loadError }}</p>
+      <template v-else>
       <!-- Overview tiles -->
       <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
         <div v-for="[label, value] in tiles" :key="label" class="rounded-xl bg-slate-900 p-3 ring-1 ring-slate-800">
@@ -273,6 +450,7 @@ const tiles = computed(() =>
           </li>
         </ul>
       </div>
+      </template>
     </template>
   </div>
 </template>
