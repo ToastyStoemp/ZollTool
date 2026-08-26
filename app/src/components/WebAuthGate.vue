@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
+import { TwoFactorRequired } from '@/sync/api';
 
 /**
  * Blocks the whole app until logged in — web/browser access only (see
@@ -20,6 +21,9 @@ const email = ref('');
 const password = ref('');
 const invite = ref('');
 const accountName = ref('');
+const code = ref('');
+const needs2fa = ref(false);
+const remember = ref(true);
 const busy = ref(false);
 const error = ref('');
 
@@ -33,7 +37,10 @@ async function submit(): Promise<void> {
   try {
     const url = window.location.origin;
     if (mode.value === 'login') {
-      await settings.loginToServer(url, email.value.trim(), password.value);
+      await settings.loginToServer(url, email.value.trim(), password.value, {
+        code: code.value.trim() || undefined,
+        rememberDevice: remember.value,
+      });
     } else {
       await settings.registerOnServer(url, {
         email: email.value.trim(),
@@ -43,7 +50,12 @@ async function submit(): Promise<void> {
       });
     }
   } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err);
+    if (err instanceof TwoFactorRequired) {
+      needs2fa.value = true;
+      error.value = err.invalidCode ? 'That code is not valid — try again.' : '';
+    } else {
+      error.value = err instanceof Error ? err.message : String(err);
+    }
   } finally {
     busy.value = false;
   }
@@ -86,6 +98,20 @@ async function submit(): Promise<void> {
           placeholder="Password"
           class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm"
         />
+        <template v-if="mode === 'login' && needs2fa">
+          <input
+            v-model="code"
+            type="text"
+            inputmode="numeric"
+            autocomplete="one-time-code"
+            placeholder="6-digit code or recovery code"
+            class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm"
+          />
+          <label class="flex items-center gap-2 px-1 text-xs text-slate-400">
+            <input v-model="remember" type="checkbox" class="accent-emerald-500" />
+            Remember this device (skip 2FA here next time)
+          </label>
+        </template>
         <template v-if="mode === 'register'">
           <input
             v-model="invite"

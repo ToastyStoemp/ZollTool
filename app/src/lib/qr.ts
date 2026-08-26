@@ -26,6 +26,11 @@ export function connectQrDataUrl(payload: ConnectPayload): Promise<string> {
   return QRCode.toDataURL(JSON.stringify(qr), { margin: 1, width: 280, errorCorrectionLevel: 'M' });
 }
 
+/** Generic QR data-URL for any string — e.g. an otpauth:// URI for 2FA setup. */
+export function qrDataUrl(text: string): Promise<string> {
+  return QRCode.toDataURL(text, { margin: 1, width: 240, errorCorrectionLevel: 'M' });
+}
+
 async function loadBitmap(file: Blob): Promise<ImageBitmap | HTMLImageElement> {
   if ('createImageBitmap' in window) return createImageBitmap(file);
   return new Promise((resolve, reject) => {

@@ -88,8 +88,13 @@ export const useSettingsStore = defineStore('settings', () => {
     onboardingDone.value = false;
   }
 
-  async function loginToServer(url: string, email: string, password: string): Promise<void> {
-    syncUser.value = await api.login(url, email, password);
+  async function loginToServer(
+    url: string,
+    email: string,
+    password: string,
+    opts: { code?: string; rememberDevice?: boolean } = {},
+  ): Promise<void> {
+    syncUser.value = await api.login(url, email, password, opts);
     serverUrl.value = url;
     await startSync();
   }

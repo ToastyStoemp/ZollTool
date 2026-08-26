@@ -10,9 +10,21 @@ import { showToast } from '@/lib/toast';
 import { exportBackupJson, exportBackupZipTo, importBackup, importBackupZip } from '@/lib/export/backup-json';
 import { saveTextFile, createFileWriter } from '@/lib/download';
 import { syncState, syncNow } from '@/sync/engine';
-import { listDevices } from '@/sync/api';
+import {
+  listDevices,
+  TwoFactorRequired,
+  get2faStatus,
+  setup2fa,
+  enable2fa,
+  disable2fa,
+  listSessions,
+  revokeSession,
+  getDeviceId,
+  type SessionInfo,
+  type TotpSetup,
+} from '@/sync/api';
 import type { DeviceSummary } from '@zolltool/shared';
-import { connectQrDataUrl, decodeConnectQr } from '@/lib/qr';
+import { connectQrDataUrl, decodeConnectQr, qrDataUrl } from '@/lib/qr';
 import { hashPin, pinState, setPin } from '@/lib/pin';
 import { MonitorSmartphone } from 'lucide-vue-next';
 import { DisplayLink } from '@/native/plugins';
@@ -90,6 +102,10 @@ onMounted(async () => {
   sumupKey.value = (await getSetting<string>(SUMUP_KEY_SETTING)) ?? '';
   remoteCarbonDeviceId.value = (await getSetting<string>(REMOTE_CARBON_DEVICE_KEY)) ?? '';
   void refreshKnownCarbons();
+  if (settings.syncUser) {
+    void loadTwofa();
+    void loadSessions();
+  }
   if (hasNativePlugin('Updater')) {
     try {
       appVersion.value = (await Updater.getCurrentVersion()).versionName;
@@ -137,6 +153,101 @@ onUnmounted(() => {
   if (pollTimer) clearInterval(pollTimer);
 });
 
+// ── Two-factor auth (server login) ──────────────────────────────────────────
+const twofaEnabled = ref(false);
+const twofaLoading = ref(true);
+const twofaSetup = ref<TotpSetup | null>(null);
+const twofaQr = ref('');
+const twofaConfirmCode = ref('');
+const twofaRecovery = ref<string[] | null>(null);
+const twofaMsg = ref('');
+const twofaBusy = ref(false);
+
+async function loadTwofa(): Promise<void> {
+  twofaLoading.value = true;
+  try {
+    twofaEnabled.value = (await get2faStatus()).enabled;
+  } catch {
+    /* not reachable — leave disabled */
+  } finally {
+    twofaLoading.value = false;
+  }
+}
+async function startTwofaSetup(): Promise<void> {
+  twofaMsg.value = '';
+  twofaBusy.value = true;
+  try {
+    twofaSetup.value = await setup2fa();
+    twofaQr.value = await qrDataUrl(twofaSetup.value.otpauth);
+  } catch (err) {
+    twofaMsg.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    twofaBusy.value = false;
+  }
+}
+async function confirmTwofa(): Promise<void> {
+  twofaMsg.value = '';
+  twofaBusy.value = true;
+  try {
+    twofaRecovery.value = (await enable2fa(twofaConfirmCode.value.trim())).recovery;
+    twofaEnabled.value = true;
+    twofaSetup.value = null;
+    twofaQr.value = '';
+    twofaConfirmCode.value = '';
+  } catch (err) {
+    twofaMsg.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    twofaBusy.value = false;
+  }
+}
+function cancelTwofaSetup(): void {
+  twofaSetup.value = null;
+  twofaQr.value = '';
+  twofaConfirmCode.value = '';
+  twofaMsg.value = '';
+}
+async function doDisableTwofa(): Promise<void> {
+  const code = window.prompt('Enter an authenticator or recovery code to disable 2FA:');
+  if (!code) return;
+  try {
+    await disable2fa(code.trim());
+    twofaEnabled.value = false;
+    showToast('Two-factor authentication disabled', 'info');
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : String(err), 'error');
+  }
+}
+
+// ── Login sessions ──────────────────────────────────────────────────────────
+const sessions = ref<SessionInfo[]>([]);
+const sessionsGeo = ref(false);
+const sessionsLoading = ref(false);
+const myDeviceId = ref<string | undefined>();
+
+async function loadSessions(): Promise<void> {
+  sessionsLoading.value = true;
+  try {
+    const d = await listSessions();
+    sessions.value = d.sessions;
+    sessionsGeo.value = d.geo;
+    myDeviceId.value = await getDeviceId();
+  } catch {
+    /* ignore */
+  } finally {
+    sessionsLoading.value = false;
+  }
+}
+async function doRevokeSession(id: string): Promise<void> {
+  if (!confirm('Log out this session?')) return;
+  try {
+    await revokeSession(id);
+    await loadSessions();
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : String(err), 'error');
+  }
+}
+const isMySession = (s: SessionInfo): boolean => !!s.deviceId && s.deviceId === myDeviceId.value;
+
 async function selectProvider(id: PaymentProviderId): Promise<void> {
   await settings.setPaymentProvider(id);
   showToast('Payment provider updated', 'success');
@@ -170,6 +281,9 @@ const authEmail = ref('');
 const authPassword = ref('');
 const authInvite = ref('');
 const authAccountName = ref('');
+const authCode = ref('');
+const authNeeds2fa = ref(false);
+const authRemember = ref(true);
 const authBusy = ref(false);
 const authError = ref('');
 
@@ -195,7 +309,10 @@ async function submitAuth(): Promise<void> {
   authError.value = '';
   try {
     if (authMode.value === 'login') {
-      await settings.loginToServer(authUrl.value, authEmail.value.trim(), authPassword.value);
+      await settings.loginToServer(authUrl.value, authEmail.value.trim(), authPassword.value, {
+        code: authCode.value.trim() || undefined,
+        rememberDevice: authRemember.value,
+      });
     } else {
       await settings.registerOnServer(authUrl.value, {
         email: authEmail.value.trim(),
@@ -205,9 +322,16 @@ async function submitAuth(): Promise<void> {
       });
     }
     authPassword.value = '';
+    authCode.value = '';
+    authNeeds2fa.value = false;
     showToast('Connected — sync is on', 'success');
   } catch (err) {
-    authError.value = err instanceof Error ? err.message : String(err);
+    if (err instanceof TwoFactorRequired) {
+      authNeeds2fa.value = true;
+      authError.value = err.invalidCode ? 'That code is not valid — try again.' : '';
+    } else {
+      authError.value = err instanceof Error ? err.message : String(err);
+    }
   } finally {
     authBusy.value = false;
   }
@@ -1108,6 +1232,20 @@ async function onImportFile(e: Event): Promise<void> {
             placeholder="Password"
             class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm"
           />
+          <template v-if="authMode === 'login' && authNeeds2fa">
+            <input
+              v-model="authCode"
+              type="text"
+              inputmode="numeric"
+              autocomplete="one-time-code"
+              placeholder="6-digit code or recovery code"
+              class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm"
+            />
+            <label class="flex items-center gap-2 px-1 text-xs text-slate-400">
+              <input v-model="authRemember" type="checkbox" class="accent-emerald-500" />
+              Remember this device (skip 2FA here next time)
+            </label>
+          </template>
           <template v-if="authMode === 'register'">
             <input
               v-model="authInvite"
@@ -1184,6 +1322,100 @@ async function onImportFile(e: Event): Promise<void> {
         </template>
         <p v-else class="mt-1 text-slate-400">Up to date.</p>
       </div>
+    </section>
+
+    <!-- Two-factor authentication (server login) -->
+    <section v-if="settings.syncUser" class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800 xl:mb-6 xl:break-inside-avoid">
+      <h2 class="mb-2 text-sm font-semibold text-slate-300">Two-factor authentication</h2>
+      <p class="mb-3 text-xs text-slate-500">
+        Protect your account login with an authenticator app (Google Authenticator, Authy, 1Password…).
+      </p>
+      <p v-if="twofaLoading" class="text-xs text-slate-500">Loading…</p>
+
+      <template v-else-if="twofaRecovery">
+        <p class="mb-2 text-xs text-emerald-400">● 2FA enabled. Save these recovery codes — each works once if you lose your device; they won't be shown again.</p>
+        <div class="grid grid-cols-2 gap-1.5 rounded-lg bg-slate-800 p-3 font-mono text-xs">
+          <span v-for="c in twofaRecovery" :key="c">{{ c }}</span>
+        </div>
+        <button class="mt-3 rounded-lg bg-slate-800 px-4 py-2 text-sm hover:bg-slate-700" @click="twofaRecovery = null">Done</button>
+      </template>
+
+      <template v-else-if="twofaSetup">
+        <p class="mb-2 text-xs text-slate-500">Scan with your authenticator app, or enter the key manually:</p>
+        <img v-if="twofaQr" :src="twofaQr" alt="2FA QR code" class="mb-2 rounded-lg bg-white p-2" width="180" height="180" />
+        <code class="mb-3 block break-all rounded bg-slate-800 px-2 py-1.5 text-xs tracking-wider">{{ twofaSetup.secret }}</code>
+        <input
+          v-model="twofaConfirmCode"
+          type="text"
+          inputmode="numeric"
+          placeholder="Enter the 6-digit code to confirm"
+          class="mb-2 w-full rounded-lg bg-slate-800 px-3 py-2 text-sm"
+        />
+        <div class="flex gap-2">
+          <button
+            class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+            :disabled="twofaBusy"
+            @click="confirmTwofa"
+          >
+            Verify &amp; enable
+          </button>
+          <button class="rounded-lg bg-slate-800 px-4 py-2 text-sm hover:bg-slate-700" @click="cancelTwofaSetup">Cancel</button>
+        </div>
+        <p v-if="twofaMsg" class="mt-2 text-xs text-red-400">{{ twofaMsg }}</p>
+      </template>
+
+      <template v-else-if="twofaEnabled">
+        <div class="flex items-center gap-3">
+          <span class="rounded-lg bg-emerald-950 px-3 py-1 text-xs font-semibold text-emerald-400">● Enabled</span>
+          <button class="rounded-lg px-3 py-1.5 text-xs text-red-400 hover:bg-red-950" @click="doDisableTwofa">Disable…</button>
+        </div>
+      </template>
+
+      <template v-else>
+        <button
+          class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+          :disabled="twofaBusy"
+          @click="startTwofaSetup"
+        >
+          Enable 2FA
+        </button>
+        <p v-if="twofaMsg" class="mt-2 text-xs text-red-400">{{ twofaMsg }}</p>
+      </template>
+    </section>
+
+    <!-- Login sessions (server) -->
+    <section v-if="settings.syncUser" class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800 xl:mb-6 xl:break-inside-avoid">
+      <div class="mb-2 flex items-center gap-2">
+        <h2 class="text-sm font-semibold text-slate-300">Your login sessions</h2>
+        <button class="rounded bg-slate-800 px-2 py-1 text-[0.65rem] text-slate-300 hover:bg-slate-700" @click="loadSessions">Refresh</button>
+      </div>
+      <p class="mb-2 text-xs text-slate-500">
+        Devices currently signed in to your account.
+        <span v-if="!sessionsGeo">Location is off — showing device + IP.</span>
+      </p>
+      <p v-if="sessionsLoading" class="text-xs text-slate-500">Loading…</p>
+      <p v-else-if="!sessions.length" class="text-xs text-slate-500">No active sessions.</p>
+      <ul v-else class="divide-y divide-slate-800">
+        <li v-for="s in sessions" :key="s.id" class="flex items-center gap-3 py-2">
+          <div class="min-w-0 flex-1">
+            <p class="truncate text-sm">
+              {{ s.deviceName || s.device || 'Session' }}
+              <span v-if="isMySession(s)" class="ml-1 rounded bg-emerald-950 px-1.5 py-0.5 text-[0.6rem] text-emerald-400">this device</span>
+              <span v-if="s.flavor === 'carbon'" class="ml-1 rounded bg-slate-800 px-1.5 py-0.5 text-[0.6rem] text-slate-400">Carbon</span>
+            </p>
+            <p class="truncate text-xs text-slate-500">
+              {{ [s.device, s.ip, s.geo].filter(Boolean).join(' · ') }} · active {{ fmtLastSeen(s.lastUsedAt) }}
+            </p>
+          </div>
+          <button
+            v-if="!isMySession(s)"
+            class="shrink-0 rounded-lg px-3 py-1.5 text-xs text-red-400 hover:bg-red-950"
+            @click="doRevokeSession(s.id)"
+          >
+            Log out
+          </button>
+        </li>
+      </ul>
     </section>
 
     <!-- Security -->

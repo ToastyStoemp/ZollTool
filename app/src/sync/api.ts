@@ -8,6 +8,8 @@ import type {
 } from '@zolltool/shared';
 import { getSetting, setSetting } from '@/db/repo';
 import { db } from '@/db/schema';
+import { currentFlavor } from '@/lib/updates';
+import { solveChallenge } from '@/lib/captcha';
 
 /** Cloud API client: token storage, transparent refresh, typed endpoints. */
 
@@ -17,6 +19,7 @@ export const SYNC_KEYS = {
   refreshToken: 'sync.refreshToken',
   user: 'sync.user',
   lastServerSeq: 'sync.lastServerSeq',
+  deviceTrust: 'sync.deviceTrust', // per-device 2FA trust token (skip code on this device)
 } as const;
 
 export class ApiError extends Error {
@@ -25,6 +28,13 @@ export class ApiError extends Error {
     public status: number,
   ) {
     super(message);
+  }
+}
+
+/** Thrown by login() when the account has 2FA on and no valid code/trust was given. */
+export class TwoFactorRequired extends Error {
+  constructor(public invalidCode = false) {
+    super('Two-factor code required');
   }
 }
 
@@ -62,13 +72,45 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return data as T;
 }
 
-export async function login(serverUrl: string, email: string, password: string): Promise<AuthUser> {
+type LoginResponse = TokenResponse & { needs2fa?: boolean; deviceTrustToken?: string };
+
+/**
+ * Log in. If the account has 2FA, pass `code` (authenticator or recovery). On
+ * the first successful 2FA login pass `rememberDevice` to trust this device so
+ * future logins skip the code. Throws TwoFactorRequired when a code is needed.
+ */
+export async function login(
+  serverUrl: string,
+  email: string,
+  password: string,
+  opts: { code?: string; rememberDevice?: boolean } = {},
+): Promise<AuthUser> {
   const base = normalizeUrl(serverUrl);
   const deviceId = await getSetting<string>('deviceId');
   const deviceName = await getSetting<string>('deviceName');
-  const tokens = await postJson<TokenResponse>(`${base}/api/auth/login`, { email, password, deviceId, deviceName });
-  await storeSession(base, tokens);
-  return tokens.user;
+  const trustToken = deviceId ? await getSetting<string>(SYNC_KEYS.deviceTrust) : undefined;
+  const res = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      email,
+      password,
+      deviceId,
+      deviceName,
+      flavor: currentFlavor() ?? 'web',
+      trustToken,
+      code: opts.code,
+      rememberDevice: opts.rememberDevice,
+    }),
+  });
+  const data = (await res.json().catch(() => ({}))) as LoginResponse & { error?: string; needs2fa?: boolean };
+  if (!res.ok) {
+    if (res.status === 401 && data.needs2fa) throw new TwoFactorRequired(!!opts.code);
+    throw new ApiError(data.error || `Request failed (${res.status})`, res.status);
+  }
+  await storeSession(base, data);
+  if (data.deviceTrustToken) await setSetting(SYNC_KEYS.deviceTrust, data.deviceTrustToken);
+  return data.user;
 }
 
 export async function registerAccount(
@@ -76,9 +118,31 @@ export async function registerAccount(
   req: { email: string; password: string; inviteCode?: string; accountName?: string },
 ): Promise<AuthUser> {
   const base = normalizeUrl(serverUrl);
-  const tokens = await postJson<TokenResponse>(`${base}/api/auth/register`, req);
+  // Solve the proof-of-work CAPTCHA (no-op server-side if REQUIRE_CAPTCHA=0).
+  let captcha: { captchaToken?: string; captchaSolution?: string } = {};
+  try {
+    const ch = await postJsonGet<{ token: string; nonce: string; difficulty: number }>(`${base}/api/captcha/challenge`);
+    captcha = { captchaToken: ch.token, captchaSolution: solveChallenge(ch.nonce, ch.difficulty) };
+  } catch {
+    /* challenge endpoint unreachable — server will reject if it requires one */
+  }
+  const deviceId = await getSetting<string>('deviceId');
+  const deviceName = await getSetting<string>('deviceName');
+  const tokens = await postJson<TokenResponse>(`${base}/api/auth/register`, {
+    ...req,
+    deviceId,
+    deviceName,
+    flavor: currentFlavor() ?? 'web',
+    ...captcha,
+  });
   await storeSession(base, tokens);
   return tokens.user;
+}
+
+async function postJsonGet<T>(url: string): Promise<T> {
+  const res = await fetch(url);
+  if (!res.ok) throw new ApiError(`Request failed (${res.status})`, res.status);
+  return (await res.json()) as T;
 }
 
 export async function logout(): Promise<void> {
@@ -185,6 +249,66 @@ export function createApiToken(name?: string): Promise<MintedApiToken> {
 /** Revoke a token by id — it stops authenticating immediately. */
 export function revokeApiToken(id: string): Promise<{ revoked: boolean }> {
   return apiJson<{ revoked: boolean }>(`/api/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+// ── Two-factor auth ──────────────────────────────────────────────────────────
+export interface TotpSetup {
+  secret: string;
+  otpauth: string;
+}
+const jsonPost = (body?: unknown): RequestInit =>
+  body === undefined
+    ? { method: 'POST' } // no content-type: an empty JSON body would be a 400
+    : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) };
+
+export function get2faStatus(): Promise<{ enabled: boolean }> {
+  return apiJson('/api/2fa/status');
+}
+export function setup2fa(): Promise<TotpSetup> {
+  return apiJson('/api/2fa/setup', jsonPost());
+}
+export function enable2fa(code: string): Promise<{ enabled: boolean; recovery: string[] }> {
+  return apiJson('/api/2fa/enable', jsonPost({ code }));
+}
+export function disable2fa(code: string): Promise<{ enabled: boolean }> {
+  return apiJson('/api/2fa/disable', jsonPost({ code }));
+}
+
+// ── Login sessions ───────────────────────────────────────────────────────────
+export interface SessionInfo {
+  id: string;
+  deviceId?: string;
+  deviceName?: string;
+  device?: string;
+  ip?: string;
+  geo?: string;
+  flavor?: string;
+  createdAt: number;
+  lastUsedAt: number;
+}
+export interface AdminSessionInfo extends SessionInfo {
+  userId: string;
+  email: string;
+  role: string;
+  accountName: string;
+}
+
+export function listSessions(): Promise<{ geo: boolean; sessions: SessionInfo[] }> {
+  return apiJson('/api/sessions');
+}
+export function revokeSession(id: string): Promise<{ ok: boolean }> {
+  return apiJson(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+export function listAdminSessions(): Promise<{ geo: boolean; sessions: AdminSessionInfo[] }> {
+  return apiJson('/api/admin/sessions');
+}
+export function revokeAdminSession(id: string): Promise<{ ok: boolean }> {
+  return apiJson(`/api/admin/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** This device's id — lets the sessions UI mark "this device". */
+export function getDeviceId(): Promise<string | undefined> {
+  return getSetting<string>('deviceId');
 }
 
 export async function uploadImage(id: string, blob: Blob): Promise<void> {

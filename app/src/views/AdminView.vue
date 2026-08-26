@@ -9,8 +9,12 @@ import {
   listApiTokens,
   createApiToken,
   revokeApiToken,
+  listAdminSessions,
+  revokeAdminSession,
+  getDeviceId,
   type ApiTokenSummary,
   type MintedApiToken,
+  type AdminSessionInfo,
 } from '@/sync/api';
 import { sendDiagnosticLog } from '@/lib/diagnostics';
 import { showToast } from '@/lib/toast';
@@ -30,21 +34,43 @@ const expandedId = ref<string | null>(null);
 const detail = ref<AdminAccountDetail | null>(null);
 const inviteCode = ref('');
 const inviteBusy = ref(false);
+const sessions = ref<AdminSessionInfo[]>([]);
+const sessionsGeo = ref(false);
+const myDeviceId = ref<string | undefined>();
 
 async function load(): Promise<void> {
   loading.value = true;
   loadError.value = '';
   try {
-    [overview.value, accounts.value, metrics.value, logs.value] = await Promise.all([
+    const [ov, acc, met, lg, ses, dev] = await Promise.all([
       apiJson<AdminOverview>('/api/admin/overview'),
       apiJson<AdminAccount[]>('/api/admin/accounts'),
       apiJson<AdminMetricRow[]>('/api/admin/metrics?days=30'),
       apiJson<AdminLogEntry[]>('/api/admin/logs'),
+      listAdminSessions(),
+      getDeviceId(),
     ]);
+    overview.value = ov;
+    accounts.value = acc;
+    metrics.value = met;
+    logs.value = lg;
+    sessions.value = ses.sessions;
+    sessionsGeo.value = ses.geo;
+    myDeviceId.value = dev;
   } catch (err) {
     loadError.value = err instanceof Error ? err.message : String(err);
   } finally {
     loading.value = false;
+  }
+}
+
+async function revokeSessionRemote(s: AdminSessionInfo): Promise<void> {
+  if (!confirm(`Force log out ${s.email}${s.deviceName ? ` (${s.deviceName})` : ''}?`)) return;
+  try {
+    await revokeAdminSession(s.id);
+    sessions.value = sessions.value.filter((x) => x.id !== s.id);
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : String(err), 'error');
   }
 }
 
@@ -446,6 +472,35 @@ const tiles = computed(() =>
               @click="downloadLog(l)"
             >
               Download
+            </button>
+          </li>
+        </ul>
+      </div>
+
+      <!-- Login sessions (all accounts) -->
+      <div class="mt-4 rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+        <h2 class="mb-2 text-sm font-semibold text-slate-300">Login sessions</h2>
+        <p class="mb-2 text-xs text-slate-500">
+          Every device currently signed in, across accounts — with remote log-out.
+          <span v-if="!sessionsGeo">Location is off (set GEO_LOOKUP=1 to resolve city/country).</span>
+        </p>
+        <p v-if="!sessions.length" class="text-xs text-slate-500">No active sessions.</p>
+        <ul class="space-y-2">
+          <li
+            v-for="s in sessions"
+            :key="s.id"
+            class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg bg-slate-800/50 p-3 text-xs ring-1 ring-slate-700"
+          >
+            <span class="min-w-0 flex-1 truncate font-medium">
+              {{ s.email }}
+              <span v-if="s.deviceId && s.deviceId === myDeviceId" class="ml-1 rounded bg-emerald-950 px-1.5 py-0.5 text-[10px] text-emerald-400">this device</span>
+            </span>
+            <span class="text-slate-400">{{ s.accountName }}</span>
+            <span v-if="s.flavor" class="rounded bg-slate-700 px-1.5 py-0.5 text-[10px] uppercase">{{ s.flavor }}</span>
+            <span class="text-slate-500">{{ [s.device, s.ip, s.geo].filter(Boolean).join(' · ') }}</span>
+            <span class="text-slate-500">seen {{ fmtWhen(s.lastUsedAt) }}</span>
+            <button class="rounded bg-red-950 px-2 py-1 font-medium text-red-300 hover:bg-red-900" @click="revokeSessionRemote(s)">
+              Log out
             </button>
           </li>
         </ul>
