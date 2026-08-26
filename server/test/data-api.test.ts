@@ -48,6 +48,7 @@ function tx(id: string, eventId: string, timestamp: number, total: number): Tran
 
 beforeAll(async () => {
   process.env.REGISTRATION_OPEN = '1';
+  process.env.REQUIRE_CAPTCHA = '0';
   dataDir = mkdtempSync(join(tmpdir(), 'zolltool-data-api-'));
   app = await buildApp({ dataDir, jwtSecret: 'test-secret-test-secret' });
 

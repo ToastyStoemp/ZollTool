@@ -112,6 +112,30 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_api_tokens_account ON api_tokens(accountId);
   `,
+  // v5 — 2FA (TOTP + recovery codes), richer session metadata on refresh tokens
+  // (a refresh token IS a login session → device/IP/geo for the admin overview),
+  // and trusted devices so a 2FA'd device can skip the code on later logins.
+  `
+  ALTER TABLE users ADD COLUMN totpSecret TEXT;                    -- encrypted at rest
+  ALTER TABLE users ADD COLUMN totpEnabled INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE users ADD COLUMN recoveryCodes TEXT;                 -- JSON array of sha256 hashes
+  ALTER TABLE refresh_tokens ADD COLUMN deviceId TEXT;
+  ALTER TABLE refresh_tokens ADD COLUMN deviceName TEXT;
+  ALTER TABLE refresh_tokens ADD COLUMN flavor TEXT;
+  ALTER TABLE refresh_tokens ADD COLUMN ip TEXT;
+  ALTER TABLE refresh_tokens ADD COLUMN device TEXT;
+  ALTER TABLE refresh_tokens ADD COLUMN geo TEXT;
+  ALTER TABLE refresh_tokens ADD COLUMN lastUsedAt INTEGER;
+  CREATE TABLE trusted_devices (
+    id        TEXT PRIMARY KEY,
+    userId    TEXT NOT NULL REFERENCES users(id),
+    deviceId  TEXT NOT NULL,
+    tokenHash TEXT NOT NULL UNIQUE,
+    expiresAt INTEGER NOT NULL,
+    createdAt INTEGER NOT NULL
+  );
+  CREATE INDEX idx_trusted_user ON trusted_devices(userId, deviceId);
+  `,
 ];
 
 export function openDb(dataDir: string): Database.Database {

@@ -11,9 +11,29 @@ import {
   type UserRole,
 } from '@zolltool/shared';
 import { bumpMetric } from './db';
+import { generateSecret, otpauthUri, verifyToken, generateRecoveryCodes, hashRecovery } from './totp';
+import { issueChallenge, verifyChallenge } from './captcha';
+import { makeSecretBox } from './secretbox';
+import { parseDevice, lookupGeo, geoEnabled } from './session-info';
 
 const ACCESS_TTL = '15m';
-const REFRESH_TTL_MS = 30 * 24 * 3600 * 1000;
+const DAY = 24 * 3600 * 1000;
+// Refresh-token idle lifetime, sliding on every refresh. Longer for the Carbon
+// POS so a device used at conventions every few weeks never re-prompts 2FA.
+const REFRESH_TTL_WEB = Number(process.env.REFRESH_TTL_DAYS || 30) * DAY;
+const REFRESH_TTL_CARBON = Number(process.env.REFRESH_TTL_DAYS_CARBON || 90) * DAY;
+const refreshTtl = (flavor?: string | null): number => (flavor === 'carbon' ? REFRESH_TTL_CARBON : REFRESH_TTL_WEB);
+// After a 2FA login on a device, that device can skip the code for this long.
+const TRUST_TTL = Number(process.env.DEVICE_TRUST_DAYS || 60) * DAY;
+
+interface SessionInfo {
+  deviceId?: string | null;
+  deviceName?: string | null;
+  flavor?: string | null;
+  ip?: string | null;
+  device?: string | null;
+  geo?: string | null;
+}
 
 // A valid argon2id hash of a throwaway value. Verified against on login when the
 // email is unknown, so a missing user costs the same time as a wrong password —
@@ -32,6 +52,9 @@ interface UserRow {
   email: string;
   passwordHash: string;
   role: UserRole;
+  totpSecret?: string | null;
+  totpEnabled?: number;
+  recoveryCodes?: string | null;
 }
 
 function sha256(s: string): string {
@@ -43,18 +66,58 @@ function toAuthUser(db: Database.Database, user: UserRow): AuthUser {
   return { id: user.id, email: user.email, role: user.role, accountId: user.accountId, accountName: account.name };
 }
 
-async function issueTokens(app: FastifyInstance, db: Database.Database, user: UserRow): Promise<TokenResponse> {
+async function issueTokens(
+  app: FastifyInstance,
+  db: Database.Database,
+  user: UserRow,
+  session: SessionInfo = {},
+): Promise<TokenResponse> {
   const claims: JwtClaims = { sub: user.id, accountId: user.accountId, role: user.role };
   const accessToken = app.jwt.sign(claims, { expiresIn: ACCESS_TTL });
   const refreshToken = randomBytes(32).toString('hex');
-  db.prepare('INSERT INTO refresh_tokens (id, userId, tokenHash, expiresAt, createdAt) VALUES (?, ?, ?, ?, ?)').run(
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO refresh_tokens (id, userId, tokenHash, expiresAt, createdAt, deviceId, deviceName, flavor, ip, device, geo, lastUsedAt)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
     randomUUID(),
     user.id,
     sha256(refreshToken),
-    Date.now() + REFRESH_TTL_MS,
-    Date.now(),
+    now + refreshTtl(session.flavor),
+    now,
+    session.deviceId ?? null,
+    session.deviceName ?? null,
+    session.flavor ?? null,
+    session.ip ?? null,
+    session.device ?? null,
+    session.geo ?? null,
+    now,
   );
   return { accessToken, refreshToken, user: toAuthUser(db, user) };
+}
+
+// ── Device trust: a 2FA'd device can skip the code on later logins ───────────
+function issueDeviceTrust(db: Database.Database, userId: string, deviceId: string): string {
+  const token = randomBytes(32).toString('hex');
+  db.prepare('INSERT INTO trusted_devices (id, userId, deviceId, tokenHash, expiresAt, createdAt) VALUES (?, ?, ?, ?, ?, ?)').run(
+    randomUUID(),
+    userId,
+    deviceId,
+    sha256(token),
+    Date.now() + TRUST_TTL,
+    Date.now(),
+  );
+  return token;
+}
+function deviceTrusted(db: Database.Database, userId: string, deviceId: string | undefined, token: string | undefined): boolean {
+  if (!deviceId || !token) return false;
+  const row = db
+    .prepare('SELECT id FROM trusted_devices WHERE userId = ? AND deviceId = ? AND tokenHash = ? AND expiresAt > ?')
+    .get(userId, deviceId, sha256(token), Date.now());
+  return !!row;
+}
+function clearDeviceTrust(db: Database.Database, userId: string): void {
+  db.prepare('DELETE FROM trusted_devices WHERE userId = ?').run(userId);
 }
 
 function touchDevice(db: Database.Database, accountId: string, userId: string, deviceId?: string, name?: string): void {
@@ -84,7 +147,11 @@ export async function seedOwner(db: Database.Database): Promise<void> {
   );
 }
 
-export function registerAuthRoutes(app: FastifyInstance, db: Database.Database): void {
+export function registerAuthRoutes(app: FastifyInstance, db: Database.Database, jwtSecret: string): void {
+  const box = makeSecretBox(jwtSecret); // encrypts TOTP secrets at rest
+  const requireCaptcha = process.env.REQUIRE_CAPTCHA !== '0';
+  const has2fa = (u: UserRow): boolean => !!u.totpEnabled;
+
   // Caps for the auth surface (per client IP). Login/register run an expensive
   // argon2 hash, so this blunts both password brute-forcing and the CPU-DoS of
   // hammering the hasher. Kept generous enough that a venue full of helper
@@ -102,11 +169,22 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database):
     config: { rateLimit: { max: Number(process.env.REFRESH_RATE_LIMIT_MAX || 60), timeWindow: '1 minute' } },
   };
 
+  // Public proof-of-work CAPTCHA challenge (the client solves it before register).
+  app.get('/api/captcha/challenge', async () => issueChallenge());
+
   app.post('/api/auth/register', AUTH_RATE_LIMIT, async (req, reply) => {
     const parsed = RegisterRequestSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid request' });
     const { email, password, inviteCode, accountName } = parsed.data;
     const emailLc = email.toLowerCase();
+
+    // Account creation is bot-gated by the proof-of-work CAPTCHA (unless disabled
+    // for tests/headless via REQUIRE_CAPTCHA=0).
+    if (requireCaptcha) {
+      const b = (req.body ?? {}) as { captchaToken?: string; captchaSolution?: string };
+      const cap = verifyChallenge(b.captchaToken ?? '', b.captchaSolution ?? '');
+      if (!cap.ok) return reply.code(400).send({ error: cap.error });
+    }
 
     if (db.prepare('SELECT id FROM users WHERE email = ?').get(emailLc)) {
       return reply.code(409).send({ error: 'Email already registered' });
@@ -152,13 +230,20 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database):
     if (invite) db.prepare('UPDATE invites SET usedBy = ? WHERE code = ?').run(user.id, invite.code);
 
     bumpMetric(db, accountId, 'logins');
-    return issueTokens(app, db, user);
+    const b = (req.body ?? {}) as { flavor?: string };
+    return issueTokens(app, db, user, {
+      flavor: b.flavor ?? null,
+      ip: req.ip,
+      device: parseDevice(req.headers['user-agent']),
+      geo: await lookupGeo(req.ip),
+    });
   });
 
   app.post('/api/auth/login', AUTH_RATE_LIMIT, async (req, reply) => {
     const parsed = LoginRequestSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: 'Invalid request' });
     const { email, password, deviceId, deviceName } = parsed.data;
+    const b = (req.body ?? {}) as { code?: string; flavor?: string; trustToken?: string; rememberDevice?: boolean };
 
     const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email.toLowerCase()) as UserRow | undefined;
     // Always run a verify — against the real hash or a dummy — so an unknown
@@ -168,10 +253,39 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database):
       return reply.code(401).send({ error: 'Wrong email or password' });
     }
 
+    // Second factor, unless this device is already trusted from a prior 2FA login.
+    let usedRecovery = false;
+    if (has2fa(user) && !deviceTrusted(db, user.id, deviceId, b.trustToken)) {
+      const code = String(b.code ?? '').trim();
+      if (!code) return reply.code(401).send({ error: 'Authenticator code required.', needs2fa: true });
+      if (verifyToken(box.decrypt<string>(user.totpSecret as string), code)) {
+        /* valid TOTP */
+      } else {
+        const codes: string[] = JSON.parse(user.recoveryCodes ?? '[]');
+        const idx = codes.indexOf(hashRecovery(code));
+        if (idx < 0) return reply.code(401).send({ error: 'Invalid authenticator code.', needs2fa: true });
+        codes.splice(idx, 1); // recovery codes are single-use
+        db.prepare('UPDATE users SET recoveryCodes = ? WHERE id = ?').run(JSON.stringify(codes), user.id);
+        usedRecovery = true;
+      }
+    }
+
     db.prepare('UPDATE users SET lastLoginAt = ? WHERE id = ?').run(Date.now(), user.id);
     touchDevice(db, user.accountId, user.id, deviceId, deviceName);
     bumpMetric(db, user.accountId, 'logins');
-    return issueTokens(app, db, user);
+    const tokens = await issueTokens(app, db, user, {
+      deviceId,
+      deviceName,
+      flavor: b.flavor ?? null,
+      ip: req.ip,
+      device: parseDevice(req.headers['user-agent']),
+      geo: await lookupGeo(req.ip),
+    });
+    // "Remember this device" — issue a trust token so 2FA is skipped here next time.
+    const extra: Record<string, unknown> = {};
+    if (has2fa(user) && b.rememberDevice && deviceId) extra.deviceTrustToken = issueDeviceTrust(db, user.id, deviceId);
+    if (usedRecovery) extra.usedRecovery = true;
+    return { ...tokens, ...extra };
   });
 
   app.post('/api/auth/refresh', REFRESH_RATE_LIMIT, async (req, reply) => {
@@ -180,15 +294,82 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database):
 
     const hash = sha256(parsed.data.refreshToken);
     const row = db
-      .prepare('SELECT id, userId FROM refresh_tokens WHERE tokenHash = ? AND expiresAt > ?')
-      .get(hash, Date.now()) as { id: string; userId: string } | undefined;
+      .prepare('SELECT id, userId, deviceId, deviceName, flavor, ip, device, geo FROM refresh_tokens WHERE tokenHash = ? AND expiresAt > ?')
+      .get(hash, Date.now()) as
+      | { id: string; userId: string; deviceId: string | null; deviceName: string | null; flavor: string | null; ip: string | null; device: string | null; geo: string | null }
+      | undefined;
     if (!row) return reply.code(401).send({ error: 'Invalid refresh token' });
 
-    // Rotate: the old token is single-use.
+    // Rotate: the old token is single-use. The new one carries the session's
+    // device/geo forward and slides its expiry by the flavor's TTL.
     db.prepare('DELETE FROM refresh_tokens WHERE id = ?').run(row.id);
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(row.userId) as UserRow | undefined;
     if (!user) return reply.code(401).send({ error: 'User no longer exists' });
-    return issueTokens(app, db, user);
+    return issueTokens(app, db, user, {
+      deviceId: row.deviceId,
+      deviceName: row.deviceName,
+      flavor: row.flavor,
+      ip: row.ip,
+      device: row.device,
+      geo: row.geo,
+    });
+  });
+
+  // ── Two-factor auth (TOTP authenticator) ───────────────────────────────────
+  app.get('/api/2fa/status', { preHandler: app.authenticate }, async (req) => {
+    const claims = req.user as JwtClaims;
+    const u = db.prepare('SELECT totpEnabled FROM users WHERE id = ?').get(claims.sub) as { totpEnabled: number } | undefined;
+    return { enabled: !!u?.totpEnabled };
+  });
+  app.post('/api/2fa/setup', { preHandler: app.authenticate }, async (req) => {
+    const claims = req.user as JwtClaims;
+    const u = db.prepare('SELECT email FROM users WHERE id = ?').get(claims.sub) as { email: string };
+    const secret = generateSecret();
+    db.prepare('UPDATE users SET totpSecret = ?, totpEnabled = 0 WHERE id = ?').run(box.encrypt(secret), claims.sub);
+    return { secret, otpauth: otpauthUri({ secret, account: u.email, issuer: 'ZollTool' }) };
+  });
+  app.post('/api/2fa/enable', { preHandler: app.authenticate }, async (req, reply) => {
+    const claims = req.user as JwtClaims;
+    const u = db.prepare('SELECT totpSecret FROM users WHERE id = ?').get(claims.sub) as { totpSecret: string | null } | undefined;
+    if (!u?.totpSecret) return reply.code(400).send({ error: 'Start 2FA setup first.' });
+    const code = String((req.body as { code?: string } | undefined)?.code ?? '').trim();
+    if (!verifyToken(box.decrypt<string>(u.totpSecret), code)) {
+      return reply.code(400).send({ error: 'That code is not valid — check your device clock and try again.' });
+    }
+    const codes = generateRecoveryCodes(10);
+    db.prepare('UPDATE users SET totpEnabled = 1, recoveryCodes = ? WHERE id = ?').run(JSON.stringify(codes.map(hashRecovery)), claims.sub);
+    return { enabled: true, recovery: codes };
+  });
+  app.post('/api/2fa/disable', { preHandler: app.authenticate }, async (req, reply) => {
+    const claims = req.user as JwtClaims;
+    const u = db.prepare('SELECT totpSecret, totpEnabled, recoveryCodes FROM users WHERE id = ?').get(claims.sub) as UserRow | undefined;
+    if (!u?.totpEnabled) return { enabled: false };
+    const code = String((req.body as { code?: string } | undefined)?.code ?? '').trim();
+    const recovery: string[] = JSON.parse(u.recoveryCodes ?? '[]');
+    const ok = verifyToken(box.decrypt<string>(u.totpSecret as string), code) || recovery.includes(hashRecovery(code));
+    if (!ok) return reply.code(400).send({ error: 'Enter a valid authenticator or recovery code to disable 2FA.' });
+    db.prepare('UPDATE users SET totpSecret = NULL, totpEnabled = 0, recoveryCodes = NULL WHERE id = ?').run(claims.sub);
+    clearDeviceTrust(db, claims.sub);
+    return { enabled: false };
+  });
+
+  // ── Sessions (this user) ───────────────────────────────────────────────────
+  app.get('/api/sessions', { preHandler: app.authenticate }, async (req) => {
+    const claims = req.user as JwtClaims;
+    const sessions = db
+      .prepare(
+        `SELECT id, deviceId, deviceName, device, ip, geo, flavor, createdAt, lastUsedAt
+         FROM refresh_tokens WHERE userId = ? AND expiresAt > ? ORDER BY lastUsedAt DESC`,
+      )
+      .all(claims.sub, Date.now());
+    return { geo: geoEnabled(), sessions };
+  });
+  app.delete('/api/sessions/:id', { preHandler: app.authenticate }, async (req, reply) => {
+    const claims = req.user as JwtClaims;
+    const { id } = req.params as { id: string };
+    const info = db.prepare('DELETE FROM refresh_tokens WHERE id = ? AND userId = ?').run(id, claims.sub);
+    if (!info.changes) return reply.code(404).send({ error: 'Session not found' });
+    return { ok: true };
   });
 
   // Members invite helpers' devices into their account; the server owner can

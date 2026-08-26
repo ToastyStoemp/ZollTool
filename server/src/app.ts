@@ -82,7 +82,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
 
   const rooms = new Rooms();
   await registerWs(app, rooms, db);
-  registerAuthRoutes(app, db);
+  registerAuthRoutes(app, db, opts.jwtSecret);
   registerSyncRoutes(app, db, rooms);
   registerImageRoutes(app, db, opts.dataDir);
   registerAdminRoutes(app, db);

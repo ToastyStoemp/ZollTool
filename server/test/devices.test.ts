@@ -13,6 +13,7 @@ let bob: TokenResponse;
 
 beforeAll(async () => {
   process.env.REGISTRATION_OPEN = '1';
+  process.env.REQUIRE_CAPTCHA = '0';
   dataDir = mkdtempSync(join(tmpdir(), 'zolltool-devices-'));
   app = await buildApp({ dataDir, jwtSecret: 'test-secret-test-secret' });
 

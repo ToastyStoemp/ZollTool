@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type Database from 'better-sqlite3';
 import type { AdminAccount, AdminAccountDetail, AdminMetricRow, AdminOverview } from '@zolltool/shared';
 import type { JwtClaims } from '../auth';
+import { geoEnabled } from '../session-info';
 
 /** Owner-only usage/health endpoints backing the /admin panel in the app. */
 export function registerAdminRoutes(app: FastifyInstance, db: Database.Database): void {
@@ -73,5 +74,26 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database.Database)
          ORDER BY m.day, a.name`,
       )
       .all(`-${days} days`) as AdminMetricRow[];
+  });
+
+  // All active login sessions across accounts, with device + geo, and remote
+  // log-out. A refresh token IS a session (rotating; sliding TTL).
+  app.get('/api/admin/sessions', guard, async () => {
+    const sessions = db
+      .prepare(
+        `SELECT r.id, r.userId, u.email, u.role, a.name AS accountName,
+                r.deviceId, r.deviceName, r.device, r.ip, r.geo, r.flavor, r.createdAt, r.lastUsedAt
+         FROM refresh_tokens r JOIN users u ON u.id = r.userId JOIN accounts a ON a.id = u.accountId
+         WHERE r.expiresAt > ? ORDER BY r.lastUsedAt DESC`,
+      )
+      .all(Date.now());
+    return { geo: geoEnabled(), sessions };
+  });
+
+  app.delete('/api/admin/sessions/:id', guard, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const info = db.prepare('DELETE FROM refresh_tokens WHERE id = ?').run(id);
+    if (!info.changes) return reply.code(404).send({ error: 'Session not found' });
+    return { ok: true };
   });
 }

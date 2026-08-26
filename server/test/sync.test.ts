@@ -11,6 +11,7 @@ let dataDir: string;
 
 beforeAll(async () => {
   process.env.REGISTRATION_OPEN = '1';
+  process.env.REQUIRE_CAPTCHA = '0';
   process.env.OWNER_EMAIL = 'owner@example.com';
   process.env.OWNER_PASSWORD = 'owner-secret-pw';
   dataDir = mkdtempSync(join(tmpdir(), 'zolltool-test-'));
