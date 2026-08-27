@@ -299,6 +299,11 @@ export function listSessions(): Promise<{ geo: boolean; sessions: SessionInfo[] 
 export function revokeSession(id: string): Promise<{ ok: boolean }> {
   return apiJson(`/api/sessions/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
+/** Log out everywhere except this device. */
+export async function revokeOtherSessions(): Promise<{ revoked: number }> {
+  const deviceId = await getSetting<string>('deviceId');
+  return apiJson('/api/sessions/revoke-others', jsonPost({ deviceId }));
+}
 export function listAdminSessions(): Promise<{ geo: boolean; sessions: AdminSessionInfo[] }> {
   return apiJson('/api/admin/sessions');
 }

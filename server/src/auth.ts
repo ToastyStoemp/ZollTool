@@ -371,6 +371,15 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database, 
     if (!info.changes) return reply.code(404).send({ error: 'Session not found' });
     return { ok: true };
   });
+  // Log out everywhere except the current device (identified by its deviceId).
+  app.post('/api/sessions/revoke-others', { preHandler: app.authenticate }, async (req) => {
+    const claims = req.user as JwtClaims;
+    const keep = (req.body as { deviceId?: string } | undefined)?.deviceId;
+    const info = keep
+      ? db.prepare('DELETE FROM refresh_tokens WHERE userId = ? AND (deviceId IS NULL OR deviceId != ?)').run(claims.sub, keep)
+      : db.prepare('DELETE FROM refresh_tokens WHERE userId = ?').run(claims.sub);
+    return { revoked: info.changes };
+  });
 
   // Members invite helpers' devices into their account; the server owner can
   // also mint invites that create brand-new accounts (newAccount: true).

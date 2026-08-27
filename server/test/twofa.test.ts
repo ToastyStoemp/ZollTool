@@ -106,6 +106,18 @@ describe('captcha + 2FA + sessions', () => {
     expect((after.json().sessions as unknown[]).some((s) => (s as { id: string }).id === target.id)).toBe(false);
   });
 
+  it('logs out all other devices, keeping the current one', async () => {
+    // Create a real session on another device (needs a code), plus the trusted dev-1.
+    expect((await post('/api/auth/login', { email: 'a@x.com', password: 'password12', deviceId: 'dev-2', code: generateToken(secret) })).statusCode).toBe(200);
+    const access = (await login({ trustToken })).json().accessToken as string;
+    const res = await post('/api/sessions/revoke-others', { deviceId: 'dev-1' }, access);
+    expect(res.statusCode).toBe(200);
+    const after = (await app.inject({ method: 'GET', url: '/api/sessions', headers: { authorization: `Bearer ${access}` } })).json()
+      .sessions as Array<{ deviceId: string }>;
+    expect(after.some((s) => s.deviceId === 'dev-2')).toBe(false);
+    expect(after.some((s) => s.deviceId === 'dev-1')).toBe(true);
+  });
+
   it('disabling 2FA restores password-only login', async () => {
     const access = (await login({ trustToken })).json().accessToken as string;
     expect((await post('/api/2fa/disable', { code: generateToken(secret) }, access)).statusCode).toBe(200);

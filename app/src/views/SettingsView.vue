@@ -19,6 +19,7 @@ import {
   disable2fa,
   listSessions,
   revokeSession,
+  revokeOtherSessions,
   getDeviceId,
   type SessionInfo,
   type TotpSetup,
@@ -242,6 +243,16 @@ async function doRevokeSession(id: string): Promise<void> {
   try {
     await revokeSession(id);
     await loadSessions();
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : String(err), 'error');
+  }
+}
+async function doRevokeOthers(): Promise<void> {
+  if (!confirm('Log out all other devices? They will need to sign in again.')) return;
+  try {
+    const r = await revokeOtherSessions();
+    await loadSessions();
+    showToast(`Logged out ${r.revoked} other session${r.revoked === 1 ? '' : 's'}`, 'success');
   } catch (err) {
     showToast(err instanceof Error ? err.message : String(err), 'error');
   }
@@ -1388,6 +1399,13 @@ async function onImportFile(e: Event): Promise<void> {
       <div class="mb-2 flex items-center gap-2">
         <h2 class="text-sm font-semibold text-slate-300">Your login sessions</h2>
         <button class="rounded bg-slate-800 px-2 py-1 text-[0.65rem] text-slate-300 hover:bg-slate-700" @click="loadSessions">Refresh</button>
+        <button
+          v-if="sessions.length > 1"
+          class="ml-auto rounded px-2 py-1 text-[0.65rem] text-red-400 hover:bg-red-950"
+          @click="doRevokeOthers"
+        >
+          Log out all others
+        </button>
       </div>
       <p class="mb-2 text-xs text-slate-500">
         Devices currently signed in to your account.
