@@ -123,7 +123,7 @@ async function submit(): Promise<void> {
             v-if="!invite"
             v-model="accountName"
             type="text"
-            placeholder="Account name, e.g. GET UP GAMES"
+            placeholder="Account name, e.g. Phuong Ninjin"
             class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm"
           />
         </template>

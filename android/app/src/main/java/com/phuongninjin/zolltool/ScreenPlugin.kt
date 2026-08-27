@@ -1,4 +1,4 @@
-package com.getupgames.zolltool
+package com.phuongninjin.zolltool
 
 import android.app.KeyguardManager
 import android.content.Context

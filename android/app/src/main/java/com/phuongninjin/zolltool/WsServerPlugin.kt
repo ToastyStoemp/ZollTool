@@ -1,4 +1,4 @@
-package com.getupgames.zolltool
+package com.phuongninjin.zolltool
 
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin

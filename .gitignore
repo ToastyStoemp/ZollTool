@@ -28,3 +28,4 @@ server/docker-compose.override.yml
 # Real ZollBridge config (COM port, SumUp secret key) — copy config.example.json to
 # config.json and edit the copy; never the tracked template.
 bridge/config.json
+server/data-localtest

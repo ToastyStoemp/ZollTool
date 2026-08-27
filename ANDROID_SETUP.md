@@ -36,15 +36,15 @@ npx cap sync android
 ### 3a  Copy the plugin source file
 
 ```
-copy android-src\MyPosPlugin.kt  android\app\src\main\java\com\getupgames\zolltool\MyPosPlugin.kt
+copy android-src\MyPosPlugin.kt  android\app\src\main\java\com\phuongninjin\zolltool\MyPosPlugin.kt
 ```
 
 ### 3b  Edit MainActivity.java to register the plugin
 
-Open `android/app/src/main/java/com/getupgames/zolltool/MainActivity.java` and replace it with:
+Open `android/app/src/main/java/com/phuongninjin/zolltool/MainActivity.java` and replace it with:
 
 ```java
-package com.getupgames.zolltool;
+package com.phuongninjin.zolltool;
 
 import android.os.Bundle;
 import com.getcapacitor.BridgeActivity;

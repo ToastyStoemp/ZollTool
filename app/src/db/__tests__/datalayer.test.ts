@@ -20,7 +20,7 @@ const V1_STATE = {
     venueTIN: 'CHE222251936',
     currency: 'CHF',
   },
-  artist: { companyName: 'GET UP GAMES' },
+  artist: { companyName: 'Phuong Ninjin' },
   edec: { transportMode: 'road' },
   form1174: { groupMode: 'auto', assignments: [] },
   products: [
@@ -151,7 +151,7 @@ describe('importV1State', () => {
 
   it('saves the v1 artist block as the artist defaults', async () => {
     const defaults = (await db.settings.get('customs.artistDefaults'))!.value as Record<string, unknown>;
-    expect(defaults.companyName).toBe('GET UP GAMES');
+    expect(defaults.companyName).toBe('Phuong Ninjin');
   });
 });
 

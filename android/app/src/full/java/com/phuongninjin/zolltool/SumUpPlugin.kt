@@ -1,4 +1,4 @@
-package com.getupgames.zolltool
+package com.phuongninjin.zolltool
 
 import android.content.Intent
 import com.getcapacitor.JSObject

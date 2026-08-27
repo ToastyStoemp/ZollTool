@@ -351,7 +351,7 @@ async function removePinSettings(): Promise<void> {
           </template>
           <template v-if="authMode === 'register'">
             <input v-model="authInvite" type="text" placeholder="Invite code (joins an existing account)" class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm" />
-            <input v-if="!authInvite" v-model="authAccountName" type="text" placeholder="Account name, e.g. GET UP GAMES" class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm" />
+            <input v-if="!authInvite" v-model="authAccountName" type="text" placeholder="Account name, e.g. Phuong Ninjin" class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm" />
           </template>
           <p v-if="authError" class="text-xs text-red-400">{{ authError }}</p>
           <button type="submit" class="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" :disabled="authBusy">

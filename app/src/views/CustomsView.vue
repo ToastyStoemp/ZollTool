@@ -112,7 +112,7 @@ watch([artist, edec, form1174, companyCode, documentNumber, venueName, eventLoca
   deep: true,
 });
 
-/** Auto company code from the artist name initials, e.g. "Get Up Games" → "GUG". */
+/** Auto company code from the artist name initials, e.g. "Phuong Ninjin" → "PN". */
 const autoCompanyCode = computed(() => {
   const name = (artist.value.companyName || artist.value.fullName || '').trim();
   if (!name) return '';
