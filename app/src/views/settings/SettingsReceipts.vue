@@ -147,7 +147,7 @@ const sampleTx = computed<Transaction>(() => ({
     { pid: 'p2', vid: 'v1', title: 'Art print A4', variantLabel: 'Forest', qty: 1, unitPrice: 25, lineTotal: 25 },
   ],
   discounts: [{ name: 'Bundle deal', amount: 2 }],
-  payments: [{ kind: 'card', amount: 47, provider: 'card', cardBrand: 'VISA', authCode: '004215' }],
+  payments: [{ kind: 'card', amount: 47, provider: 'card', cardBrand: 'VISA', authCode: '004215', txRef: '304512780093' }],
 }));
 const previewLines = computed<ReceiptLine[]>(() =>
   buildReceiptLines(

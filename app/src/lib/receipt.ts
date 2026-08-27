@@ -174,6 +174,9 @@ export function buildReceiptLines(
         text: `  ${[leg.cardBrand, leg.authCode ? `auth ${leg.authCode}` : ''].filter(Boolean).join(' · ')}`,
       });
     }
+    // The card processor's transaction reference (e.g. myPOS transaction ID) —
+    // handy for reconciliation and refunds.
+    if (leg.txRef) lines.push({ kind: 'text', text: `  Txn ${leg.txRef}` });
   }
 
   // ── Footer ──
