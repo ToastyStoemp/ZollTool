@@ -413,7 +413,7 @@ void printingAvailable().then((ok) => (canPrintReceipts.value = ok));
 async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
   try {
     const config = await loadReceiptConfig();
-    const lines = buildReceiptLines(tx, eventName(tx.eventId), config);
+    const lines = buildReceiptLines(tx, eventName(tx.eventId), config, data.events.find((e) => e.id === tx.eventId)?.venue?.country);
     const result = await printReceiptLines(lines);
     if (!result.printed) showToast(`Receipt: ${result.error ?? 'print failed'}`, 'error');
   } catch (err) {

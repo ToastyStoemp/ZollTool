@@ -18,6 +18,12 @@ export interface ReceiptLine {
   imageB64?: string;
 }
 
+/** One country's VAT/UID registration, chosen by the event's country. */
+export interface CountryVat {
+  country: string;
+  vatNumber: string;
+}
+
 /** Stored under the 'customs.artistDefaults' setting (shared with customs prefill). */
 export interface ArtistInfo {
   companyName?: string;
@@ -27,8 +33,23 @@ export interface ArtistInfo {
   countryOfOrigin?: string;
   phone?: string;
   email?: string;
-  /** VAT / UID number printed on receipts, e.g. CHE-123.456.789 MWST */
+  /** Default VAT / UID number printed on receipts, e.g. CHE-123.456.789 MWST */
   vatNumber?: string;
+  /** Per-country VAT numbers; the receipt uses the one matching the event's country. */
+  vatNumbers?: CountryVat[];
+}
+
+/**
+ * The VAT number to print for a sale in `country`: the country-specific
+ * registration if one is set, otherwise the default `vatNumber`.
+ */
+export function resolveVatNumber(artist: ArtistInfo, country?: string): string {
+  const c = (country ?? '').trim().toLowerCase();
+  if (c && artist.vatNumbers?.length) {
+    const hit = artist.vatNumbers.find((v) => v.country.trim().toLowerCase() === c && v.vatNumber.trim());
+    if (hit) return hit.vatNumber.trim();
+  }
+  return artist.vatNumber?.trim() ?? '';
 }
 
 export const RECEIPT_KEYS = {
@@ -103,6 +124,7 @@ export function buildReceiptLines(
   tx: Transaction,
   eventName: string,
   config: { artist: ArtistInfo; logoB64: string; footerText: string },
+  eventCountry?: string,
 ): ReceiptLine[] {
   const { artist, logoB64, footerText } = config;
   const lines: ReceiptLine[] = [];
@@ -117,7 +139,8 @@ export function buildReceiptLines(
   if (cityLine) lines.push(center(cityLine));
   if (artist.phone) lines.push(center(artist.phone));
   if (artist.email) lines.push(center(artist.email));
-  if (artist.vatNumber) lines.push(center(`VAT: ${artist.vatNumber}`));
+  const vat = resolveVatNumber(artist, eventCountry);
+  if (vat) lines.push(center(`VAT: ${vat}`));
 
   lines.push({ kind: 'text', text: DIVIDER });
   const when = new Date(tx.timestamp);

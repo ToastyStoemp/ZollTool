@@ -202,7 +202,7 @@ async function printLastSale(): Promise<void> {
   if (!lastSale.value) return;
   try {
     const config = await loadReceiptConfig();
-    const lines = buildReceiptLines(lastSale.value, data.activeEvent?.name ?? '', config);
+    const lines = buildReceiptLines(lastSale.value, data.activeEvent?.name ?? '', config, data.activeEvent?.venue?.country);
     const result = await printReceipt(lines);
     showToast(result.printed ? 'Receipt printed' : `Receipt: ${result.error ?? 'print failed'}`, result.printed ? 'success' : 'error');
   } catch (err) {
@@ -611,7 +611,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
   try {
     const config = await loadReceiptConfig();
     if (!config.autoPrint || !(await printingAvailable())) return;
-    const lines = buildReceiptLines(tx, data.activeEvent?.name ?? '', config);
+    const lines = buildReceiptLines(tx, data.activeEvent?.name ?? '', config, data.activeEvent?.venue?.country);
     const result = await printReceipt(lines);
     if (!result.printed) showToast(`Receipt: ${result.error ?? 'print failed'}`, 'error');
   } catch (err) {

@@ -1,9 +1,12 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { getSetting, setSetting, setSyncedSetting } from '@/db/repo';
 import { showToast } from '@/lib/toast';
+import { useSettingsStore } from '@/stores/settings';
+import type { Transaction } from '@zolltool/shared';
 import {
   RECEIPT_KEYS,
+  buildReceiptLines,
   loadReceiptConfig,
   printReceipt,
   printingAvailable,
@@ -13,7 +16,10 @@ import {
   type ReceiptLine,
 } from '@/lib/receipt';
 import { ThermalPrinter, hasNativePlugin } from '@/native/plugins';
+import ReceiptPreview from '@/components/ReceiptPreview.vue';
 import SettingsShell from './SettingsShell.vue';
+
+const settings = useSettingsStore();
 
 const artistDraft = reactive<Required<ArtistInfo>>({
   companyName: '',
@@ -24,7 +30,14 @@ const artistDraft = reactive<Required<ArtistInfo>>({
   phone: '',
   email: '',
   vatNumber: '',
+  vatNumbers: [],
 });
+function addVatRow(): void {
+  artistDraft.vatNumbers.push({ country: '', vatNumber: '' });
+}
+function removeVatRow(i: number): void {
+  artistDraft.vatNumbers.splice(i, 1);
+}
 const receiptLogo = ref('');
 const receiptFooterDraft = ref('');
 const receiptAutoPrint = ref(false);
@@ -45,8 +58,12 @@ async function refreshPrintAvailability(): Promise<void> {
 onMounted(async () => {
   const artist = (await getSetting<ArtistInfo>(RECEIPT_KEYS.artist)) ?? {};
   for (const key of Object.keys(artistDraft) as (keyof ArtistInfo)[]) {
-    if (typeof artist[key] === 'string') artistDraft[key] = artist[key] as string;
+    const val = artist[key];
+    if (typeof val === 'string') (artistDraft as unknown as Record<string, string>)[key] = val;
   }
+  artistDraft.vatNumbers = Array.isArray(artist.vatNumbers)
+    ? artist.vatNumbers.map((v) => ({ country: v.country ?? '', vatNumber: v.vatNumber ?? '' }))
+    : [];
   receiptLogo.value = (await getSetting<string>(RECEIPT_KEYS.logoB64)) ?? '';
   receiptFooterDraft.value = (await getSetting<string>(RECEIPT_KEYS.footerText)) ?? '';
   receiptAutoPrint.value = (await getSetting<boolean>(RECEIPT_KEYS.autoPrint)) ?? false;
@@ -104,11 +121,42 @@ async function testPrint(): Promise<void> {
   }
 }
 async function saveArtistInfo(): Promise<void> {
-  await setSyncedSetting(RECEIPT_KEYS.artist, { ...artistDraft });
+  const vatNumbers = artistDraft.vatNumbers
+    .map((v) => ({ country: v.country.trim(), vatNumber: v.vatNumber.trim() }))
+    .filter((v) => v.country && v.vatNumber);
+  await setSyncedSetting(RECEIPT_KEYS.artist, { ...artistDraft, vatNumbers });
   await setSyncedSetting(RECEIPT_KEYS.footerText, receiptFooterDraft.value);
   artistSaved.value = true;
   setTimeout(() => (artistSaved.value = false), 2000);
 }
+
+// ── Live preview ────────────────────────────────────────────────────────────
+// A sample sale; the VAT line resolves against `previewCountry` so the effect
+// of the per-country VAT numbers is visible.
+const previewCountry = ref('');
+const sampleTx = computed<Transaction>(() => ({
+  id: 'PREVIEW000A1B2C3',
+  eventId: 'preview',
+  deviceId: 'preview',
+  timestamp: Date.now(),
+  method: 'card',
+  currency: settings.defaultCurrency || 'CHF',
+  total: 47,
+  items: [
+    { pid: 'p1', vid: null, title: 'Enamel pin — Dragon', qty: 2, unitPrice: 12, lineTotal: 24 },
+    { pid: 'p2', vid: 'v1', title: 'Art print A4', variantLabel: 'Forest', qty: 1, unitPrice: 25, lineTotal: 25 },
+  ],
+  discounts: [{ name: 'Bundle deal', amount: 2 }],
+  payments: [{ kind: 'card', amount: 47, provider: 'card', cardBrand: 'VISA', authCode: '004215' }],
+}));
+const previewLines = computed<ReceiptLine[]>(() =>
+  buildReceiptLines(
+    sampleTx.value,
+    previewCountry.value ? `Convention · ${previewCountry.value}` : 'Sample Convention',
+    { artist: artistDraft, logoB64: receiptLogo.value, footerText: receiptFooterDraft.value },
+    previewCountry.value || undefined,
+  ),
+);
 async function onLogoFile(e: Event): Promise<void> {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -162,7 +210,7 @@ async function toggleAutoPrint(): Promise<void> {
           <input v-model="artistDraft.countryOfOrigin" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
         </label>
         <label class="block text-sm">
-          <span class="text-slate-400">VAT / UID number</span>
+          <span class="text-slate-400">Default VAT / UID number</span>
           <input v-model="artistDraft.vatNumber" placeholder="CHE-123.456.789 MWST" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
         </label>
         <label class="block text-sm">
@@ -173,6 +221,22 @@ async function toggleAutoPrint(): Promise<void> {
           <span class="text-slate-400">Email</span>
           <input v-model="artistDraft.email" type="email" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
         </label>
+      </div>
+
+      <!-- Per-country VAT numbers -->
+      <div class="mt-3">
+        <div class="mb-1 flex items-center justify-between">
+          <span class="text-sm text-slate-400">Country-specific VAT numbers</span>
+          <button class="text-[11px] font-medium text-emerald-400 hover:text-emerald-300" @click="addVatRow">+ Add country</button>
+        </div>
+        <p class="mb-2 text-xs text-slate-500">
+          Receipts use the number matching the <strong>event's country</strong>; the default above is used when there's no match.
+        </p>
+        <div v-for="(v, i) in artistDraft.vatNumbers" :key="i" class="mb-2 flex gap-2">
+          <input v-model="v.country" placeholder="Country, e.g. Germany" class="w-1/3 min-w-0 rounded-lg bg-slate-800 px-3 py-2 text-sm" />
+          <input v-model="v.vatNumber" placeholder="VAT / UID number" class="min-w-0 flex-1 rounded-lg bg-slate-800 px-3 py-2 text-sm" />
+          <button class="rounded-lg px-3 text-sm text-red-400 hover:bg-red-950" aria-label="Remove" @click="removeVatRow(i)">✕</button>
+        </div>
       </div>
 
       <label class="mt-3 block text-sm">
@@ -246,6 +310,28 @@ async function toggleAutoPrint(): Promise<void> {
             {{ artistSaved ? 'Saved ✓' : 'Save' }}
           </button>
         </div>
+      </div>
+    </section>
+
+    <!-- Live receipt preview -->
+    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+      <div class="mb-3 flex flex-wrap items-center gap-2">
+        <h2 class="text-sm font-semibold text-slate-300">Receipt preview</h2>
+        <label class="ml-auto text-xs text-slate-400">
+          Event country:
+          <select v-model="previewCountry" class="ml-1 rounded bg-slate-800 px-2 py-1 text-xs">
+            <option value="">Default</option>
+            <option v-for="v in artistDraft.vatNumbers.filter((x) => x.country.trim())" :key="v.country" :value="v.country">
+              {{ v.country }}
+            </option>
+          </select>
+        </label>
+      </div>
+      <p class="mb-3 text-xs text-slate-500">
+        A sample sale, updating live as you edit. Pick an event country to see which VAT number prints.
+      </p>
+      <div class="flex justify-center rounded-xl bg-slate-950/60 p-4">
+        <ReceiptPreview :lines="previewLines" />
       </div>
     </section>
   </SettingsShell>
