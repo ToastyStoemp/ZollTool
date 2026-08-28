@@ -1,4 +1,4 @@
-import type { SalesEvent, Transaction } from '@zolltool/shared';
+import type { DiscountRule, Product, SalesEvent, Transaction } from '@zolltool/shared';
 
 /**
  * Materialize current entities from the op-log. The server stores only ops
@@ -27,6 +27,40 @@ export function reduceEvents(ops: ReducibleOp[]): SalesEvent[] {
       const { eventId, updatedAt } = op.payload as { eventId: string; updatedAt: number };
       const e = byId.get(eventId);
       if (e && updatedAt >= e.updatedAt) byId.set(eventId, { ...e, status: 'closed', updatedAt });
+    }
+  }
+  return [...byId.values()];
+}
+
+/** Products by id: product.upsert (last-writer-wins by updatedAt) + product.delete. */
+export function reduceProducts(ops: ReducibleOp[]): Product[] {
+  const byId = new Map<string, Product>();
+  for (const op of ops) {
+    if (op.type === 'product.upsert') {
+      const p = op.payload as Product;
+      const existing = byId.get(p.id);
+      if (!existing || p.updatedAt >= existing.updatedAt) byId.set(p.id, p);
+    } else if (op.type === 'product.delete') {
+      const { productId, updatedAt } = op.payload as { productId: string; updatedAt: number };
+      const p = byId.get(productId);
+      if (p && updatedAt >= p.updatedAt) byId.set(productId, { ...p, deletedAt: updatedAt, updatedAt });
+    }
+  }
+  return [...byId.values()];
+}
+
+/** Discount rules by id: discount.upsert (LWW by updatedAt) + discount.delete. */
+export function reduceDiscounts(ops: ReducibleOp[]): DiscountRule[] {
+  const byId = new Map<string, DiscountRule>();
+  for (const op of ops) {
+    if (op.type === 'discount.upsert') {
+      const r = op.payload as DiscountRule;
+      const existing = byId.get(r.id);
+      if (!existing || r.updatedAt >= existing.updatedAt) byId.set(r.id, r);
+    } else if (op.type === 'discount.delete') {
+      const { ruleId, updatedAt } = op.payload as { ruleId: string; updatedAt: number };
+      const r = byId.get(ruleId);
+      if (r && updatedAt >= r.updatedAt) byId.set(ruleId, { ...r, deletedAt: updatedAt, updatedAt });
     }
   }
   return [...byId.values()];

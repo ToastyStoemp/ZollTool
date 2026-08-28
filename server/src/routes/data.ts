@@ -1,8 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
-import type { SalesEvent, Transaction } from '@zolltool/shared';
+import type { DiscountRule, Product, SalesEvent, Transaction } from '@zolltool/shared';
 import type { JwtClaims } from '../auth';
-import { reduceEvents, reduceTransactions, type ReducibleOp } from '../reduce';
+import { reduceDiscounts, reduceEvents, reduceProducts, reduceTransactions, type ReducibleOp } from '../reduce';
 
 /**
  * Read-only data API — exposes an account's events and transactions,
@@ -36,6 +36,22 @@ export function registerDataRoutes(app: FastifyInstance, db: Database.Database):
     const claims = req.user as JwtClaims;
     const ops = loadOps(db, claims.accountId, ['event.upsert', 'event.close']);
     return reduceEvents(ops).filter((e) => !e.deletedAt);
+  });
+
+  // Current (non-deleted) catalog products for the account — backs external
+  // tooling like ZollPriceCards that renders price signage from the catalog.
+  app.get('/api/data/products', { preHandler: app.authenticateApiOrJwt }, async (req): Promise<Product[]> => {
+    const claims = req.user as JwtClaims;
+    const ops = loadOps(db, claims.accountId, ['product.upsert', 'product.delete']);
+    return reduceProducts(ops).filter((p) => !p.deletedAt);
+  });
+
+  // Current (non-deleted) discount rules — lets tooling (ZollPriceCards) render
+  // tiered "N for €X" bundle prices onto cards.
+  app.get('/api/data/discounts', { preHandler: app.authenticateApiOrJwt }, async (req): Promise<DiscountRule[]> => {
+    const claims = req.user as JwtClaims;
+    const ops = loadOps(db, claims.accountId, ['discount.upsert', 'discount.delete']);
+    return reduceDiscounts(ops).filter((d) => !d.deletedAt);
   });
 
   // Transactions belonging to one event.
