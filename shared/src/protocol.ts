@@ -108,6 +108,8 @@ export interface AuthUser {
   role: UserRole;
   accountId: string;
   accountName: string;
+  /** Event ids a restricted "helper" is limited to; null/absent = full access. */
+  allowedEventIds?: string[] | null;
 }
 
 export interface TokenResponse {

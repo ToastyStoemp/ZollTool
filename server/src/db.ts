@@ -136,6 +136,13 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX idx_trusted_user ON trusted_devices(userId, deviceId);
   `,
+  // v6 — per-user event restriction. A JSON array of event ids: when set, a member
+  // ("helper") only syncs and may only write data for those events, and the catalog
+  // is read-only to them (except stock for their events). NULL = full access.
+  `
+  ALTER TABLE users ADD COLUMN allowedEventIds TEXT;
+  ALTER TABLE invites ADD COLUMN allowedEventIds TEXT;
+  `,
 ];
 
 export function openDb(dataDir: string): Database.Database {

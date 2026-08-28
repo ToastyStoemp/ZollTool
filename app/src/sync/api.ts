@@ -197,6 +197,33 @@ export async function apiJson<T>(path: string, init: RequestInit = {}): Promise<
   return data as T;
 }
 
+// ── Team / helpers (owner & admins) ─────────────────────────────────────────
+export interface AccountUser {
+  id: string;
+  email: string;
+  role: 'owner' | 'admin' | 'member';
+  allowedEventIds: string[] | null;
+  createdAt: number;
+  lastLoginAt: number | null;
+}
+export function getAccountUsers(): Promise<{ users: AccountUser[] }> {
+  return apiJson('/api/users');
+}
+export function setUserEvents(userId: string, allowedEventIds: string[] | null): Promise<{ ok: boolean }> {
+  return apiJson(`/api/users/${encodeURIComponent(userId)}/events`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ allowedEventIds }),
+  });
+}
+export function createInvite(opts: { allowedEventIds?: string[]; role?: 'admin' | 'member' } = {}): Promise<{ code: string; expiresInDays: number }> {
+  return apiJson('/api/invites', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(opts),
+  });
+}
+
 export function pushOps(req: PushRequest): Promise<PushResponse> {
   return apiJson<PushResponse>('/api/sync/push', {
     method: 'POST',

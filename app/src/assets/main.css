@@ -52,3 +52,14 @@ body {
   max-height: 90vh;
   max-height: 90dvh;
 }
+
+/* Number fields: drop the browser's up/down spinner arrows (stock, prices, qty). */
+input[type='number']::-webkit-outer-spin-button,
+input[type='number']::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}

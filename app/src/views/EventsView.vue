@@ -10,7 +10,7 @@ import { uuidv7 } from '@/lib/uuid';
 import { fmtPrice } from '@/lib/money';
 import { fetchExchangeRate } from '@/lib/exchangeRate';
 import { EVENT_PRESETS } from '@/data/event-presets';
-import { ArrowLeftRight, ChartLine, Pencil, ShoppingCart, Stamp, Trash2 } from 'lucide-vue-next';
+import { ArrowLeftRight, ChartLine, DoorOpen, Pencil, ShoppingCart, Stamp, Trash2 } from 'lucide-vue-next';
 import ModalShell from '@/components/ModalShell.vue';
 import CountryPicker from '@/components/CountryPicker.vue';
 
@@ -66,12 +66,25 @@ async function fetchRate(): Promise<void> {
   form.exchangeRate = String(rate);
 }
 
-const statusOrder: Record<string, number> = { active: 0, planned: 1, closed: 2 };
-const sortedEvents = computed(() =>
-  [...data.events].sort(
-    (a, b) => (statusOrder[a.status] ?? 3) - (statusOrder[b.status] ?? 3) || b.updatedAt - a.updatedAt,
-  ),
+// Sort key = the event's date (start, falling back to end); undated events sort last.
+const dateKey = (e: SalesEvent): string => e.dateStart || e.dateEnd || '￿';
+// Upcoming / active events, soonest first. Closed (finished) events are shown
+// separately below, most-recently-finished first.
+const upcomingEvents = computed(() =>
+  data.events
+    .filter((e) => e.status !== 'closed')
+    .sort((a, b) => dateKey(a).localeCompare(dateKey(b)) || a.name.localeCompare(b.name)),
 );
+const closedEvents = computed(() =>
+  data.events
+    .filter((e) => e.status === 'closed')
+    .sort((a, b) => dateKey(b).localeCompare(dateKey(a)) || b.updatedAt - a.updatedAt),
+);
+const hasAnyEvent = computed(() => data.events.length > 0);
+const eventGroups = computed(() => [
+  { label: '', events: upcomingEvents.value },
+  { label: 'Finished', events: closedEvents.value },
+]);
 
 function eventStats(eventId: string): { count: number; revenue: number; currency: string } {
   let count = 0;
@@ -220,7 +233,16 @@ async function saveEdit(): Promise<void> {
 }
 
 async function doClose(eventId: string): Promise<void> {
-  await closeEvent(eventId);
+  const event = data.events.find((e) => e.id === eventId);
+  const end = event?.dateEnd || event?.dateStart;
+  const today = new Date().toISOString().slice(0, 10);
+  // Closing an event that hasn't happened yet just parks it back to "planned"
+  // rather than finalising it as closed.
+  if (event && end && end > today) {
+    await upsertEvent({ ...event, status: 'planned', updatedAt: Date.now() });
+  } else {
+    await closeEvent(eventId);
+  }
   if (settings.activeEventId === eventId) await settings.setActiveEvent(null);
   confirmCloseId.value = null;
 }
@@ -254,18 +276,22 @@ function fmtDates(e: SalesEvent): string {
       </button>
     </div>
 
-    <p v-if="!sortedEvents.length" class="rounded-xl bg-slate-900 p-6 text-center text-sm text-slate-400">
+    <p v-if="!hasAnyEvent" class="rounded-xl bg-slate-900 p-6 text-center text-sm text-slate-400">
       No events yet. Create one to start selling — every sale is recorded against the active event.
     </p>
 
-    <!-- Card grid on wide screens instead of one long column -->
-    <ul class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-      <li
-        v-for="event in sortedEvents"
-        :key="event.id"
-        class="rounded-xl bg-slate-900 p-4 ring-1"
-        :class="event.id === settings.activeEventId ? 'ring-emerald-500' : 'ring-slate-800'"
-      >
+    <!-- Upcoming/active first (chronological), then a separate Finished section. -->
+    <template v-for="group in eventGroups" :key="group.label || 'upcoming'">
+      <h3 v-if="group.label && group.events.length" class="mb-2 mt-6 text-xs font-semibold uppercase tracking-wide text-slate-500">
+        {{ group.label }}
+      </h3>
+      <ul v-if="group.events.length" class="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+        <li
+          v-for="event in group.events"
+          :key="event.id"
+          class="rounded-xl bg-slate-900 p-4 ring-1"
+          :class="event.id === settings.activeEventId ? 'ring-emerald-500' : 'ring-slate-800'"
+        >
         <div class="flex flex-wrap items-center gap-2">
           <span class="text-base font-semibold">{{ event.name }}</span>
           <span
@@ -287,8 +313,16 @@ function fmtDates(e: SalesEvent): string {
           {{ fmtPrice(eventStats(event.id).revenue, eventStats(event.id).currency) }}
         </p>
         <div class="mt-3 flex flex-wrap gap-2">
+          <!-- Planned events "Open" (go active); active events "Sell" (go to POS). -->
           <button
-            v-if="event.status !== 'closed'"
+            v-if="event.status === 'planned'"
+            class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
+            @click="activate(event)"
+          >
+            <span class="flex items-center gap-1.5"><DoorOpen class="h-3.5 w-3.5" /> Open</span>
+          </button>
+          <button
+            v-if="event.status === 'active'"
             class="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500"
             @click="sell(event)"
           >
@@ -342,8 +376,9 @@ function fmtDates(e: SalesEvent): string {
             <Trash2 class="h-3.5 w-3.5" /> Delete
           </button>
         </div>
-      </li>
-    </ul>
+        </li>
+      </ul>
+    </template>
 
     <!-- Create / edit modal -->
     <ModalShell

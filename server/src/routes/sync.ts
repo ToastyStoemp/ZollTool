@@ -12,11 +12,66 @@ export function registerSyncRoutes(app: FastifyInstance, db: Database.Database, 
   );
   const maxSeq = db.prepare('SELECT COALESCE(MAX(seq), 0) AS m FROM ops WHERE accountId = ?');
 
+  // Per-user event restriction (server-enforced isolation for a "helper" member).
+  const getAllowedEvents = db.prepare('SELECT allowedEventIds FROM users WHERE id = ?');
+  const txEventOf = db.prepare(
+    `SELECT json_extract(payload, '$.eventId') AS eid FROM ops
+     WHERE accountId = ? AND type = 'tx.create' AND json_extract(payload, '$.id') = ? LIMIT 1`,
+  );
+  // Parse the JSON array of allowed event ids; null/empty ⇒ unrestricted (full access).
+  function restrictionFor(userId: string): Set<string> | null {
+    const raw = (getAllowedEvents.get(userId) as { allowedEventIds: string | null } | undefined)?.allowedEventIds;
+    if (!raw) return null;
+    try {
+      const arr = JSON.parse(raw) as unknown;
+      if (Array.isArray(arr) && arr.length) return new Set(arr.map(String));
+    } catch { /* treat as unrestricted */ }
+    return null;
+  }
+  // Catalog + account config that every seller needs regardless of event.
+  const GLOBAL_TYPES = new Set(['product.upsert', 'product.delete', 'discount.upsert', 'discount.delete', 'image.meta', 'setting.upsert']);
+  const eventIdOf = (op: { type: string; payload: unknown }): string | undefined => {
+    const p = op.payload as Record<string, unknown> | null;
+    if (!p) return undefined;
+    if (op.type === 'event.upsert') return p.id as string;
+    return p.eventId as string | undefined; // event.close, tx.create, stock.set
+  };
+  // Which ops a restricted user is allowed to RECEIVE.
+  function opReadable(accountId: string, allowed: Set<string>, op: { type: string; payload: unknown }): boolean {
+    if (GLOBAL_TYPES.has(op.type)) return true;
+    if (op.type === 'tx.revert') {
+      const txId = (op.payload as { txId?: string } | null)?.txId;
+      const row = txId ? (txEventOf.get(accountId, txId) as { eid?: string } | undefined) : undefined;
+      return !!row?.eid && allowed.has(row.eid);
+    }
+    const eid = eventIdOf(op);
+    return !!eid && allowed.has(eid);
+  }
+  // Which ops a restricted user is allowed to WRITE: only sales/stock for their
+  // events (never catalog, discounts, other events, or account settings).
+  function opWritable(allowed: Set<string>, op: { type: string; payload: unknown }): boolean {
+    if (op.type === 'tx.revert') return true; // only reverts a tx already on their device
+    if (op.type === 'tx.create' || op.type === 'stock.set') {
+      const eid = eventIdOf(op);
+      return !!eid && allowed.has(eid);
+    }
+    return false;
+  }
+
   app.post('/api/sync/push', { preHandler: app.authenticate }, async (req, reply) => {
     const claims = req.user as JwtClaims;
     const parsed = PushRequestSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid push' });
     const { deviceId, deviceName, flavor, ops } = parsed.data;
+
+    // Restricted "helper" members may only write sales/stock for their events.
+    const allowed = restrictionFor(claims.sub);
+    if (allowed) {
+      const bad = ops.find((op) => !opWritable(allowed, op));
+      if (bad) {
+        return reply.code(403).send({ error: 'Your account can only record sales for its assigned event(s).' });
+      }
+    }
 
     let accepted = 0;
     let txCount = 0;
@@ -68,7 +123,7 @@ export function registerSyncRoutes(app: FastifyInstance, db: Database.Database, 
       payload: string;
     }[];
 
-    const ops: ServerOp[] = rows.map((r) => ({
+    let ops: ServerOp[] = rows.map((r) => ({
       serverSeq: r.seq,
       opId: r.opId,
       deviceId: r.deviceId,
@@ -76,6 +131,12 @@ export function registerSyncRoutes(app: FastifyInstance, db: Database.Database, 
       type: r.type as ServerOp['type'],
       payload: JSON.parse(r.payload),
     }));
+    // Server-enforced isolation: a restricted user only receives the catalog +
+    // their one event's data. Safe with the client cursor, which advances toward
+    // latestSeq and treats a filtered-empty page as "caught up".
+    const allowed = restrictionFor(claims.sub);
+    if (allowed) ops = ops.filter((op) => opReadable(claims.accountId, allowed, op));
+
     const latestSeq = (maxSeq.get(claims.accountId) as { m: number }).m;
     const response: PullResponse = { ops, latestSeq };
     return response;

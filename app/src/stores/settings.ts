@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { computed, ref } from 'vue';
 import { liveQuery } from 'dexie';
 import type { AuthUser } from '@zolltool/shared';
 import { db } from '@/db/schema';
@@ -142,8 +142,13 @@ export const useSettingsStore = defineStore('settings', () => {
     onActiveProviderChanged(id);
   }
 
+  // A restricted "helper" is a member limited to specific events; catalog prices
+  // and discounts are read-only to them (server-enforced; UI reflects it).
+  const isHelper = computed(() => (syncUser.value?.allowedEventIds?.length ?? 0) > 0);
+
   return {
     ready,
+    isHelper,
     deviceId,
     deviceName,
     activeEventId,

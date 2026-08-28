@@ -13,22 +13,71 @@ import {
   revokeSession,
   revokeOtherSessions,
   getDeviceId,
+  getAccountUsers,
+  setUserEvents,
+  createInvite,
   type SessionInfo,
   type TotpSetup,
+  type AccountUser,
 } from '@/sync/api';
 import { connectQrDataUrl, decodeConnectQr, qrDataUrl } from '@/lib/qr';
 import { hashPin, pinState, setPin } from '@/lib/pin';
 import { isNative } from '@/native/plugins';
 import { Camera, QrCode } from 'lucide-vue-next';
+import { useDataStore } from '@/stores/data';
 import ModalShell from '@/components/ModalShell.vue';
 import SettingsShell from './SettingsShell.vue';
 
 const settings = useSettingsStore();
+const data = useDataStore();
+
+// ── Team & helpers (owner/admin manage members restricted to events) ──
+const isManager = () => settings.syncUser?.role === 'owner' || settings.syncUser?.role === 'admin';
+const members = ref<AccountUser[]>([]);
+const teamMsg = ref('');
+const inviteEvents = ref<Set<string>>(new Set());
+const inviteCode = ref('');
+async function loadMembers(): Promise<void> {
+  try { members.value = (await getAccountUsers()).users; } catch { /* not a manager */ }
+}
+function memberAllows(m: AccountUser, eventId: string): boolean {
+  return !!m.allowedEventIds && m.allowedEventIds.includes(eventId);
+}
+async function toggleMemberEvent(m: AccountUser, eventId: string): Promise<void> {
+  const current = new Set(m.allowedEventIds ?? []);
+  if (current.has(eventId)) current.delete(eventId);
+  else current.add(eventId);
+  const next = [...current];
+  try {
+    await setUserEvents(m.id, next.length ? next : null);
+    m.allowedEventIds = next.length ? next : null;
+    teamMsg.value = `Updated ${m.email}.`;
+  } catch (e) {
+    teamMsg.value = e instanceof Error ? e.message : 'Update failed';
+  }
+}
+function toggleInviteEvent(eventId: string): void {
+  const s = new Set(inviteEvents.value);
+  if (s.has(eventId)) s.delete(eventId);
+  else s.add(eventId);
+  inviteEvents.value = s;
+}
+async function generateHelperInvite(): Promise<void> {
+  if (!inviteEvents.value.size) { teamMsg.value = 'Pick at least one event for the helper.'; return; }
+  try {
+    const { code } = await createInvite({ allowedEventIds: [...inviteEvents.value] });
+    inviteCode.value = code;
+    teamMsg.value = 'Invite created — share the code with your helper.';
+  } catch (e) {
+    teamMsg.value = e instanceof Error ? e.message : 'Could not create invite';
+  }
+}
 
 onMounted(() => {
   if (settings.syncUser) {
     void loadTwofa();
     void loadSessions();
+    if (isManager()) void loadMembers();
   }
 });
 
@@ -407,6 +456,64 @@ async function removePinSettings(): Promise<void> {
         <button class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40" :disabled="twofaBusy" @click="startTwofaSetup">Enable 2FA</button>
         <p v-if="twofaMsg" class="mt-2 text-xs text-red-400">{{ twofaMsg }}</p>
       </template>
+    </section>
+
+    <!-- Team & helpers (owner/admin): restrict members to specific events -->
+    <section v-if="settings.syncUser && isManager()" class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+      <div class="mb-2 flex items-center gap-2">
+        <h2 class="text-sm font-semibold text-slate-300">Team &amp; helpers</h2>
+        <button class="rounded bg-slate-800 px-2 py-1 text-[0.65rem] text-slate-300 hover:bg-slate-700" @click="loadMembers">Refresh</button>
+      </div>
+      <p class="mb-3 text-xs text-slate-500">
+        A helper is a member limited to the events you tick. They only see and sell those events, and can set stock — never change prices or discounts.
+      </p>
+
+      <!-- Existing members -->
+      <div v-for="m in members" :key="m.id" class="mb-3 rounded-lg bg-slate-800/50 p-3">
+        <div class="flex items-center gap-2">
+          <span class="text-sm font-medium">{{ m.email }}</span>
+          <span class="rounded-full bg-slate-800 px-2 py-0.5 text-[0.65rem] uppercase tracking-wide text-slate-400">{{ m.role }}</span>
+          <span v-if="m.role === 'member'" class="ml-auto text-[0.65rem] text-slate-500">
+            {{ m.allowedEventIds ? m.allowedEventIds.length + ' event(s)' : 'all events' }}
+          </span>
+        </div>
+        <div v-if="m.role === 'member'" class="mt-2 flex flex-wrap gap-1.5">
+          <label
+            v-for="e in data.events"
+            :key="e.id"
+            class="flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-xs ring-1"
+            :class="memberAllows(m, e.id) ? 'bg-emerald-950 text-emerald-300 ring-emerald-800' : 'bg-slate-800 text-slate-300 ring-slate-700'"
+          >
+            <input type="checkbox" class="hidden" :checked="memberAllows(m, e.id)" @change="toggleMemberEvent(m, e.id)" />
+            {{ e.name }}
+          </label>
+          <p v-if="!data.events.length" class="text-xs text-slate-500">No events yet.</p>
+        </div>
+      </div>
+      <p v-if="!members.filter((m) => m.role === 'member').length" class="text-xs text-slate-500">
+        No helpers yet — invite one below.
+      </p>
+
+      <!-- Invite a helper bound to events -->
+      <div class="mt-3 rounded-lg bg-slate-800/50 p-3">
+        <p class="mb-2 text-sm font-semibold">Invite a helper</p>
+        <div class="flex flex-wrap gap-1.5">
+          <label
+            v-for="e in data.events"
+            :key="e.id"
+            class="flex cursor-pointer items-center gap-1.5 rounded-lg px-2 py-1 text-xs ring-1"
+            :class="inviteEvents.has(e.id) ? 'bg-emerald-950 text-emerald-300 ring-emerald-800' : 'bg-slate-800 text-slate-300 ring-slate-700'"
+          >
+            <input type="checkbox" class="hidden" :checked="inviteEvents.has(e.id)" @change="toggleInviteEvent(e.id)" />
+            {{ e.name }}
+          </label>
+        </div>
+        <button class="mt-3 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500" @click="generateHelperInvite">
+          Generate invite code
+        </button>
+        <div v-if="inviteCode" class="mt-2 rounded-lg bg-slate-950 px-3 py-2 font-mono text-sm text-emerald-300">{{ inviteCode }}</div>
+      </div>
+      <p v-if="teamMsg" class="mt-2 text-xs text-slate-400">{{ teamMsg }}</p>
     </section>
 
     <!-- Login sessions -->

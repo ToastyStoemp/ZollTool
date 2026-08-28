@@ -61,9 +61,23 @@ function sha256(s: string): string {
   return createHash('sha256').update(s).digest('hex');
 }
 
+/** Parse a user's stored allowedEventIds JSON → string[] | null (null = full access). */
+export function parseAllowedEvents(raw: string | null | undefined): string[] | null {
+  if (!raw) return null;
+  try {
+    const arr = JSON.parse(raw) as unknown;
+    if (Array.isArray(arr) && arr.length) return arr.map(String);
+  } catch { /* unrestricted */ }
+  return null;
+}
+
 function toAuthUser(db: Database.Database, user: UserRow): AuthUser {
   const account = db.prepare('SELECT name FROM accounts WHERE id = ?').get(user.accountId) as { name: string };
-  return { id: user.id, email: user.email, role: user.role, accountId: user.accountId, accountName: account.name };
+  const row = db.prepare('SELECT allowedEventIds FROM users WHERE id = ?').get(user.id) as { allowedEventIds: string | null } | undefined;
+  return {
+    id: user.id, email: user.email, role: user.role, accountId: user.accountId, accountName: account.name,
+    allowedEventIds: parseAllowedEvents(row?.allowedEventIds),
+  };
 }
 
 async function issueTokens(
@@ -191,10 +205,10 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database, 
     }
 
     const open = process.env.REGISTRATION_OPEN === '1';
-    let invite: { code: string; accountId: string | null; role: UserRole } | undefined;
+    let invite: { code: string; accountId: string | null; role: UserRole; allowedEventIds: string | null } | undefined;
     if (inviteCode) {
       invite = db
-        .prepare('SELECT code, accountId, role FROM invites WHERE code = ? AND usedBy IS NULL AND expiresAt > ?')
+        .prepare('SELECT code, accountId, role, allowedEventIds FROM invites WHERE code = ? AND usedBy IS NULL AND expiresAt > ?')
         .get(inviteCode.trim().toUpperCase(), Date.now()) as typeof invite;
       if (!invite && !open) return reply.code(403).send({ error: 'Invalid or expired invite code' });
     } else if (!open) {
@@ -228,6 +242,10 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database, 
       Date.now(),
     );
     if (invite) db.prepare('UPDATE invites SET usedBy = ? WHERE code = ?').run(user.id, invite.code);
+    // A helper invite binds the new member to specific events (server-enforced isolation).
+    if (invite?.allowedEventIds && invite.accountId) {
+      db.prepare('UPDATE users SET allowedEventIds = ? WHERE id = ?').run(invite.allowedEventIds, user.id);
+    }
 
     bumpMetric(db, accountId, 'logins');
     const b = (req.body ?? {}) as { flavor?: string };
@@ -385,23 +403,61 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database, 
   // also mint invites that create brand-new accounts (newAccount: true).
   app.post('/api/invites', { preHandler: app.authenticate }, async (req, reply) => {
     const claims = req.user as JwtClaims;
-    const body = (req.body ?? {}) as { newAccount?: boolean; role?: UserRole };
+    const body = (req.body ?? {}) as { newAccount?: boolean; role?: UserRole; allowedEventIds?: string[] };
     if (body.newAccount && claims.role !== 'owner') {
       return reply.code(403).send({ error: 'Only the server owner can create new-account invites' });
     }
     if (!body.newAccount && claims.role === 'member') {
       return reply.code(403).send({ error: 'Only admins can invite members' });
     }
+    // A restricted "helper" invite: a member bound to one or more events.
+    const events = Array.isArray(body.allowedEventIds) ? body.allowedEventIds.filter((e) => typeof e === 'string' && e) : [];
+    const allowedEventIds = !body.newAccount && events.length ? JSON.stringify(events) : null;
     const code = randomBytes(4).toString('hex').toUpperCase();
-    db.prepare('INSERT INTO invites (code, accountId, role, createdBy, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, ?)').run(
+    db.prepare('INSERT INTO invites (code, accountId, role, allowedEventIds, createdBy, createdAt, expiresAt) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
       code,
       body.newAccount ? null : claims.accountId,
-      body.role === 'admin' ? 'admin' : 'member',
+      allowedEventIds ? 'member' : body.role === 'admin' ? 'admin' : 'member',
+      allowedEventIds,
       claims.sub,
       Date.now(),
       Date.now() + 14 * 24 * 3600 * 1000,
     );
     return { code, expiresInDays: 14 };
+  });
+
+  // Members of the caller's account (admins/owner) — for managing helpers.
+  app.get('/api/users', { preHandler: app.authenticate }, async (req, reply) => {
+    const claims = req.user as JwtClaims;
+    if (claims.role === 'member') return reply.code(403).send({ error: 'Admins only' });
+    const rows = db
+      .prepare('SELECT id, email, role, allowedEventIds, createdAt, lastLoginAt FROM users WHERE accountId = ? ORDER BY createdAt')
+      .all(claims.accountId) as { id: string; email: string; role: UserRole; allowedEventIds: string | null; createdAt: number; lastLoginAt: number | null }[];
+    return {
+      users: rows.map((u) => ({
+        id: u.id, email: u.email, role: u.role,
+        allowedEventIds: parseAllowedEvents(u.allowedEventIds),
+        createdAt: u.createdAt, lastLoginAt: u.lastLoginAt,
+      })),
+    };
+  });
+
+  // Set which events a member ("helper") is restricted to. Empty array / null =
+  // full access. Admins/owner only, same account, target must be a member.
+  app.put('/api/users/:id/events', { preHandler: app.authenticate }, async (req, reply) => {
+    const claims = req.user as JwtClaims;
+    if (claims.role === 'member') return reply.code(403).send({ error: 'Admins only' });
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as { allowedEventIds?: string[] | null };
+    const target = db.prepare('SELECT id, accountId, role FROM users WHERE id = ?').get(id) as
+      | { id: string; accountId: string; role: UserRole }
+      | undefined;
+    if (!target || target.accountId !== claims.accountId) return reply.code(404).send({ error: 'User not found' });
+    if (target.role !== 'member') return reply.code(400).send({ error: 'Only members can be restricted to events' });
+    const events = Array.isArray(body.allowedEventIds) ? body.allowedEventIds.filter((e) => typeof e === 'string' && e) : [];
+    const value = events.length ? JSON.stringify(events) : null;
+    db.prepare('UPDATE users SET allowedEventIds = ? WHERE id = ?').run(value, id);
+    return { ok: true, allowedEventIds: events.length ? events : null };
   });
 
   // ── Scoped API tokens (machine access, e.g. the ZollTax accounting bridge) ──

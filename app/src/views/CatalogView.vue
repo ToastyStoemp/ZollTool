@@ -252,7 +252,9 @@ async function saveProduct(): Promise<void> {
     sortOrder: existing?.sortOrder ?? data.products.length,
     updatedAt: Date.now(),
   };
-  await upsertProduct(product);
+  // Helpers may only change stock — never the product itself (server rejects it
+  // anyway; skipping the upsert avoids a failed sync push).
+  if (!settings.isHelper) await upsertProduct(product);
 
   // Per-event stock for the active event
   if (settings.activeEventId) {
@@ -551,13 +553,17 @@ function discountTargets(d: DiscountRule): string {
       <div class="flex items-center justify-between gap-3">
         <h1 class="text-xl font-bold">Catalog</h1>
         <button
+          v-if="!settings.isHelper"
           class="shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
           @click="tab === 'products' ? openNew() : openNewDiscount()"
         >
           + New {{ tab === 'products' ? 'product' : 'discount' }}
         </button>
       </div>
-      <div class="flex w-fit rounded-lg bg-slate-900 p-1 text-sm ring-1 ring-slate-800">
+      <p v-if="settings.isHelper" class="rounded-lg bg-slate-900 px-3 py-2 text-xs text-slate-400 ring-1 ring-slate-800">
+        You can update <strong class="text-slate-200">stock</strong> for your event — prices and discounts are managed by the account owner.
+      </p>
+      <div v-if="!settings.isHelper" class="flex w-fit rounded-lg bg-slate-900 p-1 text-sm ring-1 ring-slate-800">
         <button
           class="rounded-md px-3 py-1"
           :class="tab === 'products' ? 'bg-slate-700 font-semibold' : 'text-slate-400'"
@@ -754,7 +760,7 @@ function discountTargets(d: DiscountRule): string {
         <div class="grid grid-cols-3 gap-3">
           <label class="block text-sm">
             <span class="text-slate-400">Price ({{ data.currency }})</span>
-            <input v-model="form.price" type="number" step="0.05" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+            <input v-model="form.price" type="number" step="0.05" :disabled="settings.isHelper" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2 disabled:opacity-40" />
           </label>
           <label class="block text-sm">
             <span class="text-slate-400">Weight (g)</span>
@@ -790,7 +796,7 @@ function discountTargets(d: DiscountRule): string {
         <div class="rounded-lg bg-slate-800/50 p-3">
           <div class="mb-2 flex items-center justify-between">
             <span class="text-sm font-semibold">Variants</span>
-            <button class="text-xs text-emerald-400" @click="addVariant">+ Add variant</button>
+            <button v-if="!settings.isHelper" class="text-xs text-emerald-400" @click="addVariant">+ Add variant</button>
           </div>
           <div v-for="(v, i) in form.variants" :key="v.id" class="mb-2 grid grid-cols-[2.5rem_1fr_5rem_4rem_4rem_2rem] items-center gap-2">
             <!-- Variant photo: tap to pick/replace; ✕ removes. Falls back to the product photo when unset. -->
@@ -808,9 +814,9 @@ function discountTargets(d: DiscountRule): string {
                 <X class="h-2.5 w-2.5" />
               </button>
             </label>
-            <input v-model="v.name" placeholder="Name" class="rounded-md bg-slate-800 px-2 py-1.5 text-sm" />
-            <input v-model="v.sku" placeholder="SKU" class="rounded-md bg-slate-800 px-2 py-1.5 text-sm" />
-            <input v-model="v.price" placeholder="Price" type="number" step="0.05" class="rounded-md bg-slate-800 px-2 py-1.5 text-sm" />
+            <input v-model="v.name" placeholder="Name" :disabled="settings.isHelper" class="rounded-md bg-slate-800 px-2 py-1.5 text-sm disabled:opacity-40" />
+            <input v-model="v.sku" placeholder="SKU" :disabled="settings.isHelper" class="rounded-md bg-slate-800 px-2 py-1.5 text-sm disabled:opacity-40" />
+            <input v-model="v.price" placeholder="Price" type="number" step="0.05" :disabled="settings.isHelper" class="rounded-md bg-slate-800 px-2 py-1.5 text-sm disabled:opacity-40" />
             <input
               v-model.number="v.broughtQty"
               placeholder="Stock"
@@ -819,7 +825,7 @@ function discountTargets(d: DiscountRule): string {
               :disabled="!settings.activeEventId"
               class="rounded-md bg-slate-800 px-2 py-1.5 text-sm disabled:opacity-40"
             />
-            <button class="text-red-400" @click="form.variants.splice(i, 1)"><X class="h-4 w-4" /></button>
+            <button v-if="!settings.isHelper" class="text-red-400" @click="form.variants.splice(i, 1)"><X class="h-4 w-4" /></button>
           </div>
           <p v-if="!form.variants.length" class="text-xs text-slate-500">No variants — the product sells as-is.</p>
         </div>
@@ -827,7 +833,7 @@ function discountTargets(d: DiscountRule): string {
       <template #footer>
         <div class="flex justify-between">
           <button
-            v-if="editId"
+            v-if="editId && !settings.isHelper"
             class="rounded-lg bg-red-950 px-4 py-2 text-sm text-red-400"
             @click="confirmDeleteId = editId"
           >
