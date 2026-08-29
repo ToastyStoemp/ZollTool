@@ -61,7 +61,8 @@ const filtered = computed(() => {
 
 // ── View mode: flat grid or grouped by type (port of legacy "By Type") ──────
 const POS_VIEW_KEY = 'zolltool_pos_view';
-const viewMode = ref<'flat' | 'grouped'>(localStorage.getItem(POS_VIEW_KEY) === 'grouped' ? 'grouped' : 'flat');
+// Default to grouped-by-type; only stay flat if the user explicitly picked it.
+const viewMode = ref<'flat' | 'grouped'>(localStorage.getItem(POS_VIEW_KEY) === 'flat' ? 'flat' : 'grouped');
 
 function setViewMode(mode: 'flat' | 'grouped'): void {
   viewMode.value = mode;
