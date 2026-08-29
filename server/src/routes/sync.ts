@@ -62,16 +62,15 @@ export function registerSyncRoutes(app: FastifyInstance, db: Database.Database, 
     const claims = req.user as JwtClaims;
     const parsed = PushRequestSchema.safeParse(req.body);
     if (!parsed.success) return reply.code(400).send({ error: parsed.error.issues[0]?.message ?? 'Invalid push' });
-    const { deviceId, deviceName, flavor, ops } = parsed.data;
+    const { deviceId, deviceName, flavor, ops: rawOps } = parsed.data;
 
     // Restricted "helper" members may only write sales/stock for their events.
+    // Disallowed ops are DROPPED (not stored), never rejected with 403 — a 403
+    // would wedge the client's outbox into a permanent retry loop (offline).
     const allowed = restrictionFor(claims.sub);
-    if (allowed) {
-      const bad = ops.find((op) => !opWritable(allowed, op));
-      if (bad) {
-        return reply.code(403).send({ error: 'Your account can only record sales for its assigned event(s).' });
-      }
-    }
+    const ops = allowed ? rawOps.filter((op) => opWritable(allowed, op)) : rawOps;
+    const dropped = rawOps.length - ops.length;
+    if (dropped > 0) req.log.warn({ userId: claims.sub, dropped }, 'dropped ops outside helper event scope');
 
     let accepted = 0;
     let txCount = 0;
@@ -95,7 +94,7 @@ export function registerSyncRoutes(app: FastifyInstance, db: Database.Database, 
         }
       }
       touchDevice(db, deviceId, claims.accountId, claims.sub, deviceName ?? null, flavor ?? null, Date.now());
-      return { accepted, duplicates: ops.length - accepted, latestSeq: seq };
+      return { accepted, duplicates: rawOps.length - accepted, latestSeq: seq };
     })();
 
     bumpMetric(db, claims.accountId, 'syncPushes');

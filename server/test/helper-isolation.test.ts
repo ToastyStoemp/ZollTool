@@ -75,7 +75,7 @@ describe('helper event isolation', () => {
     expect(eventIds).toEqual(['E1', 'E2']);
   });
 
-  it('lets the helper record a sale/stock for E1 but blocks E2, catalog and discounts', async () => {
+  it('lets the helper record a sale/stock for E1 but silently drops E2, catalog and discount writes', async () => {
     const okTx = await push(helper.accessToken, [wire('htx1', 'tx.create', { id: 'HT1', eventId: 'E1', total: 500, updatedAt: 2 })]);
     expect(okTx.statusCode).toBe(200);
     expect((okTx.json() as PushResponse).accepted).toBe(1);
@@ -83,14 +83,31 @@ describe('helper event isolation', () => {
     const okStock = await push(helper.accessToken, [wire('hstk1', 'stock.set', { eventId: 'E1', productId: 'p1', variantId: '', broughtQty: 8, updatedAt: 2 })]);
     expect(okStock.statusCode).toBe(200);
 
+    // Disallowed ops are DROPPED, not 403'd (a 403 would wedge the client offline).
+    // The push succeeds with accepted:0 and the op is never stored.
     const badEvent = await push(helper.accessToken, [wire('htx2', 'tx.create', { id: 'HT2', eventId: 'E2', total: 1, updatedAt: 2 })]);
-    expect(badEvent.statusCode).toBe(403);
+    expect(badEvent.statusCode).toBe(200);
+    expect((badEvent.json() as PushResponse).accepted).toBe(0);
 
     const badCatalog = await push(helper.accessToken, [wire('hp1', 'product.upsert', { id: 'p1', title: 'Hacked', price: 1, updatedAt: 2, variants: [] })]);
-    expect(badCatalog.statusCode).toBe(403);
+    expect(badCatalog.statusCode).toBe(200);
+    expect((badCatalog.json() as PushResponse).accepted).toBe(0);
 
     const badDiscount = await push(helper.accessToken, [wire('hd1', 'discount.upsert', { id: 'd1', type: 'tiered', updatedAt: 2 })]);
-    expect(badDiscount.statusCode).toBe(403);
+    expect(badDiscount.statusCode).toBe(200);
+    expect((badDiscount.json() as PushResponse).accepted).toBe(0);
+
+    // The owner never receives the dropped ops, and the catalog is untouched.
+    const ownerView = (await pull(owner.accessToken)).json() as PullResponse;
+    expect(ownerView.ops.some((o) => o.type === 'tx.create' && (o.payload as { id: string }).id === 'HT2')).toBe(false);
+    const hacked = ownerView.ops.find((o) => o.type === 'product.upsert' && (o.payload as { title: string }).title === 'Hacked');
+    expect(hacked).toBeUndefined();
+  });
+
+  it('exposes the up-to-date allowedEventIds via /api/auth/me (no re-login needed)', async () => {
+    const me = await app.inject({ method: 'GET', url: '/api/auth/me', headers: { authorization: `Bearer ${helper.accessToken}` } });
+    expect(me.statusCode).toBe(200);
+    expect((me.json() as { user: { allowedEventIds: string[] } }).user.allowedEventIds).toEqual(['E1']);
   });
 
   it('can add and remove events from a helper', async () => {

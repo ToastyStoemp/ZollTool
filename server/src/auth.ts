@@ -399,6 +399,17 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database, 
     return { revoked: info.changes };
   });
 
+  // Current user (with up-to-date role + allowedEventIds) — the client polls this
+  // each sync so an admin changing a helper's events takes effect without re-login.
+  app.get('/api/auth/me', { preHandler: app.authenticate }, async (req, reply) => {
+    const claims = req.user as JwtClaims;
+    const user = db
+      .prepare('SELECT id, email, role, accountId, passwordHash FROM users WHERE id = ?')
+      .get(claims.sub) as UserRow | undefined;
+    if (!user) return reply.code(401).send({ error: 'Not authenticated' });
+    return { user: toAuthUser(db, user) };
+  });
+
   // Members invite helpers' devices into their account; the server owner can
   // also mint invites that create brand-new accounts (newAccount: true).
   app.post('/api/invites', { preHandler: app.authenticate }, async (req, reply) => {
@@ -494,6 +505,20 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database, 
       .run(Date.now(), id, claims.accountId);
     if (!info.changes) return reply.code(404).send({ error: 'Token not found' });
     return { revoked: true };
+  });
+
+  // Permanently remove a token row. Only an already-revoked token can be purged —
+  // an active token must be revoked first, so a live integration never vanishes
+  // out from under itself by accident.
+  app.delete('/api/tokens/:id/purge', { preHandler: app.authenticate }, async (req, reply) => {
+    const claims = req.user as JwtClaims;
+    if (claims.role === 'member') return reply.code(403).send({ error: 'Only admins or the owner can delete tokens' });
+    const { id } = req.params as { id: string };
+    const info = db
+      .prepare('DELETE FROM api_tokens WHERE id = ? AND accountId = ? AND revokedAt IS NOT NULL')
+      .run(id, claims.accountId);
+    if (!info.changes) return reply.code(404).send({ error: 'Token not found or still active' });
+    return { deleted: true };
   });
 }
 

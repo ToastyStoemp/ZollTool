@@ -170,5 +170,22 @@ describe('data read API', () => {
       headers: { authorization: `Bearer ${token}` },
     });
     expect(afterRevoke.statusCode).toBe(401);
+
+    // A revoked token can then be permanently purged from the list.
+    const purge = await app.inject({ method: 'DELETE', url: `/api/tokens/${id}/purge`, headers: auth() });
+    expect(purge.statusCode).toBe(200);
+    expect((purge.json() as { deleted: boolean }).deleted).toBe(true);
+    const list = await app.inject({ method: 'GET', url: '/api/tokens', headers: auth() });
+    expect((list.json() as { id: string }[]).some((t) => t.id === id)).toBe(false);
+  });
+
+  it('refuses to purge a token that is still active (must revoke first)', async () => {
+    const mint = await app.inject({ method: 'POST', url: '/api/tokens', headers: auth(), payload: { name: 'live' } });
+    const { id } = mint.json() as { id: string };
+    const purge = await app.inject({ method: 'DELETE', url: `/api/tokens/${id}/purge`, headers: auth() });
+    expect(purge.statusCode).toBe(404);
+    // Still listed and usable until revoked.
+    const list = await app.inject({ method: 'GET', url: '/api/tokens', headers: auth() });
+    expect((list.json() as { id: string }[]).some((t) => t.id === id)).toBe(true);
   });
 });

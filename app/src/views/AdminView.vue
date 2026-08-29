@@ -9,6 +9,7 @@ import {
   listApiTokens,
   createApiToken,
   revokeApiToken,
+  deleteApiToken,
   listAdminSessions,
   revokeAdminSession,
   getDeviceId,
@@ -163,6 +164,18 @@ async function revokeToken(t: ApiTokenSummary): Promise<void> {
     if (mintedToken.value?.id === t.id) mintedToken.value = null;
     await refreshApiTokens();
     showToast('Token revoked', 'info');
+  } catch (err) {
+    apiTokensError.value = err instanceof Error ? err.message : String(err);
+  }
+}
+
+async function deleteToken(t: ApiTokenSummary): Promise<void> {
+  if (!confirm(`Permanently delete "${t.name}"? This removes it from the list for good.`)) return;
+  apiTokensError.value = '';
+  try {
+    await deleteApiToken(t.id);
+    await refreshApiTokens();
+    showToast('Token deleted', 'info');
   } catch (err) {
     apiTokensError.value = err instanceof Error ? err.message : String(err);
   }
@@ -345,6 +358,14 @@ const tiles = computed(() =>
               @click="revokeToken(t)"
             >
               Revoke
+            </button>
+            <button
+              v-else
+              class="shrink-0 rounded-lg px-3 py-1.5 text-xs text-slate-400 hover:bg-red-950 hover:text-red-300"
+              title="Remove this revoked token permanently"
+              @click="deleteToken(t)"
+            >
+              Delete
             </button>
           </li>
         </ul>

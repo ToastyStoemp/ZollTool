@@ -55,10 +55,57 @@ export async function isLoggedIn(): Promise<boolean> {
 }
 
 async function storeSession(serverUrl: string, tokens: TokenResponse): Promise<void> {
+  // Wipe + re-pull when the effective data set changes on this device: a
+  // different user (owner → helper), OR the same helper's allowed events being
+  // changed by an admin (added events live below the sync cursor, removed ones
+  // must disappear). Otherwise stale/incomplete data would persist.
+  const prev = await getSetting<AuthUser>(SYNC_KEYS.user);
+  const key = (u?: AuthUser | null) => JSON.stringify((u?.allowedEventIds ?? null));
+  if (prev && (prev.id !== tokens.user.id || key(prev) !== key(tokens.user))) {
+    await resetLocalData();
+  }
+
   await setSetting(SYNC_KEYS.serverUrl, normalizeUrl(serverUrl));
   await setSetting(SYNC_KEYS.accessToken, tokens.accessToken);
   await setSetting(SYNC_KEYS.refreshToken, tokens.refreshToken);
   await setSetting(SYNC_KEYS.user, tokens.user);
+}
+
+/**
+ * Re-fetch the current user (role + allowedEventIds) from the server and, if an
+ * admin changed this helper's allowed events, wipe + re-pull so the new set
+ * takes effect without a re-login. Newly-allowed events live below the sync
+ * cursor (never re-fetched incrementally) and removed ones must disappear, so a
+ * full reset is the reliable fix. Best-effort: stays on the cached user offline.
+ */
+export async function refreshCurrentUser(): Promise<void> {
+  const prev = await getSetting<AuthUser>(SYNC_KEYS.user);
+  if (!prev) return;
+  let next: AuthUser;
+  try {
+    ({ user: next } = await apiJson<{ user: AuthUser }>('/api/auth/me'));
+  } catch {
+    return; // offline or transient — keep the cached user
+  }
+  const key = (u?: AuthUser | null) => JSON.stringify(u?.allowedEventIds ?? null);
+  if (prev.id === next.id && key(prev) !== key(next)) {
+    await resetLocalData();
+  }
+  await setSetting(SYNC_KEYS.user, next);
+}
+
+/** Wipe all synced data + the sync cursor so the next pull rebuilds from scratch. */
+export async function resetLocalData(): Promise<void> {
+  await Promise.all([
+    db.ops.clear(),
+    db.events.clear(),
+    db.products.clear(),
+    db.eventStock.clear(),
+    db.transactions.clear(),
+    db.discounts.clear(),
+    db.images.clear(),
+  ]);
+  await setSetting(SYNC_KEYS.lastServerSeq, 0);
 }
 
 async function postJson<T>(url: string, body: unknown): Promise<T> {
@@ -276,6 +323,11 @@ export function createApiToken(name?: string): Promise<MintedApiToken> {
 /** Revoke a token by id — it stops authenticating immediately. */
 export function revokeApiToken(id: string): Promise<{ revoked: boolean }> {
   return apiJson<{ revoked: boolean }>(`/api/tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+/** Permanently delete an already-revoked token, removing it from the list. */
+export function deleteApiToken(id: string): Promise<{ deleted: boolean }> {
+  return apiJson<{ deleted: boolean }>(`/api/tokens/${encodeURIComponent(id)}/purge`, { method: 'DELETE' });
 }
 
 // ── Two-factor auth ──────────────────────────────────────────────────────────

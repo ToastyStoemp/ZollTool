@@ -110,7 +110,11 @@ async function submitPin(): Promise<void> {
           :key="item.to"
           :to="item.to"
           class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-800"
-          :class="{ 'bg-slate-800 text-emerald-400': route.path.startsWith(item.to) }"
+          :class="
+            route.path.startsWith(item.to)
+              ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-inset ring-emerald-500/20'
+              : ''
+          "
         >
           <component :is="item.icon" class="h-4.5 w-4.5" />
           <span>{{ item.label }}</span>

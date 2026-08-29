@@ -10,7 +10,7 @@ import type {
 } from '@zolltool/shared';
 import { db } from '@/db/schema';
 import { getSetting, setSetting } from '@/db/repo';
-import { SYNC_KEYS, fetchImage, getServerUrl, isLoggedIn, pullOps, pushOps, uploadImage } from './api';
+import { SYNC_KEYS, fetchImage, getServerUrl, isLoggedIn, pullOps, pushOps, refreshCurrentUser, uploadImage } from './api';
 import { applyRemoteOps } from './apply';
 import { currentFlavor } from '@/lib/updates';
 import { isNative } from '@/native/plugins';
@@ -143,6 +143,10 @@ export async function syncNow(): Promise<void> {
   syncState.syncing = true;
   try {
     await pushOutbox();
+    // Pick up an admin's change to this helper's allowed events (wipes + re-pulls
+    // on change) before pulling, so it takes effect without a re-login. Runs
+    // after the outbox so any pending local sales are sent first, not wiped.
+    await refreshCurrentUser();
     await pullAll();
     syncState.lastSyncAt = Date.now();
     syncState.lastError = '';
