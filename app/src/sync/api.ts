@@ -271,6 +271,24 @@ export function createInvite(opts: { allowedEventIds?: string[]; role?: 'admin' 
   });
 }
 
+/** Permanently delete the whole account + all its data (admins/owner). Password-confirmed. */
+export function deleteAccount(password: string): Promise<{ ok: boolean }> {
+  return apiJson('/api/account/delete', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+}
+
+/** Delete just the caller's own user, leaving the shared account intact. Password-confirmed. */
+export function deleteMyUser(password: string): Promise<{ ok: boolean }> {
+  return apiJson('/api/users/me/delete', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ password }),
+  });
+}
+
 export function pushOps(req: PushRequest): Promise<PushResponse> {
   return apiJson<PushResponse>('/api/sync/push', {
     method: 'POST',

@@ -64,7 +64,7 @@ async function submit(): Promise<void> {
 
 <template>
   <div class="fixed inset-0 z-[80] flex flex-col items-center justify-center gap-6 bg-slate-950 p-6">
-    <span class="text-2xl font-bold tracking-tight text-emerald-400">ZollTool</span>
+    <span class="text-2xl font-bold tracking-tight text-slate-100">Zoll<span class="text-emerald-400">Tool</span></span>
 
     <div class="w-full max-w-sm rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
       <div class="mb-3 flex rounded-lg bg-slate-800 p-1 text-sm">

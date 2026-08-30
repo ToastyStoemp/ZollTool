@@ -215,7 +215,7 @@ async function connect(): Promise<void> {
   >
     <!-- Progress -->
     <div class="flex items-center gap-3 px-6 pt-5">
-      <span class="text-lg font-bold tracking-tight text-emerald-400">ZollTool</span>
+      <span class="text-lg font-bold tracking-tight text-slate-100">Zoll<span class="text-emerald-400">Tool</span></span>
       <div class="ml-auto flex gap-1.5">
         <span
           v-for="(s, i) in steps"

@@ -101,7 +101,7 @@ async function submitPin(): Promise<void> {
     <!-- Sidebar (tablet/desktop) -->
     <aside v-if="!chromeHidden" class="hidden w-52 shrink-0 flex-col border-r border-slate-800 bg-slate-900 md:flex">
       <div class="flex items-center gap-2 px-4 py-5">
-        <span class="text-xl font-bold tracking-tight text-emerald-400">ZollTool</span>
+        <span class="text-xl font-bold tracking-tight text-slate-100">Zoll<span class="text-emerald-400">Tool</span></span>
         <span v-if="syncBadge" class="h-2 w-2 rounded-full" :class="syncBadge.cls" :title="syncBadge.title" />
       </div>
       <nav class="flex flex-1 flex-col gap-1 px-2">

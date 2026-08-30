@@ -2,6 +2,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type Database from 'better-sqlite3';
 import argon2 from 'argon2';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
 import {
   LoginRequestSchema,
   RefreshRequestSchema,
@@ -161,7 +163,7 @@ export async function seedOwner(db: Database.Database): Promise<void> {
   );
 }
 
-export function registerAuthRoutes(app: FastifyInstance, db: Database.Database, jwtSecret: string): void {
+export function registerAuthRoutes(app: FastifyInstance, db: Database.Database, jwtSecret: string, dataDir: string): void {
   const box = makeSecretBox(jwtSecret); // encrypts TOTP secrets at rest
   const requireCaptcha = process.env.REQUIRE_CAPTCHA !== '0';
   const has2fa = (u: UserRow): boolean => !!u.totpEnabled;
@@ -469,6 +471,81 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database, 
     const value = events.length ? JSON.stringify(events) : null;
     db.prepare('UPDATE users SET allowedEventIds = ? WHERE id = ?').run(value, id);
     return { ok: true, allowedEventIds: events.length ? events : null };
+  });
+
+  // Re-verify the caller's own password — a gate for irreversible actions.
+  async function passwordOk(userId: string, password: unknown): Promise<boolean> {
+    const row = db.prepare('SELECT passwordHash FROM users WHERE id = ?').get(userId) as { passwordHash: string } | undefined;
+    if (!row) return false;
+    try {
+      return await argon2.verify(row.passwordHash, String(password ?? ''));
+    } catch {
+      return false;
+    }
+  }
+
+  // Delete the caller's own user, leaving the shared account/data intact. For
+  // members (helpers) leaving, and for admins when another admin remains — the
+  // last admin must delete the whole account instead (below), never orphan it.
+  app.post('/api/users/me/delete', { preHandler: app.authenticate }, async (req, reply) => {
+    const claims = req.user as JwtClaims;
+    const body = (req.body ?? {}) as { password?: string };
+    if (!(await passwordOk(claims.sub, body.password))) return reply.code(401).send({ error: 'Password is incorrect' });
+    if (claims.role !== 'member') {
+      const otherAdmins = (
+        db.prepare("SELECT COUNT(*) AS n FROM users WHERE accountId = ? AND id != ? AND role IN ('admin','owner')").get(claims.accountId, claims.sub) as { n: number }
+      ).n;
+      if (otherAdmins === 0) {
+        return reply.code(409).send({ error: 'You are the only admin. Delete the whole account instead, or promote another admin first.' });
+      }
+    }
+    db.transaction(() => {
+      db.prepare('DELETE FROM refresh_tokens WHERE userId = ?').run(claims.sub);
+      db.prepare('DELETE FROM trusted_devices WHERE userId = ?').run(claims.sub);
+      db.prepare('DELETE FROM devices WHERE userId = ?').run(claims.sub);
+      // Clear FK references to this user before removing it.
+      db.prepare('DELETE FROM invites WHERE usedBy = ? OR createdBy = ?').run(claims.sub, claims.sub);
+      db.prepare('UPDATE api_tokens SET createdBy = NULL WHERE createdBy = ?').run(claims.sub);
+      db.prepare('DELETE FROM users WHERE id = ?').run(claims.sub);
+    })();
+    return { ok: true };
+  });
+
+  // Delete the caller's entire account: every user, all sync data, images,
+  // tokens, metrics and logs. Account admins/owner only, password-confirmed,
+  // irreversible. This is a client erasing their own workspace for good.
+  app.post('/api/account/delete', { preHandler: app.authenticate }, async (req, reply) => {
+    const claims = req.user as JwtClaims;
+    if (claims.role === 'member') return reply.code(403).send({ error: 'Only an account admin can delete the account' });
+    const body = (req.body ?? {}) as { password?: string };
+    if (!(await passwordOk(claims.sub, body.password))) return reply.code(401).send({ error: 'Password is incorrect' });
+    const accountId = claims.accountId;
+    db.transaction(() => {
+      const userIds = (db.prepare('SELECT id FROM users WHERE accountId = ?').all(accountId) as { id: string }[]).map((u) => u.id);
+      const delTokens = db.prepare('DELETE FROM refresh_tokens WHERE userId = ?');
+      const delTrust = db.prepare('DELETE FROM trusted_devices WHERE userId = ?');
+      for (const uid of userIds) {
+        delTokens.run(uid);
+        delTrust.run(uid);
+      }
+      // Invites can reference this account's users via createdBy/usedBy even when
+      // the invite itself is for a new account (accountId NULL) — clear all of them.
+      db.prepare(
+        'DELETE FROM invites WHERE accountId = ? OR createdBy IN (SELECT id FROM users WHERE accountId = ?) OR usedBy IN (SELECT id FROM users WHERE accountId = ?)',
+      ).run(accountId, accountId, accountId);
+      for (const table of ['ops', 'images', 'metrics', 'logs', 'api_tokens', 'devices']) {
+        db.prepare(`DELETE FROM ${table} WHERE accountId = ?`).run(accountId);
+      }
+      db.prepare('DELETE FROM users WHERE accountId = ?').run(accountId);
+      db.prepare('DELETE FROM accounts WHERE id = ?').run(accountId);
+    })();
+    // Full-size images live on disk per account — remove that tree too.
+    try {
+      rmSync(join(dataDir, 'images', accountId), { recursive: true, force: true });
+    } catch {
+      /* best-effort: the DB rows are already gone */
+    }
+    return { ok: true };
   });
 
   // ── Scoped API tokens (machine access, e.g. the ZollTax accounting bridge) ──

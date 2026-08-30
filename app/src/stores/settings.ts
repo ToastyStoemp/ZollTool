@@ -114,6 +114,27 @@ export const useSettingsStore = defineStore('settings', () => {
     syncUser.value = null;
   }
 
+  // After the server has erased the account/user, tear down all local state so
+  // nothing of the old session or its cached data lingers on this device.
+  async function teardownAfterDeletion(): Promise<void> {
+    stopSync();
+    await api.resetLocalData();
+    await api.logout();
+    syncUser.value = null;
+  }
+
+  /** Permanently delete the whole account + all data (admins/owner). */
+  async function deleteAccount(password: string): Promise<void> {
+    await api.deleteAccount(password);
+    await teardownAfterDeletion();
+  }
+
+  /** Delete just this user, leaving the shared account for others. */
+  async function deleteMyUser(password: string): Promise<void> {
+    await api.deleteMyUser(password);
+    await teardownAfterDeletion();
+  }
+
   async function setActiveEvent(id: string | null): Promise<void> {
     activeEventId.value = id;
     await setSetting('activeEventId', id);
@@ -169,6 +190,8 @@ export const useSettingsStore = defineStore('settings', () => {
     loginToServer,
     registerOnServer,
     logoutFromServer,
+    deleteAccount,
+    deleteMyUser,
     completeOnboarding,
     reopenOnboarding,
     addCustomPaymentMethod,

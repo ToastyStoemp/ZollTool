@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { showToast } from '@/lib/toast';
 import { syncState, syncNow } from '@/sync/engine';
@@ -30,6 +30,42 @@ import SettingsShell from './SettingsShell.vue';
 
 const settings = useSettingsStore();
 const data = useDataStore();
+
+// ── Danger zone: self-service account / user deletion ──
+// Admins/owner delete the whole account + all data; members delete only themselves.
+const isAccountAdmin = computed(() => !!settings.syncUser && settings.syncUser.role !== 'member');
+const showDangerConfirm = ref(false);
+const deletePassword = ref('');
+const deleteConfirmText = ref('');
+const deleteError = ref('');
+const deleting = ref(false);
+
+function cancelDelete(): void {
+  showDangerConfirm.value = false;
+  deletePassword.value = '';
+  deleteConfirmText.value = '';
+  deleteError.value = '';
+}
+
+async function confirmDelete(): Promise<void> {
+  deleteError.value = '';
+  if (deleteConfirmText.value.trim().toUpperCase() !== 'DELETE') {
+    deleteError.value = 'Type DELETE to confirm.';
+    return;
+  }
+  deleting.value = true;
+  try {
+    if (isAccountAdmin.value) await settings.deleteAccount(deletePassword.value);
+    else await settings.deleteMyUser(deletePassword.value);
+    // syncUser is now null → the account panel reverts to the signed-out state.
+    showToast(isAccountAdmin.value ? 'Account and all data deleted' : 'Your account was deleted', 'success');
+    cancelDelete();
+  } catch (err) {
+    deleteError.value = err instanceof Error ? err.message : String(err);
+  } finally {
+    deleting.value = false;
+  }
+}
 
 // ── Team & helpers (owner/admin manage members restricted to events) ──
 const isManager = () => settings.syncUser?.role === 'owner' || settings.syncUser?.role === 'admin';
@@ -569,6 +605,40 @@ async function removePinSettings(): Promise<void> {
         <button class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500" @click="savePinSettings">{{ hasPin() ? 'Change PIN' : 'Set PIN' }}</button>
         <button v-if="hasPin()" class="rounded-lg px-4 py-2 text-sm text-red-400 hover:bg-red-950" @click="removePinSettings">Remove PIN</button>
       </div>
+    </section>
+
+    <!-- Danger zone: self-service deletion of your account / data -->
+    <section v-if="settings.syncUser" class="rounded-xl bg-slate-900 p-4 ring-1 ring-red-900/60">
+      <h2 class="mb-2 text-sm font-semibold text-red-400">Danger zone</h2>
+      <p class="mb-3 text-xs text-slate-500">
+        <template v-if="isAccountAdmin">
+          Permanently delete this account and <strong>all</strong> of its data — events, products, sales, images and every user. This can't be undone.
+        </template>
+        <template v-else>
+          Permanently delete your own login. The account's shared data stays for the other members.
+        </template>
+      </p>
+      <button
+        v-if="!showDangerConfirm"
+        class="rounded-lg px-3 py-2 text-sm font-medium text-red-400 ring-1 ring-red-900 hover:bg-red-950"
+        @click="showDangerConfirm = true"
+      >
+        {{ isAccountAdmin ? 'Delete account & all data…' : 'Delete my account…' }}
+      </button>
+      <form v-else class="space-y-3" @submit.prevent="confirmDelete">
+        <p class="text-xs text-slate-400">
+          Confirm your password and type <code class="rounded bg-slate-800 px-1 text-red-300">DELETE</code> to proceed.
+        </p>
+        <input v-model="deletePassword" type="password" autocomplete="current-password" placeholder="Your password" class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm" />
+        <input v-model="deleteConfirmText" placeholder="Type DELETE" class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm" />
+        <p v-if="deleteError" class="text-xs text-red-400">{{ deleteError }}</p>
+        <div class="flex gap-2">
+          <button type="submit" :disabled="deleting || !deletePassword" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">
+            {{ deleting ? 'Deleting…' : isAccountAdmin ? 'Delete everything' : 'Delete my account' }}
+          </button>
+          <button type="button" class="rounded-lg px-4 py-2 text-sm text-slate-400 hover:bg-slate-800" @click="cancelDelete">Cancel</button>
+        </div>
+      </form>
     </section>
 
     <!-- Quick-connect QR modal -->
