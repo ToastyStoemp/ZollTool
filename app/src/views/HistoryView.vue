@@ -458,28 +458,28 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
 
     <!-- Stat tiles -->
     <div class="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
-      <div class="rounded-xl bg-slate-900 p-3 ring-1 ring-slate-800">
-        <p class="text-xs text-slate-400">Revenue</p>
-        <p class="text-lg font-bold">{{ fmtPrice(stats.revenue, revenueCurrency) }}</p>
+      <div class="zui-stat">
+        <span class="zui-stat-label">Revenue</span>
+        <span class="zui-stat-value">{{ fmtPrice(stats.revenue, revenueCurrency) }}</span>
       </div>
-      <div class="rounded-xl bg-slate-900 p-3 ring-1 ring-slate-800">
-        <p class="text-xs text-slate-400">Sales / items</p>
-        <p class="text-lg font-bold">{{ stats.count }} / {{ stats.items }}</p>
+      <div class="zui-stat">
+        <span class="zui-stat-label">Sales / items</span>
+        <span class="zui-stat-value">{{ stats.count }} / {{ stats.items }}</span>
       </div>
-      <div class="rounded-xl bg-slate-900 p-3 ring-1 ring-slate-800">
-        <p class="text-xs text-slate-400">Cash</p>
-        <p class="text-lg font-bold">{{ fmtPrice(stats.cash, currency) }}</p>
+      <div class="zui-stat">
+        <span class="zui-stat-label">Cash</span>
+        <span class="zui-stat-value">{{ fmtPrice(stats.cash, currency) }}</span>
       </div>
-      <div class="rounded-xl bg-slate-900 p-3 ring-1 ring-slate-800">
-        <p class="text-xs text-slate-400">Card</p>
-        <p class="text-lg font-bold">{{ fmtPrice(stats.card, currency) }}</p>
+      <div class="zui-stat">
+        <span class="zui-stat-label">Card</span>
+        <span class="zui-stat-value">{{ fmtPrice(stats.card, currency) }}</span>
       </div>
     </div>
 
     <!-- Compare to another event -->
-    <div v-if="!allMode" class="mb-4 rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+    <div v-if="!allMode" class="mb-4 zui-card">
       <div class="flex flex-wrap items-center gap-2">
-        <h2 class="text-sm font-semibold text-slate-300">Compare to</h2>
+        <h2 class="zui-card-title">Compare to</h2>
         <select v-model="compareEventId" class="max-w-[55vw] rounded-lg bg-slate-800 px-3 py-1.5 text-sm sm:max-w-xs">
           <option value="">Pick an event…</option>
           <option v-for="e in compareableEvents" :key="e.id" :value="e.id">{{ e.name }}</option>
@@ -518,9 +518,9 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
 
     <div class="mb-4 grid gap-3 md:grid-cols-2">
       <!-- Best sellers -->
-      <div class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+      <div class="zui-card">
         <div class="mb-2 flex flex-wrap items-center gap-2">
-          <h2 class="text-sm font-semibold text-slate-300">Best sellers</h2>
+          <h2 class="zui-card-title">Best sellers</h2>
           <div class="ml-auto flex rounded-lg bg-slate-800 p-0.5 text-[11px]">
             <button
               v-for="m in bestModes"
@@ -557,9 +557,9 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
       </div>
 
       <!-- Daily chart -->
-      <div class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+      <div class="zui-card">
         <div class="mb-2 flex items-center gap-2">
-          <h2 class="text-sm font-semibold text-slate-300">Revenue per day</h2>
+          <h2 class="zui-card-title">Revenue per day</h2>
           <button
             v-if="daily.length > 1"
             class="ml-auto rounded-md px-2 py-1 text-[11px]"
@@ -591,9 +591,9 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
 
     <div class="mb-4 grid gap-3 md:grid-cols-2">
       <!-- Hourly revenue: when do people actually buy -->
-      <div class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+      <div class="zui-card">
         <div class="mb-2 flex items-center gap-2">
-          <h2 class="text-sm font-semibold text-slate-300">Revenue per hour</h2>
+          <h2 class="zui-card-title">Revenue per hour</h2>
           <button
             v-if="daily.length > 1"
             class="ml-auto rounded-md px-2 py-1 text-[11px]"
@@ -628,8 +628,8 @@ async function printReceipt(tx: (typeof visible.value)[number]): Promise<void> {
       </div>
 
       <!-- Cash drawer / day report (per event) -->
-      <div v-if="!allMode" class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <h2 class="mb-2 text-sm font-semibold text-slate-300">Cash drawer</h2>
+      <div v-if="!allMode" class="zui-card">
+        <h2 class="mb-2 zui-card-title">Cash drawer</h2>
         <div class="grid grid-cols-2 gap-3">
           <label class="block text-sm">
             <span class="text-xs text-slate-400">Float (opening cash)</span>

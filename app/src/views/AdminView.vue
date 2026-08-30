@@ -281,8 +281,8 @@ const tiles = computed(() =>
 
     <template v-else>
       <!-- Diagnostics — upload THIS device's logs (any logged-in user) -->
-      <div class="mb-4 rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <h2 class="mb-2 text-sm font-semibold text-slate-300">Diagnostics — this device</h2>
+      <div class="mb-4 zui-card">
+        <h2 class="mb-2 zui-card-title">Diagnostics — this device</h2>
         <p class="mb-3 text-xs text-slate-500">
           Sends recent console warnings/errors from <strong>this device</strong> to the sync server,
           where the owner can download them below. Needs a server URL set under Settings → Server sync.
@@ -298,8 +298,8 @@ const tiles = computed(() =>
       </div>
 
       <!-- API access — scoped read-only tokens (owner/admin) -->
-      <div v-if="canManageTokens" class="mb-4 rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <h2 class="mb-2 text-sm font-semibold text-slate-300">API access</h2>
+      <div v-if="canManageTokens" class="mb-4 zui-card">
+        <h2 class="mb-2 zui-card-title">API access</h2>
         <p class="mb-3 text-xs text-slate-500">
           Read-only tokens let back-office tools (e.g. ZollTax) pull this account's events and
           transactions without an account password. Each token is scoped to <code>data:read</code>
@@ -315,7 +315,7 @@ const tiles = computed(() =>
             @keydown.enter.prevent="createToken"
           />
           <button
-            class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+            class="zui-btn zui-btn-primary"
             :disabled="creatingToken"
             @click="createToken"
           >
@@ -387,8 +387,8 @@ const tiles = computed(() =>
       </div>
 
       <!-- Activity chart -->
-      <div class="mb-4 rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <h2 class="mb-2 text-sm font-semibold text-slate-300">Activity — last 30 days</h2>
+      <div class="mb-4 zui-card">
+        <h2 class="mb-2 zui-card-title">Activity — last 30 days</h2>
         <p v-if="!daily.length" class="text-xs text-slate-500">No activity recorded yet.</p>
         <div class="space-y-1.5">
           <div v-for="d in daily" :key="d.day" class="flex items-center gap-2 text-xs">
@@ -404,8 +404,8 @@ const tiles = computed(() =>
       </div>
 
       <!-- Invites -->
-      <div class="mb-4 rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <h2 class="mb-2 text-sm font-semibold text-slate-300">Invites</h2>
+      <div class="mb-4 zui-card">
+        <h2 class="mb-2 zui-card-title">Invites</h2>
         <div class="flex flex-wrap items-center gap-2">
           <button
             class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
@@ -434,8 +434,8 @@ const tiles = computed(() =>
       </div>
 
       <!-- Accounts -->
-      <div class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <h2 class="mb-2 text-sm font-semibold text-slate-300">Accounts</h2>
+      <div class="zui-card">
+        <h2 class="mb-2 zui-card-title">Accounts</h2>
         <ul class="space-y-2">
           <li v-for="a in accounts" :key="a.id" class="rounded-lg bg-slate-800/50 ring-1 ring-slate-700">
             <button class="flex w-full items-center gap-3 p-3 text-left" @click="toggleAccount(a.id)">
@@ -472,8 +472,8 @@ const tiles = computed(() =>
       </div>
 
       <!-- Diagnostic logs -->
-      <div class="mt-4 rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <h2 class="mb-2 text-sm font-semibold text-slate-300">Diagnostic logs</h2>
+      <div class="mt-4 zui-card">
+        <h2 class="mb-2 zui-card-title">Diagnostic logs</h2>
         <p v-if="!logs.length" class="text-xs text-slate-500">No logs uploaded yet.</p>
         <ul class="space-y-2">
           <li
@@ -499,8 +499,8 @@ const tiles = computed(() =>
       </div>
 
       <!-- Login sessions (all accounts) -->
-      <div class="mt-4 rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <h2 class="mb-2 text-sm font-semibold text-slate-300">Login sessions</h2>
+      <div class="mt-4 zui-card">
+        <h2 class="mb-2 zui-card-title">Login sessions</h2>
         <p class="mb-2 text-xs text-slate-500">
           Every device currently signed in, across accounts — with remote log-out.
           <span v-if="!sessionsGeo">Location is off (set GEO_LOOKUP=1 to resolve city/country).</span>

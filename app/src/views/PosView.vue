@@ -631,7 +631,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
       </p>
       <RouterLink
         to="/events"
-        class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+        class="zui-btn zui-btn-primary"
       >
         Go to Events
       </RouterLink>
@@ -681,21 +681,9 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
             class="ml-auto min-w-0 w-40 rounded-lg bg-slate-800 px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-emerald-500 sm:w-64"
             @keydown.enter="submitSearch"
           />
-          <div class="flex shrink-0 rounded-lg bg-slate-800 p-0.5 text-xs">
-            <button
-              class="rounded-md px-2.5 py-1.5"
-              :class="viewMode === 'flat' ? 'bg-slate-600 font-semibold' : 'text-slate-400'"
-              @click="setViewMode('flat')"
-            >
-              All
-            </button>
-            <button
-              class="rounded-md px-2.5 py-1.5"
-              :class="viewMode === 'grouped' ? 'bg-slate-600 font-semibold' : 'text-slate-400'"
-              @click="setViewMode('grouped')"
-            >
-              Types
-            </button>
+          <div class="flex shrink-0 gap-1.5">
+            <button class="zui-pill" :class="{ 'is-active': viewMode === 'flat' }" @click="setViewMode('flat')">All</button>
+            <button class="zui-pill" :class="{ 'is-active': viewMode === 'grouped' }" @click="setViewMode('grouped')">Types</button>
           </div>
         </header>
 
@@ -1070,7 +1058,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
       <template #footer>
         <div class="flex justify-end gap-2">
           <button class="rounded-lg bg-slate-800 px-4 py-2 text-sm" @click="showMiscForm = false">Cancel</button>
-          <button class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white" @click="addMiscItem">
+          <button class="zui-btn zui-btn-primary" @click="addMiscItem">
             Add to cart
           </button>
         </div>
@@ -1127,7 +1115,7 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
               Cancel
             </button>
             <button
-              class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+              class="zui-btn zui-btn-primary"
               @click="applyDiscount"
             >
               Apply

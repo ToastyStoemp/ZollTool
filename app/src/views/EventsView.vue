@@ -269,7 +269,7 @@ function fmtDates(e: SalesEvent): string {
     <div class="mb-5 flex items-center justify-between">
       <h1 class="text-xl font-bold">Events</h1>
       <button
-        class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+        class="zui-btn zui-btn-primary"
         @click="openCreate"
       >
         + New event
@@ -506,7 +506,7 @@ function fmtDates(e: SalesEvent): string {
             Cancel
           </button>
           <button
-            class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40"
+            class="zui-btn zui-btn-primary"
             :disabled="!form.name.trim()"
             @click="editingId ? saveEdit() : createEvent()"
           >

@@ -244,8 +244,8 @@ const TRANSPORT_MODES = [
 
     <template v-else>
       <!-- Documents -->
-      <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <h2 class="mb-1 text-sm font-semibold text-slate-300">Documents</h2>
+      <section class="zui-card">
+        <h2 class="mb-1 zui-card-title">Documents</h2>
         <p class="mb-3 text-xs text-slate-500">
           LRP: <span class="font-mono text-slate-300">{{ lrp }}</span>
           <span v-if="isNative"> · Documents open via the share sheet — open in a browser to print.</span>
@@ -296,8 +296,8 @@ const TRANSPORT_MODES = [
       </section>
 
       <!-- Artist / sender -->
-      <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <h2 class="mb-3 text-sm font-semibold text-slate-300">Artist / sender</h2>
+      <section class="zui-card">
+        <h2 class="mb-3 zui-card-title">Artist / sender</h2>
         <div class="grid gap-3 sm:grid-cols-2">
           <label class="block text-sm">
             <span class="text-xs text-slate-400">Company name</span>
@@ -331,8 +331,8 @@ const TRANSPORT_MODES = [
       </section>
 
       <!-- Declaration details -->
-      <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <h2 class="mb-3 text-sm font-semibold text-slate-300">Declaration details</h2>
+      <section class="zui-card">
+        <h2 class="mb-3 zui-card-title">Declaration details</h2>
         <div class="grid gap-3 sm:grid-cols-2">
           <label class="block text-sm">
             <span class="text-xs text-slate-400">
@@ -370,8 +370,8 @@ const TRANSPORT_MODES = [
       </section>
 
       <!-- Transport -->
-      <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <h2 class="mb-3 text-sm font-semibold text-slate-300">Transport (e-dec / forms)</h2>
+      <section class="zui-card">
+        <h2 class="mb-3 zui-card-title">Transport (e-dec / forms)</h2>
         <div class="grid gap-3 sm:grid-cols-2">
           <label class="block text-sm">
             <span class="text-xs text-slate-400">Transport mode</span>
@@ -395,8 +395,8 @@ const TRANSPORT_MODES = [
       </section>
 
       <!-- 11.74 grouping -->
-      <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-        <h2 class="mb-3 text-sm font-semibold text-slate-300">Form 11.74 / 11.87 goods grouping</h2>
+      <section class="zui-card">
+        <h2 class="mb-3 zui-card-title">Form 11.74 / 11.87 goods grouping</h2>
         <div class="mb-3 flex rounded-lg bg-slate-800 p-1 text-sm" style="max-width: 280px">
           <button
             class="flex-1 rounded-md px-3 py-1.5"

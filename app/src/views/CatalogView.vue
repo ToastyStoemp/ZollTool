@@ -554,7 +554,7 @@ function discountTargets(d: DiscountRule): string {
         <h1 class="text-xl font-bold">Catalog</h1>
         <button
           v-if="!settings.isHelper"
-          class="shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
+          class="shrink-0 zui-btn zui-btn-primary"
           @click="tab === 'products' ? openNew() : openNewDiscount()"
         >
           + New {{ tab === 'products' ? 'product' : 'discount' }}
@@ -841,7 +841,7 @@ function discountTargets(d: DiscountRule): string {
           </button>
           <div class="ml-auto flex gap-2">
             <button class="rounded-lg bg-slate-800 px-4 py-2 text-sm" @click="editing = false">Cancel</button>
-            <button class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white" @click="saveProduct">
+            <button class="zui-btn zui-btn-primary" @click="saveProduct">
               Save
             </button>
           </div>
@@ -939,7 +939,7 @@ function discountTargets(d: DiscountRule): string {
           </span>
           <button class="rounded-lg bg-slate-800 px-4 py-2 text-sm" @click="showBulk = false">Cancel</button>
           <button
-            class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40"
+            class="zui-btn zui-btn-primary"
             :disabled="!bulkChanges"
             @click="saveBulk"
           >
@@ -1101,7 +1101,7 @@ function discountTargets(d: DiscountRule): string {
       <template #footer>
         <div class="flex justify-end gap-2">
           <button class="rounded-lg bg-slate-800 px-4 py-2 text-sm" @click="editingDiscount = false">Cancel</button>
-          <button class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white" @click="saveDiscount">
+          <button class="zui-btn zui-btn-primary" @click="saveDiscount">
             Save
           </button>
         </div>
