@@ -6,6 +6,7 @@ import { showToast, toasts } from '@/lib/toast';
 import { loadPin, pinState, tryUnlock } from '@/lib/pin';
 import { useSettingsStore } from '@/stores/settings';
 import { syncState } from '@/sync/engine';
+import { getServerCommit } from '@/sync/api';
 import { isNative } from '@/native/plugins';
 import { checkForUpdate, currentFlavor, downloadUpdate, updateDownload } from '@/lib/updates';
 import OnboardingWizard from '@/components/OnboardingWizard.vue';
@@ -56,9 +57,14 @@ const pinPromptVisible = computed(
 const pinInput = ref('');
 const pinError = ref(false);
 
+// Sidebar build stamp: the live deployed commit when online, else this build.
+const buildStamp = ref<string>(__APP_VERSION__);
 onMounted(() => {
   void loadPin();
   void autoUpdateCheck();
+  void getServerCommit().then((c) => {
+    if (c) buildStamp.value = c;
+  });
 });
 
 /**
@@ -97,14 +103,14 @@ async function submitPin(): Promise<void> {
 </script>
 
 <template>
-  <div class="app-shell flex flex-col md:flex-row md:pb-[var(--safe-bottom)]">
-    <!-- Sidebar (tablet/desktop) -->
-    <aside v-if="!chromeHidden" class="hidden w-52 shrink-0 flex-col border-r border-slate-800 bg-slate-900 md:flex">
-      <div class="flex items-center gap-2 px-4 py-5">
+  <div class="zui-shell flex-col md:flex-row md:pb-[var(--safe-bottom)]">
+    <!-- Sidebar (tablet/desktop); phone uses the bottom nav below instead -->
+    <aside v-if="!chromeHidden" class="zui-sidebar hidden md:flex">
+      <div class="zui-sidebar-brand">
         <span class="zui-brand">Zoll<span>Tool</span></span>
         <span v-if="syncBadge" class="h-2 w-2 rounded-full" :class="syncBadge.cls" :title="syncBadge.title" />
       </div>
-      <nav class="flex flex-1 flex-col gap-1 px-2">
+      <nav class="zui-sidebar-nav">
         <RouterLink
           v-for="item in nav"
           :key="item.to"
@@ -116,6 +122,8 @@ async function submitPin(): Promise<void> {
           <span>{{ item.label }}</span>
         </RouterLink>
       </nav>
+      <div class="zui-sidebar-spacer"></div>
+      <div class="zui-sidebar-footer">build {{ buildStamp }}</div>
     </aside>
 
     <!-- Main content -->

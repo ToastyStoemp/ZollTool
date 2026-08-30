@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { ChevronRight, Smartphone, CreditCard, Receipt, ShieldCheck, Package } from 'lucide-vue-next';
-import { Updater, hasNativePlugin } from '@/native/plugins';
+import { Updater, hasNativePlugin, isNative } from '@/native/plugins';
 import { getServerCommit } from '@/sync/api';
 
 const appVersion = ref(__APP_VERSION__);
@@ -32,9 +32,17 @@ const pages = [
   <div class="zui-settings-page">
     <div class="zui-settings-head">
       <h1 class="zui-title">Settings</h1>
+      <!-- Web: the server serves this bundle, so its live commit is the truth.
+           Native: this device's installed app build is primary; the server it
+           syncs with is shown below when it differs. -->
       <span class="zui-settings-head-spacer text-right text-xs text-slate-500">
-        <span title="App build">{{ appVersion }}</span>
-        <span v-if="serverCommit" class="block text-[0.65rem] text-slate-600" title="Sync server build">server {{ serverCommit }}</span>
+        <template v-if="!isNative">
+          <span :title="serverCommit ? 'Deployed commit (live)' : 'App build'">{{ serverCommit || appVersion }}</span>
+        </template>
+        <template v-else>
+          <span title="This device's app build">{{ appVersion }}</span>
+          <span v-if="serverCommit && serverCommit !== appVersion" class="block text-[0.65rem] text-slate-600" title="Sync server's deployed commit">server {{ serverCommit }}</span>
+        </template>
       </span>
     </div>
     <div class="zui-settings-list">
