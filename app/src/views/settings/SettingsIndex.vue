@@ -29,27 +29,22 @@ const pages = [
 </script>
 
 <template>
-  <div class="mx-auto max-w-2xl p-4 md:p-6">
-    <div class="mb-6 flex items-baseline justify-between gap-3">
-      <h1 class="text-xl font-bold">Settings</h1>
-      <span class="shrink-0 text-right text-xs text-slate-500">
+  <div class="zui-settings-page">
+    <div class="zui-settings-head">
+      <h1 class="zui-title">Settings</h1>
+      <span class="zui-settings-head-spacer text-right text-xs text-slate-500">
         <span title="App build">{{ appVersion }}</span>
         <span v-if="serverCommit" class="block text-[0.65rem] text-slate-600" title="Sync server build">server {{ serverCommit }}</span>
       </span>
     </div>
-    <div class="space-y-2">
-      <RouterLink
-        v-for="p in pages"
-        :key="p.to"
-        :to="p.to"
-        class="flex items-center gap-3 zui-card hover:ring-slate-700"
-      >
-        <component :is="p.icon" class="h-5 w-5 shrink-0 text-emerald-400" />
-        <div class="min-w-0 flex-1">
-          <p class="text-sm font-semibold">{{ p.label }}</p>
-          <p class="truncate text-xs text-slate-500">{{ p.desc }}</p>
+    <div class="zui-settings-list">
+      <RouterLink v-for="p in pages" :key="p.to" :to="p.to" class="zui-settings-card">
+        <component :is="p.icon" class="zui-settings-card-icon" />
+        <div class="zui-settings-card-body">
+          <span class="zui-settings-card-title">{{ p.label }}</span>
+          <span class="zui-settings-card-desc">{{ p.desc }}</span>
         </div>
-        <ChevronRight class="h-4 w-4 shrink-0 text-slate-600" />
+        <ChevronRight class="zui-settings-card-chevron" />
       </RouterLink>
     </div>
   </div>

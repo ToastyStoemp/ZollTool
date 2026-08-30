@@ -6,8 +6,8 @@ defineProps<{ title: string }>();
 </script>
 
 <template>
-  <div class="mx-auto max-w-2xl p-4 md:p-6">
-    <div class="mb-5 flex items-center gap-3">
+  <div class="zui-settings-page">
+    <div class="zui-settings-head">
       <RouterLink to="/settings" class="zui-back-btn" aria-label="Back to Settings">
         <ChevronLeft />
       </RouterLink>
