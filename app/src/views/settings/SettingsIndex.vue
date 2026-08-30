@@ -2,8 +2,12 @@
 import { onMounted, ref } from 'vue';
 import { ChevronRight, Smartphone, CreditCard, Receipt, ShieldCheck, Package } from 'lucide-vue-next';
 import { Updater, hasNativePlugin } from '@/native/plugins';
+import { getServerCommit } from '@/sync/api';
 
 const appVersion = ref(__APP_VERSION__);
+// The sync server's own commit (resolved at its boot) — shown when online so you
+// can confirm the deployed server matches the app build.
+const serverCommit = ref<string | null>(null);
 onMounted(async () => {
   if (hasNativePlugin('Updater')) {
     try {
@@ -12,6 +16,7 @@ onMounted(async () => {
       /* keep the build-time stamp */
     }
   }
+  serverCommit.value = await getServerCommit();
 });
 
 const pages = [
@@ -27,7 +32,10 @@ const pages = [
   <div class="mx-auto max-w-2xl p-4 md:p-6">
     <div class="mb-6 flex items-baseline justify-between gap-3">
       <h1 class="text-xl font-bold">Settings</h1>
-      <span class="shrink-0 text-xs text-slate-500" title="App version">{{ appVersion }}</span>
+      <span class="shrink-0 text-right text-xs text-slate-500">
+        <span title="App build">{{ appVersion }}</span>
+        <span v-if="serverCommit" class="block text-[0.65rem] text-slate-600" title="Sync server build">server {{ serverCommit }}</span>
+      </span>
     </div>
     <div class="space-y-2">
       <RouterLink

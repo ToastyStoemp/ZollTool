@@ -6,6 +6,7 @@
  * separately-computed timestamp that can drift a few minutes apart).
  */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -13,8 +14,22 @@ const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const gradlePath = join(root, 'android', 'app', 'build.gradle');
 
 // Minutes-since-epoch: monotonically increasing, no state to track between runs.
+// Update detection still keys off this integer.
 const versionCode = Math.floor(Date.now() / 60000);
-const versionName = new Date().toISOString().slice(0, 16).replace('T', ' ');
+// versionName = the git commit being built, so a running app maps 1:1 to a
+// commit. A "-dirty" suffix flags a build made with uncommitted changes.
+const versionName = gitVersion();
+
+function gitVersion() {
+  try {
+    const sha = execSync('git rev-parse --short HEAD', { cwd: root }).toString().trim();
+    const dirty = execSync('git status --porcelain', { cwd: root }).toString().trim() ? '-dirty' : '';
+    return sha + dirty;
+  } catch {
+    // No git (e.g. a source tarball) — fall back to a timestamp so it's never empty.
+    return new Date().toISOString().slice(0, 16).replace('T', ' ');
+  }
+}
 
 let content = readFileSync(gradlePath, 'utf-8');
 if (!/versionCode \d+/.test(content) || !/versionName "[^"]*"/.test(content)) {

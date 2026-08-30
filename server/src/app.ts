@@ -9,6 +9,7 @@ import fastifyStatic from '@fastify/static';
 import type Database from 'better-sqlite3';
 import { openDb } from './db';
 import { authenticate, authenticateApiOrJwt, registerAuthRoutes, seedOwner } from './auth';
+import { resolveCommit } from './version';
 import { registerSyncRoutes } from './routes/sync';
 import { registerImageRoutes } from './routes/images';
 import { registerAdminRoutes } from './routes/admin';
@@ -92,6 +93,10 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   if (opts.apkDir) registerUpdateRoutes(app, opts.apkDir);
 
   app.get('/api/health', async () => ({ ok: true, ts: Date.now() }));
+
+  // Public build stamp: the commit this server is running (resolved at boot).
+  const commit = resolveCommit(opts.dataDir);
+  app.get('/api/version', async () => ({ commit }));
 
   if (opts.webDir && existsSync(join(opts.webDir, 'index.html'))) {
     await app.register(fastifyStatic, { root: opts.webDir });

@@ -289,6 +289,19 @@ export function deleteMyUser(password: string): Promise<{ ok: boolean }> {
   });
 }
 
+/** The commit the sync server is running (its public build stamp). Null when offline/unconfigured. */
+export async function getServerCommit(): Promise<string | null> {
+  const base = await getServerUrl();
+  if (!base) return null;
+  try {
+    const res = await fetch(`${base}/api/version`);
+    if (!res.ok) return null;
+    return ((await res.json()) as { commit?: string }).commit ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function pushOps(req: PushRequest): Promise<PushResponse> {
   return apiJson<PushResponse>('/api/sync/push', {
     method: 'POST',

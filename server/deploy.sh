@@ -27,5 +27,14 @@ if [ -f server/docker-compose.override.yml ]; then
   compose_files+=(-f server/docker-compose.override.yml)
 fi
 
+# Record the deployed commit where the server reads it at boot (the container has
+# no .git). Written into the mounted data volume; the server resolves it via
+# resolveCommit(). server/data maps to /data in the container.
+GIT_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo dev)"
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then GIT_SHA="${GIT_SHA}-dirty"; fi
+mkdir -p server/data
+echo "$GIT_SHA" > server/data/commit
+echo "  deployed commit: $GIT_SHA"
+
 docker compose "${compose_files[@]}" --env-file "$ENV_FILE" up -d --build
 echo "Deploy complete."
