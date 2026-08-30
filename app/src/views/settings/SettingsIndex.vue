@@ -34,7 +34,7 @@ const pages = [
         v-for="p in pages"
         :key="p.to"
         :to="p.to"
-        class="flex items-center gap-3 rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800 hover:ring-slate-700"
+        class="flex items-center gap-3 zui-card hover:ring-slate-700"
       >
         <component :is="p.icon" class="h-5 w-5 shrink-0 text-emerald-400" />
         <div class="min-w-0 flex-1">

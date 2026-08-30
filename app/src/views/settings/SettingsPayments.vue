@@ -98,8 +98,8 @@ async function addMethod(): Promise<void> {
 <template>
   <SettingsShell title="Payments">
     <!-- Card payment terminal -->
-    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-      <h2 class="mb-3 text-sm font-semibold text-slate-300">Card payment terminal</h2>
+    <section class="zui-card">
+      <h2 class="mb-3 zui-card-title">Card payment terminal</h2>
       <div class="space-y-2">
         <div
           v-for="p in allProviders()"
@@ -134,7 +134,7 @@ async function addMethod(): Promise<void> {
           v-model="sumupKey"
           type="text"
           placeholder="From the SumUp developer dashboard"
-          class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2 font-mono text-xs"
+          class="mt-1 w-full zui-input font-mono text-xs"
           @change="saveSumupKey"
         />
       </label>
@@ -148,7 +148,7 @@ async function addMethod(): Promise<void> {
         <select
           v-if="knownCarbons.length"
           v-model="remoteCarbonDeviceId"
-          class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm"
+          class="w-full zui-input"
           @change="saveRemoteCarbonDeviceId"
         >
           <option value="" disabled>Choose a Carbon…</option>
@@ -164,7 +164,7 @@ async function addMethod(): Promise<void> {
             v-model="remoteCarbonDeviceId"
             type="text"
             placeholder="Find this in Settings on the Carbon itself"
-            class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2 font-mono text-xs"
+            class="mt-1 w-full zui-input font-mono text-xs"
             @change="saveRemoteCarbonDeviceId"
           />
         </label>
@@ -172,8 +172,8 @@ async function addMethod(): Promise<void> {
     </section>
 
     <!-- Extra payment methods -->
-    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-      <h2 class="mb-2 text-sm font-semibold text-slate-300">Extra payment methods</h2>
+    <section class="zui-card">
+      <h2 class="mb-2 zui-card-title">Extra payment methods</h2>
       <p class="mb-3 text-xs text-slate-500">
         Extra buttons on the sell screen for payments handled outside the app, e.g. TWINT or a PayPal QR code. Sales made with them count as non-cash in the history.
       </p>
@@ -188,7 +188,7 @@ async function addMethod(): Promise<void> {
         </li>
       </ul>
       <form class="flex gap-2" @submit.prevent="addMethod">
-        <input v-model="newMethod" type="text" placeholder="e.g. TWINT" class="min-w-0 flex-1 rounded-lg bg-slate-800 px-3 py-2 text-sm" />
+        <input v-model="newMethod" type="text" placeholder="e.g. TWINT" class="min-w-0 flex-1 zui-input" />
         <button
           type="submit"
           class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"

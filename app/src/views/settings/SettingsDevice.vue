@@ -78,14 +78,14 @@ async function forgetBtDisplay(): Promise<void> {
 
 <template>
   <SettingsShell title="Device">
-    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-      <h2 class="mb-3 text-sm font-semibold text-slate-300">This device</h2>
+    <section class="zui-card">
+      <h2 class="mb-3 zui-card-title">This device</h2>
       <label class="block text-sm">
         <span class="text-slate-400">Device name</span>
         <input
           v-model="deviceNameDraft"
           placeholder="e.g. Wolf's tablet"
-          class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2"
+          class="mt-1 w-full zui-input"
           @change="saveDeviceName"
         />
       </label>
@@ -94,13 +94,13 @@ async function forgetBtDisplay(): Promise<void> {
         <input
           v-model="currencyDraft"
           placeholder="CHF"
-          class="mt-1 w-24 rounded-lg bg-slate-800 px-3 py-2 uppercase"
+          class="mt-1 w-24 zui-input uppercase"
           @change="saveCurrency"
         />
       </label>
       <label class="mt-3 block text-sm">
         <span class="text-slate-400">Default rounding increment (prefilled for new events)</span>
-        <select v-model="roundingDraft" class="mt-1 w-24 rounded-lg bg-slate-800 px-3 py-2" @change="saveRounding">
+        <select v-model="roundingDraft" class="mt-1 w-24 zui-input" @change="saveRounding">
           <option value="0">Off</option>
           <option value="1">1</option>
           <option value="5">5</option>
@@ -149,7 +149,7 @@ async function forgetBtDisplay(): Promise<void> {
             </button>
           </div>
         </div>
-        <select v-if="btDisplayChoices.length" class="mt-2 w-full rounded-lg bg-slate-800 px-3 py-2 text-sm" @change="selectBtDisplay">
+        <select v-if="btDisplayChoices.length" class="mt-2 w-full zui-input" @change="selectBtDisplay">
           <option value="">— pick a paired device —</option>
           <option v-for="p in btDisplayChoices" :key="p.address" :value="p.address">{{ p.name }} ({{ p.address }})</option>
         </select>

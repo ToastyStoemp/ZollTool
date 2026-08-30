@@ -101,7 +101,7 @@ async function submitPin(): Promise<void> {
     <!-- Sidebar (tablet/desktop) -->
     <aside v-if="!chromeHidden" class="hidden w-52 shrink-0 flex-col border-r border-slate-800 bg-slate-900 md:flex">
       <div class="flex items-center gap-2 px-4 py-5">
-        <span class="text-xl font-bold tracking-tight text-slate-100">Zoll<span class="text-emerald-400">Tool</span></span>
+        <span class="zui-brand">Zoll<span>Tool</span></span>
         <span v-if="syncBadge" class="h-2 w-2 rounded-full" :class="syncBadge.cls" :title="syncBadge.title" />
       </div>
       <nav class="flex flex-1 flex-col gap-1 px-2">
@@ -109,14 +109,10 @@ async function submitPin(): Promise<void> {
           v-for="item in nav"
           :key="item.to"
           :to="item.to"
-          class="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-300 transition-colors hover:bg-slate-800"
-          :class="
-            route.path.startsWith(item.to)
-              ? 'bg-emerald-500/10 text-emerald-400 ring-1 ring-inset ring-emerald-500/20'
-              : ''
-          "
+          class="zui-nav-item"
+          :class="{ 'is-active': route.path.startsWith(item.to) }"
         >
-          <component :is="item.icon" class="h-4.5 w-4.5" />
+          <component :is="item.icon" />
           <span>{{ item.label }}</span>
         </RouterLink>
       </nav>

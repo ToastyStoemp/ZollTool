@@ -183,43 +183,43 @@ async function toggleAutoPrint(): Promise<void> {
 
 <template>
   <SettingsShell title="Artist &amp; receipts">
-    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-      <h2 class="mb-2 text-sm font-semibold text-slate-300">Artist info &amp; receipts</h2>
+    <section class="zui-card">
+      <h2 class="mb-2 zui-card-title">Artist info &amp; receipts</h2>
       <p class="mb-3 text-xs text-slate-500">
         Prefills customs documents<template v-if="canPrint"> and is printed as the header on receipts</template>.
       </p>
       <div class="grid grid-cols-2 gap-3">
         <label class="block text-sm">
           <span class="text-slate-400">Company / artist name</span>
-          <input v-model="artistDraft.companyName" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          <input v-model="artistDraft.companyName" class="mt-1 w-full zui-input" />
         </label>
         <label class="block text-sm">
           <span class="text-slate-400">Full name</span>
-          <input v-model="artistDraft.fullName" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          <input v-model="artistDraft.fullName" class="mt-1 w-full zui-input" />
         </label>
         <label class="block text-sm">
           <span class="text-slate-400">Street</span>
-          <input v-model="artistDraft.street" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          <input v-model="artistDraft.street" class="mt-1 w-full zui-input" />
         </label>
         <label class="block text-sm">
           <span class="text-slate-400">Postcode + city</span>
-          <input v-model="artistDraft.postCodeCity" placeholder="9000 Gent" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          <input v-model="artistDraft.postCodeCity" placeholder="9000 Gent" class="mt-1 w-full zui-input" />
         </label>
         <label class="block text-sm">
           <span class="text-slate-400">Country</span>
-          <input v-model="artistDraft.countryOfOrigin" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          <input v-model="artistDraft.countryOfOrigin" class="mt-1 w-full zui-input" />
         </label>
         <label class="block text-sm">
           <span class="text-slate-400">Default VAT / UID number</span>
-          <input v-model="artistDraft.vatNumber" placeholder="CHE-123.456.789 MWST" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          <input v-model="artistDraft.vatNumber" placeholder="CHE-123.456.789 MWST" class="mt-1 w-full zui-input" />
         </label>
         <label class="block text-sm">
           <span class="text-slate-400">Phone</span>
-          <input v-model="artistDraft.phone" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          <input v-model="artistDraft.phone" class="mt-1 w-full zui-input" />
         </label>
         <label class="block text-sm">
           <span class="text-slate-400">Email</span>
-          <input v-model="artistDraft.email" type="email" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          <input v-model="artistDraft.email" type="email" class="mt-1 w-full zui-input" />
         </label>
       </div>
 
@@ -233,8 +233,8 @@ async function toggleAutoPrint(): Promise<void> {
           Receipts use the number matching the <strong>event's country</strong>; the default above is used when there's no match.
         </p>
         <div v-for="(v, i) in artistDraft.vatNumbers" :key="i" class="mb-2 flex gap-2">
-          <input v-model="v.country" placeholder="Country, e.g. Germany" class="w-1/3 min-w-0 rounded-lg bg-slate-800 px-3 py-2 text-sm" />
-          <input v-model="v.vatNumber" placeholder="VAT / UID number" class="min-w-0 flex-1 rounded-lg bg-slate-800 px-3 py-2 text-sm" />
+          <input v-model="v.country" placeholder="Country, e.g. Germany" class="w-1/3 min-w-0 zui-input" />
+          <input v-model="v.vatNumber" placeholder="VAT / UID number" class="min-w-0 flex-1 zui-input" />
           <button class="rounded-lg px-3 text-sm text-red-400 hover:bg-red-950" aria-label="Remove" @click="removeVatRow(i)">✕</button>
         </div>
       </div>
@@ -244,7 +244,7 @@ async function toggleAutoPrint(): Promise<void> {
         <textarea
           v-model="receiptFooterDraft"
           rows="2"
-          class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2"
+          class="mt-1 w-full zui-input"
           placeholder="Thank you for your purchase!"
         ></textarea>
       </label>
@@ -286,7 +286,7 @@ async function toggleAutoPrint(): Promise<void> {
             <button v-if="printerName" class="rounded-lg px-3 py-1.5 text-xs text-red-400 hover:bg-red-950" @click="forgetPrinter">Forget</button>
           </div>
         </div>
-        <select v-if="printerChoices.length" class="mt-2 w-full rounded-lg bg-slate-800 px-3 py-2 text-sm" @change="selectPrinter">
+        <select v-if="printerChoices.length" class="mt-2 w-full zui-input" @change="selectPrinter">
           <option value="">— pick a paired device —</option>
           <option v-for="p in printerChoices" :key="p.address" :value="p.address">{{ p.name }} ({{ p.address }})</option>
         </select>
@@ -306,7 +306,7 @@ async function toggleAutoPrint(): Promise<void> {
           >
             {{ printerBusy ? 'Printing…' : 'Test print' }}
           </button>
-          <button class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500" @click="saveArtistInfo">
+          <button class="zui-btn zui-btn-primary" @click="saveArtistInfo">
             {{ artistSaved ? 'Saved ✓' : 'Save' }}
           </button>
         </div>
@@ -314,9 +314,9 @@ async function toggleAutoPrint(): Promise<void> {
     </section>
 
     <!-- Live receipt preview -->
-    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+    <section class="zui-card">
       <div class="mb-3 flex flex-wrap items-center gap-2">
-        <h2 class="text-sm font-semibold text-slate-300">Receipt preview</h2>
+        <h2 class="zui-card-title">Receipt preview</h2>
         <label class="ml-auto text-xs text-slate-400">
           Event country:
           <select v-model="previewCountry" class="ml-1 rounded bg-slate-800 px-2 py-1 text-xs">

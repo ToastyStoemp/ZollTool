@@ -4,6 +4,7 @@ import App from './App.vue';
 import { router } from './router';
 import { useSettingsStore } from './stores/settings';
 import { installDiagnostics } from './lib/diagnostics';
+import './styles/zoll-ui.css'; // shared ZollDesign framework (tokens + .zui-* components)
 import './assets/main.css';
 
 installDiagnostics();

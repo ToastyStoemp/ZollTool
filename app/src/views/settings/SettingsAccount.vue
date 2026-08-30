@@ -365,8 +365,8 @@ async function removePinSettings(): Promise<void> {
 <template>
   <SettingsShell title="Account &amp; security">
     <!-- Server sync -->
-    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-      <h2 class="mb-2 text-sm font-semibold text-slate-300">Server sync</h2>
+    <section class="zui-card">
+      <h2 class="mb-2 zui-card-title">Server sync</h2>
 
       <template v-if="settings.syncUser">
         <div class="mb-3 flex items-center gap-2">
@@ -411,14 +411,14 @@ async function removePinSettings(): Promise<void> {
           <button class="flex-1 rounded-md px-3 py-1.5" :class="authMode === 'register' ? 'bg-slate-700 font-semibold' : 'text-slate-400'" @click="authMode = 'register'">Create account</button>
         </div>
         <form class="space-y-2" @submit.prevent="submitAuth">
-          <input v-model="authUrl" type="url" placeholder="Server URL, e.g. https://sync.example.com" class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm" />
-          <input v-model="authEmail" type="email" autocomplete="email" placeholder="Email" class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm" />
+          <input v-model="authUrl" type="url" placeholder="Server URL, e.g. https://sync.example.com" class="w-full zui-input" />
+          <input v-model="authEmail" type="email" autocomplete="email" placeholder="Email" class="w-full zui-input" />
           <input
             v-model="authPassword"
             type="password"
             :autocomplete="authMode === 'login' ? 'current-password' : 'new-password'"
             placeholder="Password"
-            class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm"
+            class="w-full zui-input"
           />
           <template v-if="authMode === 'login' && authNeeds2fa">
             <input
@@ -427,7 +427,7 @@ async function removePinSettings(): Promise<void> {
               inputmode="numeric"
               autocomplete="one-time-code"
               placeholder="6-digit code or recovery code"
-              class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm"
+              class="w-full zui-input"
             />
             <label class="flex items-center gap-2 px-1 text-xs text-slate-400">
               <input v-model="authRemember" type="checkbox" class="accent-emerald-500" />
@@ -435,11 +435,11 @@ async function removePinSettings(): Promise<void> {
             </label>
           </template>
           <template v-if="authMode === 'register'">
-            <input v-model="authInvite" type="text" placeholder="Invite code (joins an existing account)" class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm" />
-            <input v-if="!authInvite" v-model="authAccountName" type="text" placeholder="Account name, e.g. Phuong Ninjin" class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm" />
+            <input v-model="authInvite" type="text" placeholder="Invite code (joins an existing account)" class="w-full zui-input" />
+            <input v-if="!authInvite" v-model="authAccountName" type="text" placeholder="Account name, e.g. Phuong Ninjin" class="w-full zui-input" />
           </template>
           <p v-if="authError" class="text-xs text-red-400">{{ authError }}</p>
-          <button type="submit" class="w-full rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" :disabled="authBusy">
+          <button type="submit" class="w-full zui-btn zui-btn-primary" :disabled="authBusy">
             {{ authBusy ? 'Connecting…' : authMode === 'login' ? 'Log in' : 'Create account' }}
           </button>
           <button
@@ -456,8 +456,8 @@ async function removePinSettings(): Promise<void> {
     </section>
 
     <!-- Two-factor authentication -->
-    <section v-if="settings.syncUser" class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-      <h2 class="mb-2 text-sm font-semibold text-slate-300">Two-factor authentication</h2>
+    <section v-if="settings.syncUser" class="zui-card">
+      <h2 class="mb-2 zui-card-title">Two-factor authentication</h2>
       <p class="mb-3 text-xs text-slate-500">Protect your account login with an authenticator app (Google Authenticator, Authy, 1Password…).</p>
       <p v-if="twofaLoading" class="text-xs text-slate-500">Loading…</p>
 
@@ -473,9 +473,9 @@ async function removePinSettings(): Promise<void> {
         <p class="mb-2 text-xs text-slate-500">Scan with your authenticator app, or enter the key manually:</p>
         <img v-if="twofaQr" :src="twofaQr" alt="2FA QR code" class="mb-2 rounded-lg bg-white p-2" width="180" height="180" />
         <code class="mb-3 block break-all rounded bg-slate-800 px-2 py-1.5 text-xs tracking-wider">{{ twofaSetup.secret }}</code>
-        <input v-model="twofaConfirmCode" type="text" inputmode="numeric" placeholder="Enter the 6-digit code to confirm" class="mb-2 w-full rounded-lg bg-slate-800 px-3 py-2 text-sm" />
+        <input v-model="twofaConfirmCode" type="text" inputmode="numeric" placeholder="Enter the 6-digit code to confirm" class="mb-2 w-full zui-input" />
         <div class="flex gap-2">
-          <button class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40" :disabled="twofaBusy" @click="confirmTwofa">Verify &amp; enable</button>
+          <button class="zui-btn zui-btn-primary" :disabled="twofaBusy" @click="confirmTwofa">Verify &amp; enable</button>
           <button class="rounded-lg bg-slate-800 px-4 py-2 text-sm hover:bg-slate-700" @click="cancelTwofaSetup">Cancel</button>
         </div>
         <p v-if="twofaMsg" class="mt-2 text-xs text-red-400">{{ twofaMsg }}</p>
@@ -489,15 +489,15 @@ async function removePinSettings(): Promise<void> {
       </template>
 
       <template v-else>
-        <button class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-40" :disabled="twofaBusy" @click="startTwofaSetup">Enable 2FA</button>
+        <button class="zui-btn zui-btn-primary" :disabled="twofaBusy" @click="startTwofaSetup">Enable 2FA</button>
         <p v-if="twofaMsg" class="mt-2 text-xs text-red-400">{{ twofaMsg }}</p>
       </template>
     </section>
 
     <!-- Team & helpers (owner/admin): restrict members to specific events -->
-    <section v-if="settings.syncUser && isManager()" class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+    <section v-if="settings.syncUser && isManager()" class="zui-card">
       <div class="mb-2 flex items-center gap-2">
-        <h2 class="text-sm font-semibold text-slate-300">Team &amp; helpers</h2>
+        <h2 class="zui-card-title">Team &amp; helpers</h2>
         <button class="rounded bg-slate-800 px-2 py-1 text-[0.65rem] text-slate-300 hover:bg-slate-700" @click="loadMembers">Refresh</button>
       </div>
       <p class="mb-3 text-xs text-slate-500">
@@ -544,7 +544,7 @@ async function removePinSettings(): Promise<void> {
             {{ e.name }}
           </label>
         </div>
-        <button class="mt-3 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500" @click="generateHelperInvite">
+        <button class="mt-3 zui-btn zui-btn-primary" @click="generateHelperInvite">
           Generate invite code
         </button>
         <div v-if="inviteCode" class="mt-2 rounded-lg bg-slate-950 px-3 py-2 font-mono text-sm text-emerald-300">{{ inviteCode }}</div>
@@ -553,9 +553,9 @@ async function removePinSettings(): Promise<void> {
     </section>
 
     <!-- Login sessions -->
-    <section v-if="settings.syncUser" class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+    <section v-if="settings.syncUser" class="zui-card">
       <div class="mb-2 flex items-center gap-2">
-        <h2 class="text-sm font-semibold text-slate-300">Your login sessions</h2>
+        <h2 class="zui-card-title">Your login sessions</h2>
         <button class="rounded bg-slate-800 px-2 py-1 text-[0.65rem] text-slate-300 hover:bg-slate-700" @click="loadSessions">Refresh</button>
         <button v-if="sessions.length > 1" class="ml-auto rounded px-2 py-1 text-[0.65rem] text-red-400 hover:bg-red-950" @click="doRevokeOthers">Log out all others</button>
       </div>
@@ -581,8 +581,8 @@ async function removePinSettings(): Promise<void> {
     </section>
 
     <!-- Security: PIN lock -->
-    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-      <h2 class="mb-2 text-sm font-semibold text-slate-300">PIN lock</h2>
+    <section class="zui-card">
+      <h2 class="mb-2 zui-card-title">PIN lock</h2>
       <p class="mb-3 text-xs text-slate-500">
         Optional PIN for Settings, Catalog, History, Customs and Admin — helpers can still sell in the POS. Locks again when the app restarts.
         <span v-if="hasPin()" class="text-emerald-400">PIN is active.</span>
@@ -590,19 +590,19 @@ async function removePinSettings(): Promise<void> {
       <div class="grid grid-cols-2 gap-3">
         <label v-if="hasPin()" class="col-span-2 block text-sm">
           <span class="text-slate-400">Current PIN</span>
-          <input v-model="pinCurrent" type="password" inputmode="numeric" autocomplete="off" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          <input v-model="pinCurrent" type="password" inputmode="numeric" autocomplete="off" class="mt-1 w-full zui-input" />
         </label>
         <label class="block text-sm">
           <span class="text-slate-400">{{ hasPin() ? 'New PIN' : 'PIN (4–8 digits)' }}</span>
-          <input v-model="pinNew" type="password" inputmode="numeric" autocomplete="off" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          <input v-model="pinNew" type="password" inputmode="numeric" autocomplete="off" class="mt-1 w-full zui-input" />
         </label>
         <label class="block text-sm">
           <span class="text-slate-400">Repeat PIN</span>
-          <input v-model="pinConfirm" type="password" inputmode="numeric" autocomplete="off" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          <input v-model="pinConfirm" type="password" inputmode="numeric" autocomplete="off" class="mt-1 w-full zui-input" />
         </label>
       </div>
       <div class="mt-3 flex gap-2">
-        <button class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500" @click="savePinSettings">{{ hasPin() ? 'Change PIN' : 'Set PIN' }}</button>
+        <button class="zui-btn zui-btn-primary" @click="savePinSettings">{{ hasPin() ? 'Change PIN' : 'Set PIN' }}</button>
         <button v-if="hasPin()" class="rounded-lg px-4 py-2 text-sm text-red-400 hover:bg-red-950" @click="removePinSettings">Remove PIN</button>
       </div>
     </section>
@@ -629,8 +629,8 @@ async function removePinSettings(): Promise<void> {
         <p class="text-xs text-slate-400">
           Confirm your password and type <code class="rounded bg-slate-800 px-1 text-red-300">DELETE</code> to proceed.
         </p>
-        <input v-model="deletePassword" type="password" autocomplete="current-password" placeholder="Your password" class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm" />
-        <input v-model="deleteConfirmText" placeholder="Type DELETE" class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm" />
+        <input v-model="deletePassword" type="password" autocomplete="current-password" placeholder="Your password" class="w-full zui-input" />
+        <input v-model="deleteConfirmText" placeholder="Type DELETE" class="w-full zui-input" />
         <p v-if="deleteError" class="text-xs text-red-400">{{ deleteError }}</p>
         <div class="flex gap-2">
           <button type="submit" :disabled="deleting || !deletePassword" class="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40">
@@ -650,8 +650,8 @@ async function removePinSettings(): Promise<void> {
         </p>
         <p class="text-sm text-slate-300">{{ settings.serverUrl }}<br />{{ settings.syncUser?.email }}</p>
         <form class="flex gap-2" @submit.prevent="generateShareQr">
-          <input v-model="shareQrPassword" type="password" autocomplete="current-password" placeholder="Account password" class="min-w-0 flex-1 rounded-lg bg-slate-800 px-3 py-2 text-sm" />
-          <button type="submit" class="shrink-0 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-40" :disabled="!shareQrPassword">Generate</button>
+          <input v-model="shareQrPassword" type="password" autocomplete="current-password" placeholder="Account password" class="min-w-0 flex-1 zui-input" />
+          <button type="submit" class="shrink-0 zui-btn zui-btn-primary" :disabled="!shareQrPassword">Generate</button>
         </form>
         <div v-if="shareQrImg" class="flex justify-center rounded-xl bg-white p-3">
           <img :src="shareQrImg" alt="Connect QR code" class="h-64 w-64 [image-rendering:pixelated]" />

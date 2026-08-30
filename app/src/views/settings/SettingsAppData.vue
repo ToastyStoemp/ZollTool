@@ -123,9 +123,9 @@ async function onImportFile(e: Event): Promise<void> {
 <template>
   <SettingsShell title="App &amp; data">
     <!-- App updates (native only) -->
-    <section v-if="isNative" class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
+    <section v-if="isNative" class="zui-card">
       <div class="mb-2 flex items-baseline justify-between gap-3">
-        <h2 class="text-sm font-semibold text-slate-300">App updates</h2>
+        <h2 class="zui-card-title">App updates</h2>
         <span class="text-xs text-slate-500">{{ appVersion }}</span>
       </div>
       <p class="mb-3 text-xs text-slate-500">Checks the sync server for a newer build than this device is running. Needs a server URL set under Account & security.</p>
@@ -145,7 +145,7 @@ async function onImportFile(e: Event): Promise<void> {
               {{ downloadPct != null ? `${downloadPct}%` : `${(updateDownload.bytesWritten / 1e6).toFixed(1)} MB` }}
             </p>
           </div>
-          <button v-else class="mt-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white" @click="doDownloadOrInstall">
+          <button v-else class="mt-2 zui-btn zui-btn-primary" @click="doDownloadOrInstall">
             {{ downloadReadyForCheck ? 'Install update' : 'Download update' }}
           </button>
         </template>
@@ -154,8 +154,8 @@ async function onImportFile(e: Event): Promise<void> {
     </section>
 
     <!-- Backup -->
-    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-      <h2 class="mb-2 text-sm font-semibold text-slate-300">Backup</h2>
+    <section class="zui-card">
+      <h2 class="mb-2 zui-card-title">Backup</h2>
       <p class="mb-3 text-xs text-slate-500">
         Export your data as a <strong>JSON</strong> file (events, products, sales, discounts — small and quick, no photos), or as a full <strong>ZIP</strong> that also bundles every
         product photo. Import accepts either, plus JSON saved by the old ZollTool. Importing merges by id — it never deletes existing data.
@@ -169,8 +169,8 @@ async function onImportFile(e: Event): Promise<void> {
     </section>
 
     <!-- Legacy -->
-    <section class="rounded-xl bg-slate-900 p-4 ring-1 ring-slate-800">
-      <h2 class="mb-2 text-sm font-semibold text-slate-300">Legacy app</h2>
+    <section class="zui-card">
+      <h2 class="mb-2 zui-card-title">Legacy app</h2>
       <p class="mb-3 text-xs text-slate-500">
         The previous version (incl. the customs tool) ships alongside until every feature is ported.
         <span v-if="settings.migratedFromV1">Your old data was imported automatically.</span>
