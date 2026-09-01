@@ -186,6 +186,10 @@ async function connect(): Promise<void> {
     authError.value = 'Server, email and password are required';
     return;
   }
+  if (!deviceNameForm.value.trim()) {
+    authError.value = 'A device name is required — it identifies this device in your sessions.';
+    return;
+  }
   authBusy.value = true;
   authError.value = '';
   try {
@@ -201,6 +205,12 @@ async function connect(): Promise<void> {
       });
     }
     showToast('Connected — sync is on', 'success');
+    // Helpers only need to connect — the remaining setup (data, events, artist
+    // details) is for account owners, so finish the wizard right here for them.
+    if (settings.isHelper) {
+      finish();
+      return;
+    }
   } catch (err) {
     authError.value = err instanceof Error ? err.message : String(err);
   } finally {

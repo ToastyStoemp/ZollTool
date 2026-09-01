@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
+import { qrDataUrl } from '@/lib/qr';
 import { showToast } from '@/lib/toast';
 import { exportBackupJson, exportBackupZipTo, importBackup, importBackupZip } from '@/lib/export/backup-json';
 import { saveTextFile, createFileWriter } from '@/lib/download';
@@ -16,6 +17,22 @@ import SettingsShell from './SettingsShell.vue';
 
 const settings = useSettingsStore();
 const appVersion = ref(__APP_VERSION__);
+
+// ── Get the Android app: direct APK download + a QR to scan from another device.
+// The sync server serves the APK publicly; on web the server is our own origin.
+const apkUrl = computed(() => {
+  const base = (settings.serverUrl || (typeof window !== 'undefined' ? window.location.origin : '')).replace(/\/+$/, '');
+  // Use the compat build — the widest device compatibility for a shared download.
+  return base ? `${base}/api/updates/download/compat` : '';
+});
+const apkQr = ref('');
+watch(
+  apkUrl,
+  async (url) => {
+    apkQr.value = url ? await qrDataUrl(url) : '';
+  },
+  { immediate: true },
+);
 
 onMounted(async () => {
   if (hasNativePlugin('Updater')) {
@@ -150,6 +167,22 @@ async function onImportFile(e: Event): Promise<void> {
           </button>
         </template>
         <p v-else class="mt-1 text-slate-400">Up to date.</p>
+      </div>
+    </section>
+
+    <!-- Get the app: download the APK or scan the QR from another device -->
+    <section v-if="apkUrl" class="zui-card">
+      <h2 class="zui-card-title mb-2">Get the Android app</h2>
+      <p class="mb-3 text-xs text-slate-500">
+        Install ZollTool on another phone or tablet — download the APK here, or scan this code from that device.
+      </p>
+      <div class="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
+        <img v-if="apkQr" :src="apkQr" alt="Scan to download the ZollTool app" class="h-40 w-40 shrink-0 rounded-lg bg-white p-2" />
+        <div class="min-w-0 flex-1">
+          <a :href="apkUrl" download class="inline-block zui-btn zui-btn-primary">Download APK</a>
+          <p class="mt-2 break-all text-[0.65rem] text-slate-600">{{ apkUrl }}</p>
+          <p class="mt-2 text-xs text-slate-500">On the receiving device, allow installing from this source when Android asks.</p>
+        </div>
       </div>
     </section>
 

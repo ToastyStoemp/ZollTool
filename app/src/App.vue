@@ -186,7 +186,8 @@ async function submitPin(): Promise<void> {
     <WebAuthGate v-if="showWebAuthGate" />
 
     <!-- First-run setup guide -->
-    <OnboardingWizard v-if="settings.ready && !settings.onboardingDone" />
+    <!-- Helpers connect and go straight to selling — no owner-oriented setup. -->
+    <OnboardingWizard v-if="settings.ready && !settings.onboardingDone && !settings.isHelper" />
 
     <!-- Toasts -->
     <div class="pointer-events-none fixed inset-x-0 top-[calc(0.75rem_+_var(--safe-top))] z-[60] flex flex-col items-center gap-2">

@@ -17,6 +17,7 @@ import { TwoFactorRequired } from '@/sync/api';
 const settings = useSettingsStore();
 
 const mode = ref<'login' | 'register'>('login');
+const deviceName = ref(settings.deviceName);
 const email = ref('');
 const password = ref('');
 const invite = ref('');
@@ -32,6 +33,11 @@ async function submit(): Promise<void> {
     error.value = 'Email and password are required';
     return;
   }
+  if (!deviceName.value.trim()) {
+    error.value = 'A device name is required — it identifies this device in your sessions.';
+    return;
+  }
+  await settings.setDeviceName(deviceName.value.trim());
   busy.value = true;
   error.value = '';
   try {
@@ -96,6 +102,13 @@ async function submit(): Promise<void> {
           type="password"
           :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
           placeholder="Password"
+          class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm"
+        />
+        <input
+          v-model="deviceName"
+          type="text"
+          autocomplete="off"
+          placeholder="Device name, e.g. Front counter iPad (required)"
           class="w-full rounded-lg bg-slate-800 px-3 py-2 text-sm"
         />
         <template v-if="mode === 'login' && needs2fa">

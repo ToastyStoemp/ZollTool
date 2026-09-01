@@ -120,6 +120,7 @@ onMounted(() => {
 // ── Server sync / login ─────────────────────────────────────────────────────
 const authMode = ref<'login' | 'register'>('login');
 const authUrl = ref(settings.serverUrl);
+const authDeviceName = ref(settings.deviceName);
 const authEmail = ref('');
 const authPassword = ref('');
 const authInvite = ref('');
@@ -143,6 +144,12 @@ async function submitAuth(): Promise<void> {
     authError.value = 'Server, email and password are required';
     return;
   }
+  if (!authDeviceName.value.trim()) {
+    authError.value = 'A device name is required — it identifies this device in your sessions.';
+    return;
+  }
+  // Persist the name before authenticating so it's attached to the new session.
+  await settings.setDeviceName(authDeviceName.value.trim());
   authBusy.value = true;
   authError.value = '';
   try {
@@ -420,6 +427,7 @@ async function removePinSettings(): Promise<void> {
             placeholder="Password"
             class="w-full zui-input"
           />
+          <input v-model="authDeviceName" type="text" autocomplete="off" placeholder="Device name, e.g. Front counter iPad (required)" class="w-full zui-input" />
           <template v-if="authMode === 'login' && authNeeds2fa">
             <input
               v-model="authCode"
