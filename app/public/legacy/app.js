@@ -2168,17 +2168,17 @@ function printAllVersions(onlyDocNum = null) {
               const i=rowNum++; const varWg=v.weightG!=null?v.weightG:p.weightG; const varPrice=v.price!=null?v.price:p.price;
               const varAmt=v.amount||0; const varTWkg=Math.round(varAmt*(varWg||0))/1000; const varTV=varPrice!=null?Math.round(varPrice*varAmt):null;
               totAmt+=varAmt; totWkg+=varTWkg; if(varTV!=null)totVal+=varTV;
-              rows.push(`<tr><td class="c">${i+1}</td><td class="mono">${esc(v.sku||p.sku||'')}</td><td>${esc(p.title||'')} - ${esc(v.name||'')}</td><td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td><td class="r">${varAmt}</td><td class="r">${varWg!=null?varWg+' g':''}</td><td class="r">${fmtWeightKg(varTWkg)}</td><td class="r">${p.priceNote||(varPrice!=null?formatNum(floorN(varPrice,2),2):'—')}</td><td class="r">${varTV!=null?varTV:'—'}</td><td class="r">${esc(p.tariffNo||'')}</td><td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td><td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td><td class="c">${esc(pOrig)}</td></tr>`);
+              rows.push(`<tr><td class="c">${i+1}</td><td>${esc(v.sku||p.sku||'')}</td><td>${esc(p.title||'')} - ${esc(v.name||'')}</td><td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td><td class="r">${varAmt}</td><td class="r">${varWg!=null?varWg+' g':''}</td><td class="r">${fmtWeightKg(varTWkg)}</td><td class="r">${p.priceNote||(varPrice!=null?formatNum(floorN(varPrice,2),2):'—')}</td><td class="r">${varTV!=null?varTV:'—'}</td><td class="r">${esc(p.tariffNo||'')}</td><td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td><td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td><td class="c">${esc(pOrig)}</td></tr>`);
             });
           } else {
             const i=rowNum++; totAmt+=(c.amount||0); totWkg+=c.totalWeightKg; if(c.totalValue!=null)totVal+=c.totalValue;
             const td=hasVariants(p)?`${esc(p.title||'')} (${p.variants.length} variants)`:`${esc(p.title||'')}`;
-            rows.push(`<tr><td class="c">${i+1}</td><td class="mono">${esc(p.sku||'')}</td><td>${td}</td><td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td><td class="r">${c.amount??''}</td><td class="r">${c.effectiveUnitWeightG!=null?Math.round(c.effectiveUnitWeightG)+' g':''}</td><td class="r">${fmtWeightKg(c.totalWeightKg)}</td><td class="r">${p.priceNote||(c.effectiveUnitPrice!=null?formatNum(floorN(c.effectiveUnitPrice,2),2):'—')}</td><td class="r">${c.totalValue!=null?c.totalValue:'—'}</td><td class="r">${esc(p.tariffNo||'')}</td><td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td><td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td><td class="c">${esc(pOrig)}</td></tr>`);
+            rows.push(`<tr><td class="c">${i+1}</td><td>${esc(p.sku||'')}</td><td>${td}</td><td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td><td class="r">${c.amount??''}</td><td class="r">${c.effectiveUnitWeightG!=null?Math.round(c.effectiveUnitWeightG)+' g':''}</td><td class="r">${fmtWeightKg(c.totalWeightKg)}</td><td class="r">${p.priceNote||(c.effectiveUnitPrice!=null?formatNum(floorN(c.effectiveUnitPrice,2),2):'—')}</td><td class="r">${c.totalValue!=null?c.totalValue:'—'}</td><td class="r">${esc(p.tariffNo||'')}</td><td class="r">${p.tariffRate!=null?p.tariffRate+'%':''}</td><td class="r">${p.vatRate!=null?p.vatRate+'%':''}</td><td class="c">${esc(pOrig)}</td></tr>`);
           }
         });
         const fl = format==='detailed'?' (Detailed)':' (Compressed)';
         tableHtml = `<div class="section-title">List of goods${fl}</div>
-<table class="goods"><thead><tr><th>#</th><th>Title</th><th>SKU</th><th>For Sale / Not For Sale</th><th>Type</th><th class="r">Amount</th><th class="r">Unit Weight</th><th class="r">Total Weight</th><th class="r">Unit Price (${cur})</th><th class="r">Total Value (${cur})</th><th class="r">Tariff no.</th><th class="r">Tariff Rate</th><th class="r">VAT Rate</th><th class="c">Origin</th></tr></thead>
+<table class="goods"><thead><tr><th>#</th><th>SKU</th><th>Title</th><th>For Sale / Not For Sale</th><th>Type</th><th class="r">Amount</th><th class="r">Unit Weight</th><th class="r">Total Weight</th><th class="r">Unit Price (${cur})</th><th class="r">Total Value (${cur})</th><th class="r">Tariff no.</th><th class="r">Tariff Rate</th><th class="r">VAT Rate</th><th class="c">Origin</th></tr></thead>
 <tbody>${rows.join('')}</tbody><tfoot><tr><td colspan="5" style="text-align:right">TOTALS</td><td class="r">${totAmt}</td><td></td><td class="r">${fmtWeightKg(totWkg)}</td><td></td><td class="r" style="color:#c00">${Math.floor(totVal)}</td><td colspan="4"></td></tr></tfoot></table>`;
       }
 
@@ -2497,7 +2497,7 @@ function printGoodsList(docNum, format = 'detailed') {
             const tv = varTotalVal != null ? varTotalVal : '—';
             totAmt += varAmt; totWkg += varTotalWkg;
             if (varTotalVal != null) totVal += varTotalVal;
-            detailedRows.push(`<tr><td class="c">${i+1}</td><td class="mono">${esc(v.sku||p.sku||'')}</td><td>${esc(p.title||'')} - ${esc(v.name||'')}</td>
+            detailedRows.push(`<tr><td class="c">${i+1}</td><td>${esc(v.sku||p.sku||'')}</td><td>${esc(p.title||'')} - ${esc(v.name||'')}</td>
               <td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td>
               <td class="r">${varAmt}</td><td class="r">${varWg!=null?varWg+' g':''}</td>
               <td class="r">${fmtWeightKg(varTotalWkg)}</td><td class="r">${esc(pd)}</td>
@@ -2514,7 +2514,7 @@ function printGoodsList(docNum, format = 'detailed') {
           totAmt += (c.amount || 0); totWkg += c.totalWeightKg;
           if (c.totalValue != null) totVal += c.totalValue;
           const titleDisplay = hasVariants(p) ? `${esc(p.title||'')} (${p.variants.filter(v=>!v.unlisted).length} variants)` : `${esc(p.title||'')}`;
-          detailedRows.push(`<tr><td class="c">${i+1}</td><td class="mono">${esc(p.sku||'')}</td><td>${titleDisplay}</td>
+          detailedRows.push(`<tr><td class="c">${i+1}</td><td>${esc(p.sku||'')}</td><td>${titleDisplay}</td>
             <td>${p.forSale?'For Sale':'Not For Sale'}</td><td>${esc(p.type||'')}</td>
             <td class="r">${c.amount??''}</td><td class="r">${c.effectiveUnitWeightG!=null?Math.round(c.effectiveUnitWeightG)+' g':''}</td>
             <td class="r">${fmtWeightKg(c.totalWeightKg)}</td><td class="r">${esc(pd)}</td>
@@ -2529,7 +2529,7 @@ function printGoodsList(docNum, format = 'detailed') {
       const formatLabel = format === 'detailed' ? ' (Detailed)' : ' (Compressed)';
       tableHtml = `<div class="section-title">List of goods${formatLabel}</div>
 <table class="goods"><thead><tr>
-  <th>#</th><th>Title</th><th>SKU</th><th>For Sale / Not For Sale</th><th>Type</th>
+  <th>#</th><th>SKU</th><th>Title</th><th>For Sale / Not For Sale</th><th>Type</th>
   <th class="r">Amount</th><th class="r">Unit Weight</th><th class="r">Total Weight</th>
   <th class="r">Unit Price (${getCurrency()})</th><th class="r">Total Value (${getCurrency()})</th>
   <th class="r">Tariff no.</th><th class="r">Tariff Rate</th><th class="r">VAT Rate</th><th class="c">Origin</th>
@@ -3859,6 +3859,7 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 6pt; color: #000; b
   .print-bar { display:none; }
   body { background:#fff; }
   .page { margin:0; border:none; }
+  @page { size: A4 portrait; margin: 0mm; }
 }`;
 
   const html = `<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8">

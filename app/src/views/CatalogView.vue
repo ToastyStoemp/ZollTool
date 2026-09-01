@@ -806,7 +806,7 @@ function discountTargets(d: DiscountRule): string {
         <label v-if="isPurse(form.type)" class="block text-sm">
           <span class="text-slate-400">Material</span>
           <input v-model="form.material" placeholder="e.g. Genuine leather" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
-          <span class="mt-1 block text-xs text-slate-500">Listed on customs docs as “{{ form.title || 'Title' }}{{ form.material ? ` — ${form.material}` : '' }}”.</span>
+          <span class="mt-1 block text-xs text-slate-500">Listed on customs docs as “{{ form.title || 'Title' }}{{ form.material ? ` - ${form.material}` : '' }}”.</span>
         </label>
         <div class="flex gap-4 text-sm">
           <label class="flex items-center gap-2"><input v-model="form.forSale" type="checkbox" /> For sale</label>

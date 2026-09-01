@@ -26,7 +26,7 @@ export type GoodsDocNum = 1 | 2 | 3;
 function titleForCustoms(p: { title?: string; type?: string; year?: number; material?: string }): string {
   const t = esc(p.title || '');
   if (isArtwork(p.type) && p.year) return `${t} (${p.year})`;
-  if (isPurse(p.type) && p.material) return `${t} — ${esc(p.material)}`;
+  if (isPurse(p.type) && p.material) return `${t} - ${esc(p.material)}`;
   return t;
 }
 export type GoodsFormat = 'detailed' | 'compressed' | 'bytype';
@@ -190,7 +190,7 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
             totAmt += varAmt;
             totWkg += varTotalWkg;
             if (varTotalVal != null) totVal += varTotalVal;
-            detailedRows.push(`<tr><td class="c">${i + 1}</td><td class="mono">${esc(v.sku || p.sku || '')}</td><td>${titleForCustoms(p)} - ${esc(v.name || '')}</td>
+            detailedRows.push(`<tr><td class="c">${i + 1}</td><td>${esc(v.sku || p.sku || '')}</td><td>${titleForCustoms(p)} - ${esc(v.name || '')}</td>
               <td>${p.forSale ? 'For Sale' : 'Not For Sale'}</td><td>${esc(p.type || '')}</td>
               <td class="r">${varAmt}</td><td class="r">${varWg != null ? varWg + ' g' : ''}</td>
               <td class="r">${fmtWeightKg(varTotalWkg)}</td><td class="r">${esc(pd)}</td>
@@ -210,7 +210,7 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
           const titleDisplay = hasVariants(p)
             ? `${titleForCustoms(p)} (${p.variants!.filter((v) => !v.unlisted).length} variants)`
             : titleForCustoms(p);
-          detailedRows.push(`<tr><td class="c">${i + 1}</td><td class="mono">${esc(p.sku || '')}</td><td>${titleDisplay}</td>
+          detailedRows.push(`<tr><td class="c">${i + 1}</td><td>${esc(p.sku || '')}</td><td>${titleDisplay}</td>
             <td>${p.forSale ? 'For Sale' : 'Not For Sale'}</td><td>${esc(p.type || '')}</td>
             <td class="r">${c.amount ?? ''}</td><td class="r">${c.effectiveUnitWeightG != null ? Math.round(c.effectiveUnitWeightG as number) + ' g' : ''}</td>
             <td class="r">${fmtWeightKg(c.totalWeightKg)}</td><td class="r">${esc(pd)}</td>
@@ -225,7 +225,7 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
       const formatLabel = format === 'detailed' ? ' (Detailed)' : ' (Compressed)';
       tableHtml = `<div class="section-title">List of goods${formatLabel}</div>
 <table class="goods"><thead><tr>
-  <th>#</th><th>Title</th><th>SKU</th><th>For Sale / Not For Sale</th><th>Type</th>
+  <th>#</th><th>SKU</th><th>Title</th><th>For Sale / Not For Sale</th><th>Type</th>
   <th class="r">Amount</th><th class="r">Unit Weight</th><th class="r">Total Weight</th>
   <th class="r">Unit Price (${getCurrency(state)})</th><th class="r">Total Value (${getCurrency(state)})</th>
   <th class="r">Tariff no.</th><th class="r">Tariff Rate</th><th class="r">VAT Rate</th><th class="c">Origin</th>

@@ -119,6 +119,7 @@ body { font-family: Arial, Helvetica, sans-serif; font-size: 6pt; color: #000; b
   .print-bar { display:none; }
   body { background:#fff; }
   .page { margin:0; border:none; }
+  @page { size: A4 portrait; margin: 0mm; }
 }`;
 
   // Build field 14 description: titles of products not completely sold out
