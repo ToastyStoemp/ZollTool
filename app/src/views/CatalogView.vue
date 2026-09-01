@@ -7,6 +7,7 @@ import { deleteDiscount, deleteProduct, setStock, upsertDiscount, upsertProduct 
 import { uuidv7 } from '@/lib/uuid';
 import { fmtPrice } from '@/lib/money';
 import { typeColor } from '@/lib/search';
+import { isArtwork } from '@/lib/artwork';
 import { ArrowDown, ArrowUp, Boxes, Camera, FileDown, Image as ImageIcon, ListOrdered, TriangleAlert, X } from 'lucide-vue-next';
 import { saveTextFile } from '@/lib/download';
 import { showToast } from '@/lib/toast';
@@ -45,6 +46,7 @@ const form = reactive({
   weightG: '',
   tariffNo: '',
   originCountry: '',
+  year: '',
   forSale: true,
   unlisted: false,
   broughtQty: 0,
@@ -155,6 +157,7 @@ function openNew(): void {
     weightG: '',
     tariffNo: '',
     originCountry: '',
+    year: '',
     forSale: true,
     unlisted: false,
     broughtQty: 0,
@@ -177,6 +180,7 @@ function openEdit(p: Product): void {
     weightG: p.weightG != null ? String(p.weightG) : '',
     tariffNo: p.tariffNo ?? '',
     originCountry: p.originCountry ?? '',
+    year: p.year != null ? String(p.year) : '',
     forSale: p.forSale,
     unlisted: p.unlisted,
     broughtQty: data.broughtQty(p.id, null),
@@ -231,6 +235,7 @@ async function saveProduct(): Promise<void> {
     priceNote: form.priceNote.trim() || undefined,
     weightG: parseFloat(form.weightG) || undefined,
     tariffNo: form.tariffNo.trim() || undefined,
+    year: parseInt(form.year, 10) || undefined,
     tariffRate: existing?.tariffRate,
     vatRate: existing?.vatRate,
     packagingType: existing?.packagingType,
@@ -701,7 +706,7 @@ function discountTargets(d: DiscountRule): string {
     </template>
 
     <!-- Product editor modal -->
-    <ModalShell v-if="editing" :title="editId ? 'Edit product' : 'New product'" @close="editing = false">
+    <ModalShell v-if="editing" :title="editId ? 'Edit product' : 'New product'" size="2xl" @close="editing = false">
       <div class="space-y-3">
         <!-- Photo -->
         <div class="flex items-center gap-3">
@@ -753,7 +758,7 @@ function discountTargets(d: DiscountRule): string {
             <span class="text-slate-400">Type</span>
             <input v-model="form.type" list="type-suggestions" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
             <datalist id="type-suggestions">
-              <option v-for="t in [...new Set(data.products.map((p) => p.type).filter(Boolean))]" :key="t" :value="t" />
+              <option v-for="t in [...new Set(['Art Print', ...data.products.map((p) => p.type).filter(Boolean)])]" :key="t" :value="t" />
             </datalist>
           </label>
         </div>
@@ -787,6 +792,12 @@ function discountTargets(d: DiscountRule): string {
             <CountryPicker v-model="form.originCountry" mode="code" placeholder="Artist's country" class="mt-1" />
           </label>
         </div>
+        <!-- Art prints (Type = "Art Print"): customs wants the artwork's name + production year. -->
+        <label v-if="isArtwork(form.type)" class="block text-sm">
+          <span class="text-slate-400">Year produced</span>
+          <input v-model="form.year" type="number" inputmode="numeric" placeholder="e.g. 2024" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          <span class="mt-1 block text-xs text-slate-500">Listed on customs docs as “{{ form.title || 'Title' }}{{ form.year ? ` (${form.year})` : '' }}”.</span>
+        </label>
         <div class="flex gap-4 text-sm">
           <label class="flex items-center gap-2"><input v-model="form.forSale" type="checkbox" /> For sale</label>
           <label class="flex items-center gap-2"><input v-model="form.unlisted" type="checkbox" /> Unlisted (left off customs documents)</label>
@@ -798,7 +809,7 @@ function discountTargets(d: DiscountRule): string {
             <span class="text-sm font-semibold">Variants</span>
             <button v-if="!settings.isHelper" class="text-xs text-emerald-400" @click="addVariant">+ Add variant</button>
           </div>
-          <div v-for="(v, i) in form.variants" :key="v.id" class="mb-2 grid grid-cols-[2.5rem_1fr_5rem_4rem_4rem_2rem] items-center gap-2">
+          <div v-for="(v, i) in form.variants" :key="v.id" class="mb-2 grid grid-cols-[2.5rem_1fr_8rem_5rem_4.5rem_2rem] items-center gap-2">
             <!-- Variant photo: tap to pick/replace; ✕ removes. Falls back to the product photo when unset. -->
             <label class="relative h-10 w-10 cursor-pointer">
               <img v-if="v.previewUrl" :src="v.previewUrl" class="h-10 w-10 rounded-lg object-cover" />

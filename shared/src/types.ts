@@ -62,6 +62,8 @@ export interface Product {
   originCountry?: string;
   /** Customs: overrides the HS-code-derived permit obligation in the e-dec XML. */
   permitOverride?: number;
+  /** Year the artwork was produced. Customs wants title + year for art prints. */
+  year?: number;
   variants: Variant[];
   imageId?: string;
   sortOrder: number;

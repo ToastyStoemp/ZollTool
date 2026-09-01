@@ -18,8 +18,15 @@ import {
   hasVariants,
 } from './calc';
 import type { CustomsState } from './model';
+import { isArtwork } from '../lib/artwork';
 
 export type GoodsDocNum = 1 | 2 | 3;
+
+/** Customs line name. Art prints (no SKU) are identified as "Title (Year)". */
+function titleForCustoms(p: { title?: string; type?: string; year?: number }): string {
+  const t = esc(p.title || '');
+  return isArtwork(p.type) && p.year ? `${t} (${p.year})` : t;
+}
 export type GoodsFormat = 'detailed' | 'compressed' | 'bytype';
 
 const DOC_TITLES: Record<number, string> = {
@@ -182,7 +189,7 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
             totWkg += varTotalWkg;
             if (varTotalVal != null) totVal += varTotalVal;
             const vSku = v.sku || p.sku ? `<span class="mono">${esc(v.sku || p.sku)}</span> ` : '';
-            detailedRows.push(`<tr><td class="c">${i + 1}</td><td>${vSku}${esc(p.title || '')} - ${esc(v.name || '')}</td>
+            detailedRows.push(`<tr><td class="c">${i + 1}</td><td>${vSku}${titleForCustoms(p)} - ${esc(v.name || '')}</td>
               <td>${p.forSale ? 'For Sale' : 'Not For Sale'}</td><td>${esc(p.type || '')}</td>
               <td class="r">${varAmt}</td><td class="r">${varWg != null ? varWg + ' g' : ''}</td>
               <td class="r">${fmtWeightKg(varTotalWkg)}</td><td class="r">${esc(pd)}</td>
@@ -201,8 +208,8 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
           if (c.totalValue != null) totVal += c.totalValue;
           const pSku = p.sku ? `<span class="mono">${esc(p.sku)}</span> ` : '';
           const titleDisplay = hasVariants(p)
-            ? `${pSku}${esc(p.title || '')} (${p.variants!.filter((v) => !v.unlisted).length} variants)`
-            : `${pSku}${esc(p.title || '')}`;
+            ? `${pSku}${titleForCustoms(p)} (${p.variants!.filter((v) => !v.unlisted).length} variants)`
+            : `${pSku}${titleForCustoms(p)}`;
           detailedRows.push(`<tr><td class="c">${i + 1}</td><td>${titleDisplay}</td>
             <td>${p.forSale ? 'For Sale' : 'Not For Sale'}</td><td>${esc(p.type || '')}</td>
             <td class="r">${c.amount ?? ''}</td><td class="r">${c.effectiveUnitWeightG != null ? Math.round(c.effectiveUnitWeightG as number) + ' g' : ''}</td>

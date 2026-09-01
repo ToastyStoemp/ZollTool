@@ -78,6 +78,8 @@ export interface CustomsProduct {
   packagingType?: string;
   originCountry?: string;
   permitOverride?: number | null;
+  /** Year an art print was produced — shown as "Title (Year)" on customs docs. */
+  year?: number;
   amount?: number;
   soldQty?: number;
   soldValue?: number;
