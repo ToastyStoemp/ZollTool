@@ -342,12 +342,23 @@ export function listApiTokens(): Promise<ApiTokenSummary[]> {
   return apiJson<ApiTokenSummary[]>('/api/tokens');
 }
 
-/** Mint a scoped read-only token. The plaintext is returned once — store it now. */
-export function createApiToken(name?: string): Promise<MintedApiToken> {
+/** Access level for a minted token: read-only tooling vs. read/write sync. */
+export type ApiTokenAccess = 'read' | 'readwrite';
+
+const SCOPES_FOR: Record<ApiTokenAccess, string> = {
+  read: 'data:read',
+  readwrite: 'data:read data:write',
+};
+
+/**
+ * Mint a scoped token. The plaintext is returned once — store it now. Defaults
+ * to read-only; pass `'readwrite'` for a token a sync tool can write back with.
+ */
+export function createApiToken(name?: string, access: ApiTokenAccess = 'read'): Promise<MintedApiToken> {
   return apiJson<MintedApiToken>('/api/tokens', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ name }),
+    body: JSON.stringify({ name, scopes: SCOPES_FOR[access] }),
   });
 }
 

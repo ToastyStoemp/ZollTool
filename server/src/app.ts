@@ -8,7 +8,7 @@ import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
 import type Database from 'better-sqlite3';
 import { openDb } from './db';
-import { authenticate, authenticateApiOrJwt, registerAuthRoutes, seedOwner } from './auth';
+import { authenticate, authenticateApiOrJwt, authenticateApiWrite, registerAuthRoutes, seedOwner } from './auth';
 import { resolveCommit } from './version';
 import { registerSyncRoutes } from './routes/sync';
 import { registerImageRoutes } from './routes/images';
@@ -23,6 +23,7 @@ declare module 'fastify' {
   interface FastifyInstance {
     authenticate: typeof authenticate;
     authenticateApiOrJwt: typeof authenticateApiOrJwt;
+    authenticateApiWrite: typeof authenticateApiWrite;
     db: Database.Database;
   }
 }
@@ -78,6 +79,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   await app.register(jwt, { secret: opts.jwtSecret });
   app.decorate('authenticate', authenticate);
   app.decorate('authenticateApiOrJwt', authenticateApiOrJwt);
+  app.decorate('authenticateApiWrite', authenticateApiWrite);
 
   await seedOwner(db);
 
@@ -89,7 +91,7 @@ export async function buildApp(opts: BuildOptions): Promise<FastifyInstance> {
   registerAdminRoutes(app, db);
   registerLogRoutes(app, db, opts.dataDir);
   registerDeviceRoutes(app, db);
-  registerDataRoutes(app, db);
+  registerDataRoutes(app, db, rooms, opts.dataDir);
   if (opts.apkDir) registerUpdateRoutes(app, opts.apkDir);
 
   app.get('/api/health', async () => ({ ok: true, ts: Date.now() }));

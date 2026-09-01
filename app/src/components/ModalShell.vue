@@ -8,12 +8,25 @@ const emit = defineEmits<{ close: [] }>();
 const maxWidth = computed(
   () => ({ lg: 'max-w-lg', xl: 'max-w-xl', '2xl': 'max-w-2xl', '3xl': 'max-w-3xl' })[props.size ?? 'lg'],
 );
+
+// Dismiss on a backdrop click only when the press AND release both land on the
+// backdrop. Otherwise a text-selection drag that starts inside a field and ends
+// on the dimmed area would close the modal (release fires a click on the backdrop).
+let pressedOnBackdrop = false;
+function onBackdropDown(e: PointerEvent): void {
+  pressedOnBackdrop = e.target === e.currentTarget;
+}
+function onBackdropUp(e: PointerEvent): void {
+  if (pressedOnBackdrop && e.target === e.currentTarget) emit('close');
+  pressedOnBackdrop = false;
+}
 </script>
 
 <template>
   <div
     class="fixed inset-0 z-50 flex items-end justify-center bg-black/75 sm:items-center"
-    @click.self="emit('close')"
+    @pointerdown="onBackdropDown"
+    @pointerup="onBackdropUp"
   >
     <div
       class="modal-card flex w-full flex-col rounded-t-2xl bg-slate-900 pb-[var(--safe-bottom)] shadow-xl ring-1 ring-slate-700 sm:rounded-2xl sm:pb-0"

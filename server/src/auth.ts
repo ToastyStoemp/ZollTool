@@ -636,3 +636,38 @@ export async function authenticateApiOrJwt(
     reply.code(401).send({ error: 'Not authenticated' });
   }
 }
+
+/**
+ * Write-capable sibling of {@link authenticateApiOrJwt}. Accepts EITHER a `zt_…`
+ * API token carrying the `data:write` scope OR a normal JWT whose role is owner
+ * or admin. Backs the catalog write API used by external tooling such as the
+ * Shopify sync tool. On success `req.user` is populated with JwtClaims.
+ */
+export async function authenticateApiWrite(
+  this: FastifyInstance,
+  req: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
+  const m = /^Bearer\s+(zt_[A-Za-z0-9]+)$/.exec(req.headers.authorization ?? '');
+  if (m) {
+    const row = this.db
+      .prepare('SELECT id, accountId, scopes FROM api_tokens WHERE tokenHash = ? AND revokedAt IS NULL')
+      .get(sha256(m[1])) as { id: string; accountId: string; scopes: string } | undefined;
+    if (!row) return reply.code(401).send({ error: 'Invalid or revoked API token' });
+    const scopes = String(row.scopes || '').split(/[\s,]+/).filter(Boolean);
+    if (!scopes.includes('data:write')) return reply.code(403).send({ error: 'Token lacks the data:write scope' });
+    this.db.prepare('UPDATE api_tokens SET lastUsedAt = ? WHERE id = ?').run(Date.now(), row.id);
+    // role 'admin' marks the token as write-capable; there is no restricted-member scoping here.
+    req.user = { sub: `token:${row.id}`, accountId: row.accountId, role: 'admin' } as JwtClaims;
+    return;
+  }
+  try {
+    await req.jwtVerify();
+  } catch {
+    return reply.code(401).send({ error: 'Not authenticated' });
+  }
+  const claims = req.user as JwtClaims;
+  if (claims.role === 'member') {
+    return reply.code(403).send({ error: 'Catalog writes require an owner/admin or a data:write token' });
+  }
+}

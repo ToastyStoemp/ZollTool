@@ -14,6 +14,7 @@ import {
   revokeAdminSession,
   getDeviceId,
   type ApiTokenSummary,
+  type ApiTokenAccess,
   type MintedApiToken,
   type AdminSessionInfo,
 } from '@/sync/api';
@@ -117,6 +118,7 @@ const apiTokens = ref<ApiTokenSummary[]>([]);
 const apiTokensLoading = ref(false);
 const apiTokensError = ref('');
 const newTokenName = ref('');
+const newTokenAccess = ref<ApiTokenAccess>('read');
 const creatingToken = ref(false);
 const mintedToken = ref<MintedApiToken | null>(null);
 
@@ -136,8 +138,9 @@ async function createToken(): Promise<void> {
   creatingToken.value = true;
   apiTokensError.value = '';
   try {
-    mintedToken.value = await createApiToken(newTokenName.value.trim() || undefined);
+    mintedToken.value = await createApiToken(newTokenName.value.trim() || undefined, newTokenAccess.value);
     newTokenName.value = '';
+    newTokenAccess.value = 'read';
     await refreshApiTokens();
   } catch (err) {
     apiTokensError.value = err instanceof Error ? err.message : String(err);
@@ -301,19 +304,28 @@ const tiles = computed(() =>
       <div v-if="canManageTokens" class="mb-4 zui-card">
         <h2 class="mb-2 zui-card-title">API access</h2>
         <p class="mb-3 text-xs text-slate-500">
-          Read-only tokens let back-office tools (e.g. ZollTax) pull this account's events and
-          transactions without an account password. Each token is scoped to <code>data:read</code>
-          and can be revoked any time.
+          Scoped tokens let back-office tools access this account without a password.
+          <strong>Read-only</strong> (<code>data:read</code>) suits reporting tools like ZollTax;
+          <strong>Read/write</strong> (<code>data:read data:write</code>) also lets a tool push
+          catalog edits back — e.g. the Shopify sync writing SKUs and artwork. Revoke any time.
         </p>
 
         <div class="mb-3 flex flex-wrap gap-2">
           <input
             v-model="newTokenName"
             type="text"
-            placeholder="Token name, e.g. ZollTax"
+            placeholder="Token name, e.g. Shopify sync"
             class="min-w-0 flex-1 rounded-lg bg-slate-800 px-3 py-2 text-sm"
             @keydown.enter.prevent="createToken"
           />
+          <select
+            v-model="newTokenAccess"
+            class="rounded-lg bg-slate-800 px-3 py-2 text-sm"
+            aria-label="Token access level"
+          >
+            <option value="read">Read-only</option>
+            <option value="readwrite">Read/write</option>
+          </select>
           <button
             class="zui-btn zui-btn-primary"
             :disabled="creatingToken"
