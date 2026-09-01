@@ -70,6 +70,7 @@ export function buildCustomsState(
         originCountry: p.originCountry,
         permitOverride: p.permitOverride,
         year: p.year,
+        material: p.material,
         amount: broughtByKey.get(`${p.id}:`) ?? 0,
         soldQty: plainSold.qty,
         soldValue: plainSold.value,

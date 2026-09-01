@@ -7,7 +7,7 @@ import { deleteDiscount, deleteProduct, setStock, upsertDiscount, upsertProduct 
 import { uuidv7 } from '@/lib/uuid';
 import { fmtPrice } from '@/lib/money';
 import { typeColor } from '@/lib/search';
-import { isArtwork } from '@/lib/artwork';
+import { isArtwork, isPurse } from '@/lib/artwork';
 import { ArrowDown, ArrowUp, Boxes, Camera, FileDown, Image as ImageIcon, ListOrdered, TriangleAlert, X } from 'lucide-vue-next';
 import { saveTextFile } from '@/lib/download';
 import { showToast } from '@/lib/toast';
@@ -47,6 +47,7 @@ const form = reactive({
   tariffNo: '',
   originCountry: '',
   year: '',
+  material: '',
   forSale: true,
   unlisted: false,
   broughtQty: 0,
@@ -158,6 +159,7 @@ function openNew(): void {
     tariffNo: '',
     originCountry: '',
     year: '',
+    material: '',
     forSale: true,
     unlisted: false,
     broughtQty: 0,
@@ -181,6 +183,7 @@ function openEdit(p: Product): void {
     tariffNo: p.tariffNo ?? '',
     originCountry: p.originCountry ?? '',
     year: p.year != null ? String(p.year) : '',
+    material: p.material ?? '',
     forSale: p.forSale,
     unlisted: p.unlisted,
     broughtQty: data.broughtQty(p.id, null),
@@ -236,6 +239,7 @@ async function saveProduct(): Promise<void> {
     weightG: parseFloat(form.weightG) || undefined,
     tariffNo: form.tariffNo.trim() || undefined,
     year: parseInt(form.year, 10) || undefined,
+    material: form.material.trim() || undefined,
     tariffRate: existing?.tariffRate,
     vatRate: existing?.vatRate,
     packagingType: existing?.packagingType,
@@ -758,7 +762,7 @@ function discountTargets(d: DiscountRule): string {
             <span class="text-slate-400">Type</span>
             <input v-model="form.type" list="type-suggestions" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
             <datalist id="type-suggestions">
-              <option v-for="t in [...new Set(['Art Print', ...data.products.map((p) => p.type).filter(Boolean)])]" :key="t" :value="t" />
+              <option v-for="t in [...new Set(['Art Print', 'Purse', ...data.products.map((p) => p.type).filter(Boolean)])]" :key="t" :value="t" />
             </datalist>
           </label>
         </div>
@@ -797,6 +801,12 @@ function discountTargets(d: DiscountRule): string {
           <span class="text-slate-400">Year produced</span>
           <input v-model="form.year" type="number" inputmode="numeric" placeholder="e.g. 2024" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
           <span class="mt-1 block text-xs text-slate-500">Listed on customs docs as “{{ form.title || 'Title' }}{{ form.year ? ` (${form.year})` : '' }}”.</span>
+        </label>
+        <!-- Purses (Type = "Purse"): customs wants the material composition. -->
+        <label v-if="isPurse(form.type)" class="block text-sm">
+          <span class="text-slate-400">Material</span>
+          <input v-model="form.material" placeholder="e.g. Genuine leather" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+          <span class="mt-1 block text-xs text-slate-500">Listed on customs docs as “{{ form.title || 'Title' }}{{ form.material ? ` — ${form.material}` : '' }}”.</span>
         </label>
         <div class="flex gap-4 text-sm">
           <label class="flex items-center gap-2"><input v-model="form.forSale" type="checkbox" /> For sale</label>

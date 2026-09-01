@@ -80,6 +80,8 @@ export interface CustomsProduct {
   permitOverride?: number | null;
   /** Year an art print was produced — shown as "Title (Year)" on customs docs. */
   year?: number;
+  /** Material of a purse — shown as "Title — Material" on customs docs. */
+  material?: string;
   amount?: number;
   soldQty?: number;
   soldValue?: number;

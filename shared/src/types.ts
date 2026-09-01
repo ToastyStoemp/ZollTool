@@ -64,6 +64,8 @@ export interface Product {
   permitOverride?: number;
   /** Year the artwork was produced. Customs wants title + year for art prints. */
   year?: number;
+  /** Material composition (e.g. "Genuine leather"). Customs wants it for purses. */
+  material?: string;
   variants: Variant[];
   imageId?: string;
   sortOrder: number;
