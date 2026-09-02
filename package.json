@@ -16,7 +16,7 @@
     "test": "npm run test -w app && npm run test -w server",
     "typecheck": "npm run typecheck -w app && npm run typecheck -w server",
     "android:sync": "npm run build && npx cap sync android",
-    "android:apk": "npm run android:sync && cd android && .\\gradlew.bat assembleDebug",
+    "android:apk": "npm run bump:version && npm run android:sync && cd android && .\\gradlew.bat assembleDebug",
     "bump:version": "node scripts/bump-android-version.mjs",
     "pack:apk": "node scripts/pack-apk.mjs",
     "android:open": "npx cap open android",

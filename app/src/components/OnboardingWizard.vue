@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import {
   CalendarDays,
   Camera,
@@ -23,11 +23,13 @@ import CountryPicker from '@/components/CountryPicker.vue';
 import CurrencyPicker from '@/components/CurrencyPicker.vue';
 import QrLiveScanner from '@/components/QrLiveScanner.vue';
 import { decodeConnectQr, parseConnectQr, type ConnectPayload } from '@/lib/qr';
+import { allProviders } from '@/payments/registry';
+import type { PaymentProviderId } from '@/payments/provider';
 
 const settings = useSettingsStore();
 const data = useDataStore();
 
-type StepId = 'welcome' | 'sync' | 'data' | 'event' | 'artist' | 'done';
+type StepId = 'welcome' | 'sync' | 'data' | 'event' | 'payments' | 'artist' | 'done';
 
 const stepIndex = ref(0);
 const imported = ref(false);
@@ -39,7 +41,7 @@ const imported = ref(false);
 const steps = computed<StepId[]>(() => {
   const list: StepId[] = ['welcome', 'sync', 'data'];
   if (!data.events.length) list.push('event');
-  list.push('artist', 'done');
+  list.push('payments', 'artist', 'done');
   return list;
 });
 const step = computed<StepId>(() => steps.value[Math.min(stepIndex.value, steps.value.length - 1)]!);
@@ -49,6 +51,7 @@ const STEP_TITLES: Record<StepId, string> = {
   sync: 'Devices & sync',
   data: 'Bring your data',
   event: 'Your first event',
+  payments: 'Currency & payments',
   artist: 'Artist details',
   done: 'All set!',
 };
@@ -59,8 +62,14 @@ function back(): void {
 
 async function next(): Promise<void> {
   if (step.value === 'event') await createEventIfNamed();
+  if (step.value === 'payments') await savePayments();
   if (step.value === 'artist') await saveArtistDefaults();
   if (step.value === 'sync') await saveDeviceName();
+  if (stepIndex.value < steps.value.length - 1) stepIndex.value++;
+}
+
+// The optional steps (payments, artist) can be skipped without saving.
+function skip(): void {
   if (stepIndex.value < steps.value.length - 1) stepIndex.value++;
 }
 
@@ -130,15 +139,57 @@ async function saveArtistDefaults(): Promise<void> {
   await setSyncedSetting('customs.artistDefaults', { ...existing, ...artistForm });
 }
 
-// Prefill from data that already exists (saved artist defaults, known server).
-onMounted(async () => {
+/**
+ * Fill the form from saved artist defaults. On a NEW device these arrive only
+ * after the sync step connects and pulls the account's settings, so re-run this
+ * when the artist step opens — not just once at mount, when it's still empty.
+ * Skips if the user has already typed something, to not clobber their edits.
+ */
+async function prefillArtist(): Promise<void> {
+  if (Object.values(artistForm).some((v) => v.trim())) return;
   const saved = await getSetting<Partial<typeof artistForm>>('customs.artistDefaults');
-  if (saved) {
-    for (const key of Object.keys(artistForm) as (keyof typeof artistForm)[]) {
-      if (typeof saved[key] === 'string' && saved[key]) artistForm[key] = saved[key];
-    }
+  if (!saved) return;
+  for (const key of Object.keys(artistForm) as (keyof typeof artistForm)[]) {
+    if (typeof saved[key] === 'string' && saved[key]) artistForm[key] = saved[key];
   }
+}
+
+onMounted(async () => {
+  await prefillArtist();
   if (!auth.url && settings.serverUrl) auth.url = settings.serverUrl;
+});
+
+// ── Payments step ────────────────────────────────────────────────────────────
+// Card-terminal availability depends on the flavor's native plugins; loaded
+// once when the step opens (see the watch below).
+const providerAvail = ref<Record<string, { available: boolean; detail: string }>>({});
+
+async function loadProviderAvailability(): Promise<void> {
+  const map: Record<string, { available: boolean; detail: string }> = {};
+  for (const p of allProviders()) {
+    const available = await p.isAvailable();
+    const status = available ? await p.getStatus() : { connected: false, detail: 'Not available on this device' };
+    map[p.id] = { available, detail: status.detail ?? '' };
+  }
+  providerAvail.value = map;
+}
+async function selectProvider(id: PaymentProviderId): Promise<void> {
+  await settings.setPaymentProvider(id);
+}
+async function savePayments(): Promise<void> {
+  if (currencyForm.value.trim()) await settings.setDefaultCurrency(currencyForm.value);
+}
+
+// Refresh step-local state as each optional step opens. Currency and the artist
+// defaults are synced settings, so on a new device they only exist after the
+// sync step has connected — re-read them here rather than at mount.
+watch(step, async (s) => {
+  if (s === 'payments') {
+    currencyForm.value = settings.defaultCurrency;
+    await loadProviderAvailability();
+  } else if (s === 'artist') {
+    await prefillArtist();
+  }
 });
 
 // ── Sync step ────────────────────────────────────────────────────────────────
@@ -152,9 +203,6 @@ const authError = ref('');
 async function saveDeviceName(): Promise<void> {
   if (deviceNameForm.value.trim() && deviceNameForm.value !== settings.deviceName) {
     await settings.setDeviceName(deviceNameForm.value.trim());
-  }
-  if (currencyForm.value.trim().toUpperCase() !== settings.defaultCurrency) {
-    await settings.setDefaultCurrency(currencyForm.value);
   }
 }
 
@@ -327,6 +375,44 @@ async function connect(): Promise<void> {
           <p class="mt-4 text-xs text-slate-500">Sells in your base currency ({{ settings.defaultCurrency }}); add a local currency later under Events. Leave the name empty to skip.</p>
         </template>
 
+        <!-- Payments -->
+        <template v-else-if="step === 'payments'">
+          <p class="mb-4 text-sm text-slate-400">
+            Set the currency you keep your books in, and pick the card terminal this device uses. Both optional —
+            you can change everything later under Settings → Payments.
+          </p>
+          <label class="block text-sm">
+            <span class="text-xs text-slate-400">Base currency (your accounting currency, shared across all events)</span>
+            <div class="mt-1 w-40"><CurrencyPicker v-model="currencyForm" placeholder="Search currency…" /></div>
+          </label>
+          <div class="mt-5">
+            <span class="text-xs text-slate-400">Card terminal on this device</span>
+            <div class="mt-1 space-y-2">
+              <label
+                v-for="p in allProviders()"
+                :key="p.id"
+                class="flex items-center gap-3 rounded-lg p-3 ring-1"
+                :class="settings.paymentProviderId === p.id ? 'bg-emerald-950/40 ring-emerald-700' : 'bg-slate-800/50 ring-slate-700'"
+              >
+                <input
+                  type="radio"
+                  name="wizard-provider"
+                  :checked="settings.paymentProviderId === p.id"
+                  :disabled="providerAvail[p.id] && !providerAvail[p.id].available"
+                  @change="selectProvider(p.id)"
+                />
+                <span class="min-w-0 flex-1">
+                  <span class="block text-sm font-medium" :class="{ 'opacity-40': providerAvail[p.id] && !providerAvail[p.id].available }">{{ p.label }}</span>
+                  <span class="block text-xs text-slate-500">{{ providerAvail[p.id]?.detail || '…' }}</span>
+                </span>
+              </label>
+            </div>
+            <p class="mt-2 text-xs text-slate-500">
+              Connecting a reader (SumUp login, myPOS pairing) and extra methods like TWINT live in Settings → Payments.
+            </p>
+          </div>
+        </template>
+
         <!-- Artist -->
         <template v-else-if="step === 'artist'">
           <p class="mb-4 text-sm text-slate-400">
@@ -371,13 +457,9 @@ async function connect(): Promise<void> {
 
         <!-- Sync -->
         <template v-else-if="step === 'sync'">
-          <label class="mb-3 block text-sm">
+          <label class="mb-4 block text-sm">
             <span class="text-xs text-slate-400">Name this device (shown when several devices sell together)</span>
             <input v-model="deviceNameForm" placeholder="e.g. Wolf's tablet" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
-          </label>
-          <label class="mb-4 block text-sm">
-            <span class="text-xs text-slate-400">Base currency (your accounting currency, shared across all events)</span>
-            <div class="mt-1 w-40"><CurrencyPicker v-model="currencyForm" placeholder="Search currency…" /></div>
           </label>
 
           <template v-if="settings.syncUser">
@@ -459,6 +541,13 @@ async function connect(): Promise<void> {
         </button>
         <button v-if="step === 'welcome'" class="rounded-lg px-4 py-2.5 text-sm text-slate-500" @click="finish">
           Skip setup
+        </button>
+        <button
+          v-if="step === 'payments' || step === 'artist'"
+          class="rounded-lg px-4 py-2.5 text-sm text-slate-500"
+          @click="skip"
+        >
+          Skip
         </button>
         <button
           v-if="step !== 'done'"

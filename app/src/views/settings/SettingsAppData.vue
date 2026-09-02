@@ -145,7 +145,7 @@ async function onImportFile(e: Event): Promise<void> {
         <h2 class="zui-card-title">App updates</h2>
         <span class="text-xs text-slate-500">{{ appVersion }}</span>
       </div>
-      <p class="mb-3 text-xs text-slate-500">Checks the sync server for a newer build than this device is running. Needs a server URL set under Account & security.</p>
+      <p class="mb-3 text-xs text-slate-500">Updates ZollTool on <strong>this device</strong> — checks your sync server for a newer build, then downloads and installs it in place. Needs a server URL set under Account &amp; security. (To put the app on a <em>different</em> device, use “Get the Android app” below.)</p>
       <button class="rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40" :disabled="updateChecking" @click="checkUpdate">
         {{ updateChecking ? 'Checking…' : 'Check for updates' }}
       </button>

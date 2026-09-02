@@ -138,6 +138,11 @@ async function addMethod(): Promise<void> {
           @change="saveSumupKey"
         />
       </label>
+      <p v-if="statuses['sumup']?.available" class="mt-1.5 text-xs text-slate-500">
+        Save your affiliate key, tap <strong>Connect</strong> to log in to SumUp once, then take a payment — the Solo (or Air)
+        pairs over Bluetooth from SumUp's checkout screen the first time and is remembered after. Keep the reader charged and
+        nearby. (SumUp ships only in the <strong>full</strong> app build.)
+      </p>
       <div v-if="settings.paymentProviderId === 'mypos-carbon-remote'" class="mt-3">
         <div class="mb-1 flex items-center justify-between">
           <span class="text-sm text-slate-400">Remote Carbon terminal</span>
