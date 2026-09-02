@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
 import type { DiscountRule, Product, Variant } from '@zolltool/shared';
-import { useDataStore } from '@/stores/data';
+import { stockKey, useDataStore } from '@/stores/data';
 import { useSettingsStore } from '@/stores/settings';
+import { db } from '@/db/schema';
 import { deleteDiscount, deleteProduct, setStock, upsertDiscount, upsertProduct } from '@/db/repo';
 import { uuidv7 } from '@/lib/uuid';
 import { fmtPrice } from '@/lib/money';
@@ -303,6 +304,8 @@ interface BulkGroup {
 
 const showBulk = ref(false);
 const bulkGroups = ref<BulkGroup[]>([]);
+// Two-step guard for the "reset every quantity to 0" action.
+const bulkResetArmed = ref(false);
 
 function openBulk(): void {
   const groups = new Map<string, BulkRow[]>();
@@ -339,6 +342,8 @@ function openBulk(): void {
   bulkGroups.value = [...groups.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([type, rows]) => ({ type, rows, setAll: '' }));
+  bulkResetArmed.value = false;
+  copyFromEvent.value = '';
   showBulk.value = true;
 }
 
@@ -347,6 +352,43 @@ function bulkSetAll(group: BulkGroup): void {
   if (Number.isNaN(n)) return;
   for (const row of group.rows) row.qty = n;
   group.setAll = '';
+}
+
+/** Zero every row in the editor (not saved until "Save stock"). */
+function bulkResetAll(): void {
+  for (const group of bulkGroups.value) for (const row of group.rows) row.qty = 0;
+  bulkResetArmed.value = false;
+}
+
+// Roll leftover stock from a previous event into this one (most-recent first).
+const copyFromEvent = ref('');
+const otherEvents = computed(() =>
+  [...data.events]
+    .filter((e) => e.id !== settings.activeEventId)
+    .sort((a, b) => (b.dateStart || '').localeCompare(a.dateStart || '')),
+);
+
+/** Fill the editor with the leftover (brought − sold) of another event. */
+async function bulkCopyFrom(): Promise<void> {
+  const src = copyFromEvent.value;
+  if (!src) return;
+  const [stockRows, txRows] = await Promise.all([
+    db.eventStock.where('eventId').equals(src).toArray(),
+    db.transactions.where('eventId').equals(src).toArray(),
+  ]);
+  const leftover = new Map<string, number>();
+  for (const r of stockRows) leftover.set(stockKey(r.productId, r.variantId), r.broughtQty);
+  for (const tx of txRows) {
+    if (tx.revertedBy) continue;
+    for (const it of tx.items) {
+      const k = stockKey(it.pid, it.vid);
+      leftover.set(k, (leftover.get(k) ?? 0) - it.qty);
+    }
+  }
+  for (const group of bulkGroups.value)
+    for (const row of group.rows) row.qty = Math.max(0, leftover.get(stockKey(row.pid, row.vid)) ?? 0);
+  copyFromEvent.value = '';
+  bulkResetArmed.value = false;
 }
 
 const bulkChanges = computed(() =>
@@ -910,6 +952,21 @@ function discountTargets(d: DiscountRule): string {
         Brought quantities for <b>{{ data.activeEvent?.name }}</b>, grouped by type. "Set all" fills
         every row of a group at once.
       </p>
+      <!-- Roll the leftover stock of a previous event into this one. -->
+      <label v-if="otherEvents.length" class="mb-3 flex flex-wrap items-center gap-2 rounded-lg bg-slate-800/40 p-2.5 text-sm ring-1 ring-slate-800">
+        <span class="text-xs text-slate-400">Copy leftover stock from</span>
+        <select v-model="copyFromEvent" class="min-w-0 flex-1 rounded-md bg-slate-800 px-2 py-1 text-sm">
+          <option value="">— pick an event —</option>
+          <option v-for="e in otherEvents" :key="e.id" :value="e.id">{{ e.name }}</option>
+        </select>
+        <button
+          class="rounded-md bg-slate-800 px-3 py-1 text-xs font-medium hover:bg-slate-700 disabled:opacity-40"
+          :disabled="!copyFromEvent"
+          @click="bulkCopyFrom"
+        >
+          Copy
+        </button>
+      </label>
       <div class="space-y-4">
         <div v-for="group in bulkGroups" :key="group.type">
           <div class="mb-1.5 flex items-center gap-2">
@@ -927,7 +984,7 @@ function discountTargets(d: DiscountRule): string {
               />
               <button
                 class="rounded-md bg-slate-800 px-2 py-1 text-xs font-medium hover:bg-slate-700 disabled:opacity-40"
-                :disabled="!group.setAll"
+                :disabled="Number.isNaN(parseFloat(group.setAll))"
                 @click="bulkSetAll(group)"
               >
                 Apply
@@ -958,11 +1015,30 @@ function discountTargets(d: DiscountRule): string {
         </div>
       </div>
       <template #footer>
-        <div class="flex items-center justify-end gap-2">
-          <span v-if="bulkChanges" class="mr-auto text-xs text-slate-400">
+        <div class="flex flex-wrap items-center gap-2">
+          <!-- Reset every quantity to 0 — two-step confirm before it fills the editor. -->
+          <button
+            v-if="!bulkResetArmed"
+            class="rounded-lg px-3 py-2 text-sm text-red-400 hover:bg-red-950"
+            @click="bulkResetArmed = true"
+          >
+            Reset all to 0
+          </button>
+          <div v-else class="flex items-center gap-1.5">
+            <span class="text-xs font-medium text-red-300">Set every quantity to 0?</span>
+            <button class="rounded-lg bg-red-600 px-3 py-1 text-xs font-semibold text-white" @click="bulkResetAll">Yes, reset all</button>
+            <button class="rounded-lg px-2 py-1 text-xs text-slate-400 hover:text-slate-200" @click="bulkResetArmed = false">Keep</button>
+          </div>
+          <span v-if="bulkChanges" class="ml-auto text-xs text-slate-400">
             {{ bulkChanges }} change{{ bulkChanges === 1 ? '' : 's' }}
           </span>
-          <button class="rounded-lg bg-slate-800 px-4 py-2 text-sm" @click="showBulk = false">Cancel</button>
+          <button
+            class="rounded-lg bg-slate-800 px-4 py-2 text-sm"
+            :class="bulkChanges ? '' : 'ml-auto'"
+            @click="showBulk = false"
+          >
+            Cancel
+          </button>
           <button
             class="zui-btn zui-btn-primary"
             :disabled="!bulkChanges"
