@@ -42,4 +42,11 @@ export interface PaymentProvider {
   pairReader?(): Promise<void>;
   /** Optional: disconnect this device from the provider account (e.g. SumUp logout). */
   disconnect?(): Promise<void>;
+  /**
+   * Optional: true when the provider needs an interactive sign-in (e.g. SumUp
+   * login) that hasn't happened yet, so checkout should prompt to connect or
+   * pick another method instead of attempting — and failing at — the terminal.
+   * Providers that connect on demand (myPOS Bluetooth) don't implement this.
+   */
+  needsLogin?(): Promise<boolean>;
 }

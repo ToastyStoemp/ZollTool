@@ -33,7 +33,7 @@ const showDiscountForm = ref(false);
 const discountForm = reactive({ type: 'amount' as 'amount' | 'percent', value: '', name: '' });
 
 // ── Payment state ──────────────────────────────────────────────────────────
-type PayPhase = 'idle' | 'confirm' | 'terminal' | 'failed' | 'done';
+type PayPhase = 'idle' | 'confirm' | 'terminal' | 'failed' | 'done' | 'needsLogin';
 const payment = reactive({
   phase: 'idle' as PayPhase,
   method: 'cash' as PaymentMethod,
@@ -504,10 +504,52 @@ function startPayment(method: PaymentMethod): void {
   diagnosticsSent.value = false;
 
   if (method === 'card' && activeProvider.value.id !== 'manual') {
-    payment.phase = 'terminal';
-    runTerminalPayment();
+    void beginCardPayment();
     return;
   }
+  payment.phase = 'confirm';
+}
+
+/**
+ * Card + a real reader: if the reader needs an interactive sign-in (SumUp) and
+ * isn't logged in, show the connect-or-choose-another-method screen instead of
+ * diving into a terminal payment that would just fail.
+ */
+async function beginCardPayment(): Promise<void> {
+  try {
+    if (await activeProvider.value.needsLogin?.()) {
+      payment.phase = 'needsLogin';
+      return;
+    }
+  } catch {
+    /* if the check itself fails, fall through and let the terminal report it */
+  }
+  payment.phase = 'terminal';
+  void runTerminalPayment();
+}
+
+/** From the needsLogin screen: log in to the reader, then take the payment. */
+async function connectCardReader(): Promise<void> {
+  const provider = activeProvider.value;
+  if (!provider.configure) return;
+  try {
+    await provider.configure();
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : String(err), 'error');
+    return; // stay on the needsLogin screen so they can retry or pick another method
+  }
+  if (await provider.needsLogin?.()) {
+    showToast(`Still not signed in to ${provider.label}`, 'error');
+    return;
+  }
+  void refreshTerminalStatus();
+  payment.phase = 'terminal';
+  void runTerminalPayment();
+}
+
+/** From the needsLogin screen: record the card without the reader (manual entry). */
+function recordCardManually(): void {
+  payment.method = 'card';
   payment.phase = 'confirm';
 }
 
@@ -1142,8 +1184,16 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
       <div class="space-y-4 text-center">
         <p class="text-3xl font-bold">{{ fmtPrice(payment.total, cart.chargeCurrency) }}</p>
 
+        <!-- Reader needs sign-in (e.g. SumUp not logged in) -->
+        <template v-if="payment.phase === 'needsLogin'">
+          <p class="text-sm font-semibold text-amber-400">{{ activeProvider.label }} isn't signed in</p>
+          <p class="text-xs text-slate-400">
+            Log in to take this card payment on the reader, or record the card another way.
+          </p>
+        </template>
+
         <!-- Terminal waiting -->
-        <template v-if="payment.phase === 'terminal'">
+        <template v-else-if="payment.phase === 'terminal'">
           <p class="animate-pulse text-sm text-slate-300">Present card to terminal…</p>
           <p class="text-xs text-slate-500">{{ activeProvider.label }}</p>
         </template>
@@ -1297,6 +1347,20 @@ async function maybePrintReceipt(tx: Awaited<ReturnType<typeof cart.checkout>>):
             "
           >
             Complete manually
+          </button>
+          <button
+            v-if="payment.phase === 'needsLogin'"
+            class="rounded-lg bg-slate-700 px-4 py-2 text-sm"
+            @click="recordCardManually"
+          >
+            Enter card manually
+          </button>
+          <button
+            v-if="payment.phase === 'needsLogin' && activeProvider.configure"
+            class="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white"
+            @click="connectCardReader"
+          >
+            Log in
           </button>
         </div>
       </template>

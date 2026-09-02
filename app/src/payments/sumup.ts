@@ -64,4 +64,14 @@ export const sumupProvider: PaymentProvider = {
   async disconnect(): Promise<void> {
     await SumUp.logout();
   },
+
+  /** True when SumUp isn't signed in yet — checkout should offer to log in. */
+  async needsLogin(): Promise<boolean> {
+    if (!hasNativePlugin('SumUp')) return false;
+    try {
+      return !(await SumUp.isLoggedIn()).loggedIn;
+    } catch {
+      return true;
+    }
+  },
 };
