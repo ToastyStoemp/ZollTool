@@ -4,7 +4,8 @@ import App from './App.vue';
 import { router } from './router';
 import { useSettingsStore } from './stores/settings';
 import { installDiagnostics } from './lib/diagnostics';
-import './styles/zoll-ui.css'; // shared ZollDesign framework (tokens + .zui-* components)
+// main.css imports the shared ZollDesign framework (zoll-ui.css) into Tailwind's
+// `components` layer, so plain Tailwind utilities can still override .zui-* rules.
 import './assets/main.css';
 
 installDiagnostics();

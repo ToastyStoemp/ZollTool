@@ -103,7 +103,7 @@ async function submitPin(): Promise<void> {
 </script>
 
 <template>
-  <div class="zui-shell flex-col md:flex-row md:pb-[var(--safe-bottom)]">
+  <div class="app-shell flex-col md:flex-row md:pb-[var(--safe-bottom)]">
     <!-- Sidebar (tablet/desktop); phone uses the bottom nav below instead -->
     <aside v-if="!chromeHidden" class="zui-sidebar hidden md:flex">
       <div class="zui-sidebar-brand">

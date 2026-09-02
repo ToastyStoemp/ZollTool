@@ -1,5 +1,12 @@
 @import 'tailwindcss';
 
+/* Shared ZollDesign framework (design tokens + .zui-* component classes).
+   Imported into the `components` layer — below Tailwind's `utilities` layer —
+   so per-element Tailwind utilities (responsive `hidden`/`md:flex`, spacing,
+   etc.) still override the .zui-* defaults. Unlayered, its rules would beat
+   every utility on the same property and scramble the layout. */
+@import '../styles/zoll-ui.css' layer(components);
+
 @theme {
   --color-surface: #0f172a;
   --color-surface-2: #1e293b;
@@ -33,8 +40,11 @@ body {
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
 
-/* Full-height app frame; 100vh fallback for WebViews without dvh (MyPOS Carbon) */
+/* Full-height app frame; 100vh fallback for WebViews without dvh (MyPOS Carbon).
+   Flex here (not just on .zui-shell) so the shell owns a bounded height: the
+   scrolling <main> and the pinned bottom nav depend on it. */
 .app-shell {
+  display: flex;
   height: 100vh;
   height: 100dvh;
   padding-top: var(--safe-top);
