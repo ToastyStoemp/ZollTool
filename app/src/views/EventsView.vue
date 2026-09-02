@@ -14,6 +14,7 @@ import { ArrowLeftRight, ChartLine, DoorOpen, Pencil, ShoppingCart, Stamp, Trash
 import ModalShell from '@/components/ModalShell.vue';
 import CountryPicker from '@/components/CountryPicker.vue';
 import CurrencyPicker from '@/components/CurrencyPicker.vue';
+import DateRangePicker from '@/components/DateRangePicker.vue';
 
 const data = useDataStore();
 const settings = useSettingsStore();
@@ -402,16 +403,14 @@ function fmtDates(e: SalesEvent): string {
           <span class="text-slate-400">Name *</span>
           <input v-model="form.name" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
         </label>
-        <div class="grid grid-cols-2 gap-3">
-          <label class="block text-sm">
-            <span class="text-slate-400">Start</span>
-            <input v-model="form.dateStart" type="date" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
-          </label>
-          <label class="block text-sm">
-            <span class="text-slate-400">End</span>
-            <input v-model="form.dateEnd" type="date" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
-          </label>
-        </div>
+        <label class="block text-sm">
+          <span class="text-slate-400">Dates</span>
+          <DateRangePicker
+            v-model:start="form.dateStart"
+            v-model:end="form.dateEnd"
+            class="mt-1"
+          />
+        </label>
         <div class="grid grid-cols-2 gap-3">
           <label class="block text-sm">
             <span class="text-slate-400">Street</span>

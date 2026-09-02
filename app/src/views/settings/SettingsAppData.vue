@@ -20,11 +20,12 @@ const appVersion = ref(__APP_VERSION__);
 
 // ── Get the Android app: direct APK download + a QR to scan from another device.
 // The sync server serves the APK publicly; on web the server is our own origin.
-const apkUrl = computed(() => {
-  const base = (settings.serverUrl || (typeof window !== 'undefined' ? window.location.origin : '')).replace(/\/+$/, '');
-  // Use the compat build — the widest device compatibility for a shared download.
-  return base ? `${base}/api/updates/download/compat` : '';
-});
+// compat = widest device support (no SumUp); full = SumUp/myPOS card readers.
+const apkFlavor = ref<'compat' | 'full'>('compat');
+const apkBase = computed(() =>
+  (settings.serverUrl || (typeof window !== 'undefined' ? window.location.origin : '')).replace(/\/+$/, ''),
+);
+const apkUrl = computed(() => (apkBase.value ? `${apkBase.value}/api/updates/download/${apkFlavor.value}` : ''));
 const apkQr = ref('');
 watch(
   apkUrl,
@@ -179,7 +180,14 @@ async function onImportFile(e: Event): Promise<void> {
       <div class="flex flex-col items-center gap-4 sm:flex-row sm:items-start">
         <img v-if="apkQr" :src="apkQr" alt="Scan to download the ZollTool app" class="h-40 w-40 shrink-0 rounded-lg bg-white p-2" />
         <div class="min-w-0 flex-1">
-          <a :href="apkUrl" download class="inline-block zui-btn zui-btn-primary">Download APK</a>
+          <label class="mb-2 block text-xs">
+            <span class="text-slate-400">Build</span>
+            <select v-model="apkFlavor" class="mt-1 w-full zui-input">
+              <option value="compat">Compat — widest device support (Android 7+, no SumUp)</option>
+              <option value="full">Full — SumUp &amp; myPOS card readers (Android 8+)</option>
+            </select>
+          </label>
+          <a :href="apkUrl" download class="inline-block zui-btn zui-btn-primary">Download {{ apkFlavor === 'full' ? 'Full' : 'Compat' }} APK</a>
           <p class="mt-2 break-all text-[0.65rem] text-slate-600">{{ apkUrl }}</p>
           <p class="mt-2 text-xs text-slate-500">On the receiving device, allow installing from this source when Android asks.</p>
         </div>

@@ -21,10 +21,12 @@ import { showToast } from '@/lib/toast';
 import { syncNow, syncState } from '@/sync/engine';
 import CountryPicker from '@/components/CountryPicker.vue';
 import CurrencyPicker from '@/components/CurrencyPicker.vue';
+import DateRangePicker from '@/components/DateRangePicker.vue';
 import QrLiveScanner from '@/components/QrLiveScanner.vue';
 import { decodeConnectQr, parseConnectQr, type ConnectPayload } from '@/lib/qr';
 import { allProviders } from '@/payments/registry';
 import type { PaymentProviderId } from '@/payments/provider';
+import { SUMUP_KEY_SETTING } from '@/payments/sumup';
 
 const settings = useSettingsStore();
 const data = useDataStore();
@@ -163,6 +165,9 @@ onMounted(async () => {
 // Card-terminal availability depends on the flavor's native plugins; loaded
 // once when the step opens (see the watch below).
 const providerAvail = ref<Record<string, { available: boolean; detail: string }>>({});
+const sumupKey = ref('');
+const configuring = ref(false);
+const selectedProvider = computed(() => allProviders().find((p) => p.id === settings.paymentProviderId) ?? null);
 
 async function loadProviderAvailability(): Promise<void> {
   const map: Record<string, { available: boolean; detail: string }> = {};
@@ -176,6 +181,24 @@ async function loadProviderAvailability(): Promise<void> {
 async function selectProvider(id: PaymentProviderId): Promise<void> {
   await settings.setPaymentProvider(id);
 }
+async function saveSumupKey(): Promise<void> {
+  await setSyncedSetting(SUMUP_KEY_SETTING, sumupKey.value.trim());
+}
+/** Run the selected terminal's setup (SumUp login, etc.) right here in the wizard. */
+async function configureSelected(): Promise<void> {
+  const p = selectedProvider.value;
+  if (!p?.configure) return;
+  configuring.value = true;
+  try {
+    await p.configure();
+    showToast('Terminal connected', 'success');
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : String(err), 'error');
+  } finally {
+    configuring.value = false;
+    await loadProviderAvailability();
+  }
+}
 async function savePayments(): Promise<void> {
   if (currencyForm.value.trim()) await settings.setDefaultCurrency(currencyForm.value);
 }
@@ -186,6 +209,7 @@ async function savePayments(): Promise<void> {
 watch(step, async (s) => {
   if (s === 'payments') {
     currencyForm.value = settings.defaultCurrency;
+    sumupKey.value = (await getSetting<string>(SUMUP_KEY_SETTING)) ?? '';
     await loadProviderAvailability();
   } else if (s === 'artist') {
     await prefillArtist();
@@ -361,16 +385,16 @@ async function connect(): Promise<void> {
               <span class="text-xs text-slate-400">Event name</span>
               <input v-model="eventForm.name" placeholder="e.g. Fantasy Basel 2026" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
             </label>
-            <div class="grid grid-cols-2 gap-3">
-              <label class="block text-sm">
-                <span class="text-xs text-slate-400">Starts</span>
-                <input v-model="eventForm.dateStart" type="date" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
-              </label>
-              <label class="block text-sm">
-                <span class="text-xs text-slate-400">Ends</span>
-                <input v-model="eventForm.dateEnd" type="date" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
-              </label>
-            </div>
+            <label class="block text-sm">
+              <span class="text-xs text-slate-400">Dates</span>
+              <DateRangePicker
+                v-model:start="eventForm.dateStart"
+                v-model:end="eventForm.dateEnd"
+                start-label="Starts"
+                end-label="Ends"
+                class="mt-1"
+              />
+            </label>
           </div>
           <p class="mt-4 text-xs text-slate-500">Sells in your base currency ({{ settings.defaultCurrency }}); add a local currency later under Events. Leave the name empty to skip.</p>
         </template>
@@ -407,8 +431,32 @@ async function connect(): Promise<void> {
                 </span>
               </label>
             </div>
-            <p class="mt-2 text-xs text-slate-500">
-              Connecting a reader (SumUp login, myPOS pairing) and extra methods like TWINT live in Settings → Payments.
+
+            <!-- Configure the selected terminal here (e.g. log in to SumUp before you sell) -->
+            <template v-if="selectedProvider?.configure && providerAvail[selectedProvider.id]?.available">
+              <label v-if="selectedProvider.id === 'sumup'" class="mt-3 block text-sm">
+                <span class="text-xs text-slate-400">SumUp affiliate key</span>
+                <input
+                  v-model="sumupKey"
+                  type="text"
+                  placeholder="From the SumUp developer dashboard"
+                  class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2 font-mono text-xs"
+                  @change="saveSumupKey"
+                />
+              </label>
+              <button
+                type="button"
+                class="mt-2 w-full rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium hover:bg-slate-600 disabled:opacity-40"
+                :disabled="configuring"
+                @click="configureSelected"
+              >
+                {{ configuring ? 'Connecting…' : selectedProvider.id === 'sumup' ? 'Log in to SumUp' : 'Connect terminal' }}
+              </button>
+              <p v-if="providerAvail[selectedProvider.id]?.detail" class="mt-1 text-xs text-slate-500">{{ providerAvail[selectedProvider.id].detail }}</p>
+            </template>
+
+            <p class="mt-3 text-xs text-slate-500">
+              Extra payment methods like TWINT — and fine-tuning your terminal — live in Settings → Payments.
             </p>
           </div>
         </template>
