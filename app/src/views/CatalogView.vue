@@ -766,7 +766,7 @@ function discountTargets(d: DiscountRule): string {
             </datalist>
           </label>
         </div>
-        <div class="grid grid-cols-3 gap-3">
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <label class="block text-sm">
             <span class="text-slate-400">Price ({{ data.currency }})</span>
             <input v-model="form.price" type="number" step="0.05" :disabled="settings.isHelper" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2 disabled:opacity-40" />
@@ -819,9 +819,11 @@ function discountTargets(d: DiscountRule): string {
             <span class="text-sm font-semibold">Variants</span>
             <button v-if="!settings.isHelper" class="text-xs text-emerald-400" @click="addVariant">+ Add variant</button>
           </div>
-          <div v-for="(v, i) in form.variants" :key="v.id" class="mb-2 grid grid-cols-[2.5rem_1fr_8rem_5rem_4.5rem_2rem] items-center gap-2">
+          <!-- Phone: photo + a stacked field group (name full-width, then SKU/Price/Stock). -->
+          <!-- ≥sm: the field group flattens (sm:contents) into the single 6-column row. -->
+          <div v-for="(v, i) in form.variants" :key="v.id" class="mb-2 flex items-start gap-2 sm:grid sm:grid-cols-[2.5rem_1fr_8rem_5rem_4.5rem_2rem] sm:items-center">
             <!-- Variant photo: tap to pick/replace; ✕ removes. Falls back to the product photo when unset. -->
-            <label class="relative h-10 w-10 cursor-pointer">
+            <label class="relative h-10 w-10 shrink-0 cursor-pointer">
               <img v-if="v.previewUrl" :src="v.previewUrl" class="h-10 w-10 rounded-lg object-cover" />
               <ProductThumb v-else-if="v.imageId && !v.removeImage" :image-id="v.imageId" :type="form.type" />
               <div v-else class="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-800 text-slate-400"><Camera class="h-4 w-4" /></div>
@@ -835,18 +837,20 @@ function discountTargets(d: DiscountRule): string {
                 <X class="h-2.5 w-2.5" />
               </button>
             </label>
-            <input v-model="v.name" placeholder="Name" :disabled="settings.isHelper" class="rounded-md bg-slate-800 px-2 py-1.5 text-sm disabled:opacity-40" />
-            <input v-model="v.sku" placeholder="SKU" :disabled="settings.isHelper" class="rounded-md bg-slate-800 px-2 py-1.5 text-sm disabled:opacity-40" />
-            <input v-model="v.price" placeholder="Price" type="number" step="0.05" :disabled="settings.isHelper" class="rounded-md bg-slate-800 px-2 py-1.5 text-sm disabled:opacity-40" />
-            <input
-              v-model.number="v.broughtQty"
-              placeholder="Stock"
-              type="number"
-              min="0"
-              :disabled="!settings.activeEventId"
-              class="rounded-md bg-slate-800 px-2 py-1.5 text-sm disabled:opacity-40"
-            />
-            <button v-if="!settings.isHelper" class="text-red-400" @click="form.variants.splice(i, 1)"><X class="h-4 w-4" /></button>
+            <div class="grid min-w-0 flex-1 grid-cols-3 gap-2 sm:contents">
+              <input v-model="v.name" placeholder="Name" :disabled="settings.isHelper" class="col-span-3 rounded-md bg-slate-800 px-2 py-1.5 text-sm disabled:opacity-40 sm:col-span-1" />
+              <input v-model="v.sku" placeholder="SKU" :disabled="settings.isHelper" class="w-full min-w-0 rounded-md bg-slate-800 px-2 py-1.5 text-sm disabled:opacity-40" />
+              <input v-model="v.price" placeholder="Price" type="number" step="0.05" :disabled="settings.isHelper" class="w-full min-w-0 rounded-md bg-slate-800 px-2 py-1.5 text-sm disabled:opacity-40" />
+              <input
+                v-model.number="v.broughtQty"
+                placeholder="Stock"
+                type="number"
+                min="0"
+                :disabled="!settings.activeEventId"
+                class="w-full min-w-0 rounded-md bg-slate-800 px-2 py-1.5 text-sm disabled:opacity-40"
+              />
+            </div>
+            <button v-if="!settings.isHelper" class="shrink-0 text-red-400" @click="form.variants.splice(i, 1)"><X class="h-4 w-4" /></button>
           </div>
           <p v-if="!form.variants.length" class="text-xs text-slate-500">No variants — the product sells as-is.</p>
         </div>

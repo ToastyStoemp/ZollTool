@@ -421,7 +421,7 @@ function fmtDates(e: SalesEvent): string {
             <input v-model="form.city" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
           </label>
         </div>
-        <div class="grid grid-cols-3 gap-3">
+        <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
           <label class="block text-sm">
             <span class="text-slate-400">Postcode</span>
             <input v-model="form.postcode" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
@@ -437,7 +437,7 @@ function fmtDates(e: SalesEvent): string {
             Local currency (optional) — display and charge prices converted from your base currency
             ({{ settings.defaultCurrency }}), leave blank to sell in {{ settings.defaultCurrency }} directly.
           </p>
-          <div class="grid grid-cols-3 gap-3">
+          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
             <label class="block text-sm">
               <span class="text-slate-400">Local currency</span>
               <CurrencyPicker v-model="form.localCurrency" placeholder="Search…" class="mt-1" />
@@ -453,7 +453,7 @@ function fmtDates(e: SalesEvent): string {
                 class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2"
               />
             </label>
-            <label class="block text-sm">
+            <label class="col-span-2 block text-sm sm:col-span-1">
               <span class="text-slate-400">Round to nearest</span>
               <select v-model="form.roundingIncrement" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2">
                 <option v-for="[value, label] in ROUNDING_INCREMENTS" :key="value" :value="value">{{ label }}</option>
