@@ -24,6 +24,7 @@ class SumUpPlugin : Plugin() {
     companion object {
         const val REQUEST_LOGIN = 51001
         const val REQUEST_CHECKOUT = 51002
+        const val REQUEST_CARD_READER = 51003
 
         private var instance: SumUpPlugin? = null
 
@@ -33,6 +34,7 @@ class SumUpPlugin : Plugin() {
             return when (requestCode) {
                 REQUEST_LOGIN -> { plugin.finishLogin(data); true }
                 REQUEST_CHECKOUT -> { plugin.finishCheckout(data); true }
+                REQUEST_CARD_READER -> { plugin.finishCardReader(); true }
                 else -> false
             }
         }
@@ -40,6 +42,7 @@ class SumUpPlugin : Plugin() {
 
     private var loginCall: PluginCall? = null
     private var checkoutCall: PluginCall? = null
+    private var cardReaderCall: PluginCall? = null
 
     override fun load() {
         instance = this
@@ -85,6 +88,24 @@ class SumUpPlugin : Plugin() {
         call.resolve()
     }
 
+    /**
+     * Opens SumUp's own card-reader settings page, where the user can pair/connect
+     * a reader (Solo, Air, …) over Bluetooth without having to start a checkout.
+     * Requires a logged-in session.
+     */
+    @PluginMethod
+    fun openCardReaderPage(call: PluginCall) {
+        if (!safeIsLoggedIn()) {
+            call.reject("Log in to SumUp first")
+            return
+        }
+        cardReaderCall = call
+        call.setKeepAlive(true)
+        activity.runOnUiThread {
+            SumUpAPI.openCardReaderPage(activity, REQUEST_CARD_READER)
+        }
+    }
+
     @PluginMethod
     fun checkout(call: PluginCall) {
         val amount = call.getDouble("amount") ?: run { call.reject("amount required"); return }
@@ -122,6 +143,13 @@ class SumUpPlugin : Plugin() {
             put("loggedIn", code == 1 || SumUpAPI.isLoggedIn())
             put("message", message ?: "")
         })
+    }
+
+    private fun finishCardReader() {
+        val call = cardReaderCall ?: return
+        cardReaderCall = null
+        call.setKeepAlive(false)
+        call.resolve()
     }
 
     private fun finishCheckout(data: Intent?) {

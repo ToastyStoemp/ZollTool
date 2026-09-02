@@ -54,4 +54,14 @@ export const sumupProvider: PaymentProvider = {
     const res = await SumUp.login({ affiliateKey });
     if (!res.loggedIn) throw new Error(res.message || 'SumUp login was cancelled');
   },
+
+  /** Opens SumUp's card-reader page to pair/connect a reader (needs login first). */
+  async pairReader(): Promise<void> {
+    await SumUp.openCardReaderPage();
+  },
+
+  /** Logs this device out of the SumUp account (disconnects it entirely). */
+  async disconnect(): Promise<void> {
+    await SumUp.logout();
+  },
 };

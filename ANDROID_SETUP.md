@@ -191,6 +191,19 @@ On the Android device:
 
 ---
 
+## 8  SumUp card reader (full build only)
+
+The **full** APK flavor bundles the SumUp Merchant SDK (SumUp Solo, Air, …). To connect a reader:
+
+1. Create an **affiliate key** in the [SumUp developer portal](https://developer.sumup.com/) → *Affiliate keys / API keys*.
+2. **Set the affiliate key's Application Identifiers to `com.phuongninjin.zolltool`** — the app's Android package name. SumUp binds each affiliate key to specific application IDs, so a key registered for any other identifier makes login **fail with an "invalid credentials" error even when the email and password are correct**. This is the most common cause of SumUp login failures.
+3. In ZollTool → **Settings → Payments** (or the setup wizard's *Currency & payments* step), paste the affiliate key, tap **Log in to SumUp**, and sign in with your SumUp **merchant** account.
+4. The reader pairs over Bluetooth from SumUp's checkout screen the first time you take a payment, and is remembered afterwards.
+
+> SumUp ships only in the `full` flavor — on `compat`/`carbon` the SumUp option stays disabled. The affiliate key is stored as a synced setting, so it propagates to your other devices; each device still logs in and pairs its own reader.
+
+---
+
 ## Architecture summary
 
 ```

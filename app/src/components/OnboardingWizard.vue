@@ -164,17 +164,17 @@ onMounted(async () => {
 // ── Payments step ────────────────────────────────────────────────────────────
 // Card-terminal availability depends on the flavor's native plugins; loaded
 // once when the step opens (see the watch below).
-const providerAvail = ref<Record<string, { available: boolean; detail: string }>>({});
+const providerAvail = ref<Record<string, { available: boolean; connected: boolean; detail: string }>>({});
 const sumupKey = ref('');
 const configuring = ref(false);
 const selectedProvider = computed(() => allProviders().find((p) => p.id === settings.paymentProviderId) ?? null);
 
 async function loadProviderAvailability(): Promise<void> {
-  const map: Record<string, { available: boolean; detail: string }> = {};
+  const map: Record<string, { available: boolean; connected: boolean; detail: string }> = {};
   for (const p of allProviders()) {
     const available = await p.isAvailable();
     const status = available ? await p.getStatus() : { connected: false, detail: 'Not available on this device' };
-    map[p.id] = { available, detail: status.detail ?? '' };
+    map[p.id] = { available, connected: status.connected ?? false, detail: status.detail ?? '' };
   }
   providerAvail.value = map;
 }
@@ -192,6 +192,20 @@ async function configureSelected(): Promise<void> {
   try {
     await p.configure();
     showToast('Terminal connected', 'success');
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : String(err), 'error');
+  } finally {
+    configuring.value = false;
+    await loadProviderAvailability();
+  }
+}
+/** Open the reader's pairing screen (SumUp card reader page) from the wizard. */
+async function pairSelectedReader(): Promise<void> {
+  const p = selectedProvider.value;
+  if (!p?.pairReader) return;
+  configuring.value = true;
+  try {
+    await p.pairReader();
   } catch (err) {
     showToast(err instanceof Error ? err.message : String(err), 'error');
   } finally {
@@ -454,6 +468,17 @@ async function connect(): Promise<void> {
               </button>
               <p v-if="providerAvail[selectedProvider.id]?.detail" class="mt-1 text-xs text-slate-500">{{ providerAvail[selectedProvider.id].detail }}</p>
             </template>
+
+            <!-- Once logged in, pair the physical reader without waiting for the first sale -->
+            <button
+              v-if="selectedProvider?.pairReader && providerAvail[selectedProvider.id]?.connected"
+              type="button"
+              class="mt-2 w-full rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium hover:bg-slate-600 disabled:opacity-40"
+              :disabled="configuring"
+              @click="pairSelectedReader"
+            >
+              Pair card reader
+            </button>
 
             <p class="mt-3 text-xs text-slate-500">
               Extra payment methods like TWINT — and fine-tuning your terminal — live in Settings → Payments.

@@ -58,6 +58,28 @@ async function configureProvider(id: PaymentProviderId): Promise<void> {
   }
   setTimeout(refreshStatuses, 1500);
 }
+async function pairReader(id: PaymentProviderId): Promise<void> {
+  const provider = allProviders().find((p) => p.id === id);
+  if (!provider?.pairReader) return;
+  try {
+    await provider.pairReader();
+    showToast('Reader settings closed', 'info');
+  } catch (err) {
+    showToast(String(err), 'error');
+  }
+  setTimeout(refreshStatuses, 1500);
+}
+async function disconnectProvider(id: PaymentProviderId): Promise<void> {
+  const provider = allProviders().find((p) => p.id === id);
+  if (!provider?.disconnect) return;
+  try {
+    await provider.disconnect();
+    showToast('Disconnected', 'success');
+  } catch (err) {
+    showToast(String(err), 'error');
+  }
+  setTimeout(refreshStatuses, 500);
+}
 async function saveSumupKey(): Promise<void> {
   await setSyncedSetting(SUMUP_KEY_SETTING, sumupKey.value.trim());
   showToast('SumUp affiliate key saved', 'success');
@@ -126,6 +148,20 @@ async function addMethod(): Promise<void> {
           >
             Connect
           </button>
+          <button
+            v-if="p.pairReader && statuses[p.id]?.connected"
+            class="rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-medium hover:bg-slate-600"
+            @click="pairReader(p.id)"
+          >
+            Pair reader
+          </button>
+          <button
+            v-if="p.disconnect && statuses[p.id]?.connected"
+            class="rounded-lg px-3 py-1.5 text-xs text-red-400 hover:bg-red-950"
+            @click="disconnectProvider(p.id)"
+          >
+            Log out
+          </button>
         </div>
       </div>
       <label v-if="statuses['sumup']?.available" class="mt-3 block text-sm">
@@ -139,9 +175,10 @@ async function addMethod(): Promise<void> {
         />
       </label>
       <p v-if="statuses['sumup']?.available" class="mt-1.5 text-xs text-slate-500">
-        Save your affiliate key, tap <strong>Connect</strong> to log in to SumUp once, then take a payment — the Solo (or Air)
-        pairs over Bluetooth from SumUp's checkout screen the first time and is remembered after. Keep the reader charged and
-        nearby. (SumUp ships only in the <strong>full</strong> app build.)
+        Save your affiliate key and tap <strong>Connect</strong> to log in once. Then use <strong>Pair reader</strong> to connect
+        your Solo (or Air) over Bluetooth — that same SumUp screen also lets you remove a paired reader. <strong>Log out</strong>
+        disconnects this device from your SumUp account. Keep the reader charged and nearby. (SumUp ships only in the
+        <strong>full</strong> app build.)
       </p>
       <div v-if="settings.paymentProviderId === 'mypos-carbon-remote'" class="mt-3">
         <div class="mb-1 flex items-center justify-between">

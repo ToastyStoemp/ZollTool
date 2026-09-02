@@ -57,6 +57,8 @@ export interface SumUpPluginApi {
   isLoggedIn(): Promise<{ loggedIn: boolean }>;
   login(options: { affiliateKey: string }): Promise<{ loggedIn: boolean; message?: string }>;
   logout(): Promise<void>;
+  /** Opens SumUp's card-reader settings page so the user can pair/connect a reader. */
+  openCardReaderPage(): Promise<void>;
   checkout(options: {
     amount: number;
     currency: string;

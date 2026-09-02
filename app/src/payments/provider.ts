@@ -38,4 +38,8 @@ export interface PaymentProvider {
   cancel(): Promise<void>;
   /** Optional pairing / login flow (terminal pairing, SumUp login). */
   configure?(): Promise<void>;
+  /** Optional: open the reader's own pairing/connection screen (e.g. SumUp's card reader page). */
+  pairReader?(): Promise<void>;
+  /** Optional: disconnect this device from the provider account (e.g. SumUp logout). */
+  disconnect?(): Promise<void>;
 }
