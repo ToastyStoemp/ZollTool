@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref } from 'vue';
 import { useSettingsStore } from '@/stores/settings';
 import { getSetting, setSetting, setSyncedSetting } from '@/db/repo';
 import { allProviders } from '@/payments/registry';
@@ -80,8 +80,16 @@ async function disconnectProvider(id: PaymentProviderId): Promise<void> {
   }
   setTimeout(refreshStatuses, 500);
 }
+// The affiliate key is a secret — once saved, show a masked chip with a Change
+// button instead of leaving the full key visible in the form.
+const editingSumupKey = ref(false);
+const hasSumupKey = computed(() => !!sumupKey.value.trim());
+const maskedSumupKey = computed(() =>
+  hasSumupKey.value ? `${'•'.repeat(8)} ${sumupKey.value.trim().slice(-4)}` : '',
+);
 async function saveSumupKey(): Promise<void> {
   await setSyncedSetting(SUMUP_KEY_SETTING, sumupKey.value.trim());
+  editingSumupKey.value = false;
   showToast('SumUp affiliate key saved', 'success');
 }
 
@@ -164,16 +172,22 @@ async function addMethod(): Promise<void> {
           </button>
         </div>
       </div>
-      <label v-if="statuses['sumup']?.available" class="mt-3 block text-sm">
+      <div v-if="statuses['sumup']?.available" class="mt-3 text-sm">
         <span class="text-slate-400">SumUp affiliate key</span>
+        <div v-if="hasSumupKey && !editingSumupKey" class="mt-1 flex items-center gap-2">
+          <code class="flex-1 truncate rounded-lg bg-slate-800/60 px-3 py-2 font-mono text-xs text-slate-400">{{ maskedSumupKey }}</code>
+          <button class="shrink-0 rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-medium hover:bg-slate-600" @click="editingSumupKey = true">Change</button>
+        </div>
         <input
+          v-else
           v-model="sumupKey"
-          type="text"
+          type="password"
+          autocomplete="off"
           placeholder="From the SumUp developer dashboard"
           class="mt-1 w-full zui-input font-mono text-xs"
           @change="saveSumupKey"
         />
-      </label>
+      </div>
       <p v-if="statuses['sumup']?.available" class="mt-1.5 text-xs text-slate-500">
         Save your affiliate key and tap <strong>Connect</strong> to log in once. Then use <strong>Pair reader</strong> to connect
         your Solo (or Air) over Bluetooth — that same SumUp screen also lets you remove a paired reader. <strong>Log out</strong>

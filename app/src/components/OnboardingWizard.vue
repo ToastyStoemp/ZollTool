@@ -166,6 +166,9 @@ onMounted(async () => {
 // once when the step opens (see the watch below).
 const providerAvail = ref<Record<string, { available: boolean; connected: boolean; detail: string }>>({});
 const sumupKey = ref('');
+const editingSumupKey = ref(false);
+const hasSumupKey = computed(() => !!sumupKey.value.trim());
+const maskedSumupKey = computed(() => (hasSumupKey.value ? `${'•'.repeat(8)} ${sumupKey.value.trim().slice(-4)}` : ''));
 const configuring = ref(false);
 const selectedProvider = computed(() => allProviders().find((p) => p.id === settings.paymentProviderId) ?? null);
 
@@ -183,6 +186,7 @@ async function selectProvider(id: PaymentProviderId): Promise<void> {
 }
 async function saveSumupKey(): Promise<void> {
   await setSyncedSetting(SUMUP_KEY_SETTING, sumupKey.value.trim());
+  editingSumupKey.value = false;
 }
 /** Run the selected terminal's setup (SumUp login, etc.) right here in the wizard. */
 async function configureSelected(): Promise<void> {
@@ -448,16 +452,22 @@ async function connect(): Promise<void> {
 
             <!-- Configure the selected terminal here (e.g. log in to SumUp before you sell) -->
             <template v-if="selectedProvider?.configure && providerAvail[selectedProvider.id]?.available">
-              <label v-if="selectedProvider.id === 'sumup'" class="mt-3 block text-sm">
+              <div v-if="selectedProvider.id === 'sumup'" class="mt-3 text-sm">
                 <span class="text-xs text-slate-400">SumUp affiliate key</span>
+                <div v-if="hasSumupKey && !editingSumupKey" class="mt-1 flex items-center gap-2">
+                  <code class="flex-1 truncate rounded-lg bg-slate-800/60 px-3 py-2 font-mono text-xs text-slate-400">{{ maskedSumupKey }}</code>
+                  <button type="button" class="shrink-0 rounded-lg bg-slate-700 px-3 py-1.5 text-xs font-medium hover:bg-slate-600" @click="editingSumupKey = true">Change</button>
+                </div>
                 <input
+                  v-else
                   v-model="sumupKey"
-                  type="text"
+                  type="password"
+                  autocomplete="off"
                   placeholder="From the SumUp developer dashboard"
                   class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2 font-mono text-xs"
                   @change="saveSumupKey"
                 />
-              </label>
+              </div>
               <button
                 type="button"
                 class="mt-2 w-full rounded-lg bg-slate-700 px-4 py-2 text-sm font-medium hover:bg-slate-600 disabled:opacity-40"
