@@ -21,6 +21,8 @@ import { showToast } from '@/lib/toast';
 import { syncNow, syncState } from '@/sync/engine';
 import CountryPicker from '@/components/CountryPicker.vue';
 import CurrencyPicker from '@/components/CurrencyPicker.vue';
+import QrLiveScanner from '@/components/QrLiveScanner.vue';
+import { decodeConnectQr, parseConnectQr, type ConnectPayload } from '@/lib/qr';
 
 const settings = useSettingsStore();
 const data = useDataStore();
@@ -159,24 +161,37 @@ async function saveDeviceName(): Promise<void> {
 // Quick connect: scan the QR another logged-in device shows in its sync
 // settings (photo capture + jsQR, same flow as SettingsView).
 const scanInput = ref<HTMLInputElement | null>(null);
+const showScanner = ref(false);
 
+async function applyConnect(payload: ConnectPayload | null): Promise<void> {
+  if (!payload) {
+    authError.value = 'No ZollTool connect code found.';
+    return;
+  }
+  authMode.value = 'login';
+  auth.url = payload.url;
+  auth.email = payload.email;
+  auth.password = payload.password;
+  if (deviceNameForm.value.trim()) await connect();
+  else authError.value = 'Scanned — name this device above, then Connect.';
+}
+
+async function onScanDetected(text: string): Promise<void> {
+  showScanner.value = false;
+  await applyConnect(parseConnectQr(text));
+}
+function onScannerUnavailable(): void {
+  showScanner.value = false;
+  authError.value = 'Camera unavailable — take a photo of the code instead.';
+  scanInput.value?.click();
+}
 async function onScanFile(e: Event): Promise<void> {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = '';
   if (!file) return;
   try {
-    const { decodeConnectQr } = await import('@/lib/qr');
-    const payload = await decodeConnectQr(file);
-    if (!payload) {
-      authError.value = 'No ZollTool connect code found in the photo';
-      return;
-    }
-    authMode.value = 'login';
-    auth.url = payload.url;
-    auth.email = payload.email;
-    auth.password = payload.password;
-    await connect();
+    await applyConnect(await decodeConnectQr(file));
   } catch (err) {
     authError.value = err instanceof Error ? err.message : String(err);
   }
@@ -415,7 +430,7 @@ async function connect(): Promise<void> {
               <button
                 class="w-full rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
                 :disabled="authBusy"
-                @click="scanInput?.click()"
+                @click="showScanner = true"
               >
                 <span class="flex items-center justify-center gap-1.5"><Camera class="h-4 w-4" /> Scan connect QR from another device</span>
               </button>
@@ -457,5 +472,12 @@ async function connect(): Promise<void> {
         </button>
       </div>
     </div>
+
+    <QrLiveScanner
+      v-if="showScanner"
+      @detected="onScanDetected"
+      @cancel="showScanner = false"
+      @unavailable="onScannerUnavailable"
+    />
   </div>
 </template>

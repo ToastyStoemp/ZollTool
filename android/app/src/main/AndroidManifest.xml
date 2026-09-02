@@ -47,6 +47,11 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Live QR scanner: the in-app WebView opens the camera via getUserMedia to
+         scan the quick-connect code. Optional feature so devices without a camera
+         still install (the app falls back to a photo of the code). -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
     <!-- Self-update: install a newer APK downloaded from the sync server (see UpdaterPlugin.kt).
          Still needs the user's one-time "allow installs from this app" consent — this permission
          just lets the app trigger that system prompt. -->

@@ -60,7 +60,7 @@ export async function decodeConnectQr(file: Blob): Promise<ConnectPayload | null
     const code = jsQR(data.data, data.width, data.height);
     if (code) {
       if ('close' in bitmap) bitmap.close();
-      return parsePayload(code.data);
+      return parseConnectQr(code.data);
     }
     if (scale === 1) break; // no more resolution to gain
   }
@@ -68,7 +68,8 @@ export async function decodeConnectQr(file: Blob): Promise<ConnectPayload | null
   return null;
 }
 
-function parsePayload(text: string): ConnectPayload | null {
+/** Parse a raw scanned QR string into a connect payload (null if it isn't ours). */
+export function parseConnectQr(text: string): ConnectPayload | null {
   try {
     const obj = JSON.parse(text) as Partial<ConnectQr>;
     if (obj?.zt === 1 && typeof obj.u === 'string' && typeof obj.e === 'string' && typeof obj.p === 'string') {

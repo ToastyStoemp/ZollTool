@@ -20,7 +20,8 @@ import {
   type TotpSetup,
   type AccountUser,
 } from '@/sync/api';
-import { connectQrDataUrl, decodeConnectQr, qrDataUrl } from '@/lib/qr';
+import { connectQrDataUrl, decodeConnectQr, parseConnectQr, qrDataUrl, type ConnectPayload } from '@/lib/qr';
+import QrLiveScanner from '@/components/QrLiveScanner.vue';
 import { hashPin, pinState, setPin } from '@/lib/pin';
 import { isNative } from '@/native/plugins';
 import { Camera, QrCode } from 'lucide-vue-next';
@@ -208,23 +209,45 @@ async function generateShareQr(): Promise<void> {
     password: shareQrPassword.value,
   });
 }
+// Live camera scanner (auto-detect). Falls back to a photo if the camera can't open.
+const showScanner = ref(false);
+
+async function applyConnect(payload: ConnectPayload | null): Promise<void> {
+  if (!payload) {
+    showToast('No ZollTool connect code found.', 'error');
+    return;
+  }
+  authMode.value = 'login';
+  authUrl.value = payload.url;
+  authEmail.value = payload.email;
+  authPassword.value = payload.password;
+  // A device name is required to log in — if it's set, connect straight away;
+  // otherwise fill the form and let the user name this device first.
+  if (authDeviceName.value.trim()) {
+    showToast('Code scanned — connecting…', 'info');
+    await submitAuth();
+  } else {
+    showToast('Scanned — enter a device name, then tap Log in.', 'info');
+  }
+}
+
+async function onScanDetected(text: string): Promise<void> {
+  showScanner.value = false;
+  await applyConnect(parseConnectQr(text));
+}
+function onScannerUnavailable(): void {
+  // Camera blocked or unsupported — fall back to the photo-capture flow.
+  showScanner.value = false;
+  showToast('Camera unavailable — take a photo of the code instead.', 'info');
+  scanInput.value?.click();
+}
 async function onScanFile(e: Event): Promise<void> {
   const input = e.target as HTMLInputElement;
   const file = input.files?.[0];
   input.value = '';
   if (!file) return;
   try {
-    const payload = await decodeConnectQr(file);
-    if (!payload) {
-      showToast('No ZollTool connect code found in the photo', 'error');
-      return;
-    }
-    authMode.value = 'login';
-    authUrl.value = payload.url;
-    authEmail.value = payload.email;
-    authPassword.value = payload.password;
-    showToast('Code scanned — connecting…', 'info');
-    await submitAuth();
+    await applyConnect(await decodeConnectQr(file));
   } catch (err) {
     showToast(`Scan failed: ${err instanceof Error ? err.message : err}`, 'error');
   }
@@ -454,7 +477,7 @@ async function removePinSettings(): Promise<void> {
             type="button"
             class="w-full rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
             :disabled="authBusy"
-            @click="scanInput?.click()"
+            @click="showScanner = true"
           >
             <span class="flex items-center justify-center gap-1.5"><Camera class="h-4 w-4" /> Scan connect QR from another device</span>
           </button>
@@ -666,5 +689,12 @@ async function removePinSettings(): Promise<void> {
         </div>
       </div>
     </ModalShell>
+
+    <QrLiveScanner
+      v-if="showScanner"
+      @detected="onScanDetected"
+      @cancel="showScanner = false"
+      @unavailable="onScannerUnavailable"
+    />
   </SettingsShell>
 </template>
