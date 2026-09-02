@@ -13,6 +13,7 @@ import { EVENT_PRESETS } from '@/data/event-presets';
 import { ArrowLeftRight, ChartLine, DoorOpen, Pencil, ShoppingCart, Stamp, Trash2 } from 'lucide-vue-next';
 import ModalShell from '@/components/ModalShell.vue';
 import CountryPicker from '@/components/CountryPicker.vue';
+import CurrencyPicker from '@/components/CurrencyPicker.vue';
 
 const data = useDataStore();
 const settings = useSettingsStore();
@@ -46,7 +47,6 @@ const form = reactive({
   city: '',
   country: 'Switzerland',
   tin: '',
-  currency: settings.defaultCurrency,
   localCurrency: '',
   exchangeRate: '' as string,
   roundingIncrement: '0',
@@ -54,10 +54,10 @@ const form = reactive({
 });
 
 async function fetchRate(): Promise<void> {
-  if (!form.currency.trim() || !form.localCurrency.trim()) return;
+  if (!settings.defaultCurrency.trim() || !form.localCurrency.trim()) return;
   fetchingRate.value = true;
   fetchRateError.value = '';
-  const rate = await fetchExchangeRate(form.currency, form.localCurrency);
+  const rate = await fetchExchangeRate(settings.defaultCurrency, form.localCurrency);
   fetchingRate.value = false;
   if (rate == null) {
     fetchRateError.value = 'Could not fetch a rate — enter it manually.';
@@ -112,7 +112,6 @@ function applyPreset(): void {
   form.city = preset.venue.city ?? '';
   form.country = preset.venue.country ?? '';
   form.tin = preset.venue.tin ?? '';
-  form.currency = preset.currency;
 }
 
 function openCreate(): void {
@@ -126,7 +125,6 @@ function openCreate(): void {
     city: '',
     country: 'Switzerland',
     tin: '',
-    currency: settings.defaultCurrency,
     localCurrency: '',
     exchangeRate: '',
     roundingIncrement: String(settings.defaultRoundingIncrement),
@@ -152,7 +150,7 @@ async function createEvent(): Promise<void> {
       country: form.country || undefined,
       tin: form.tin || undefined,
     },
-    currency: form.currency || settings.defaultCurrency,
+    currency: settings.defaultCurrency,
     localCurrency: localCurrency && Number.isFinite(rate) && rate > 0 ? localCurrency : undefined,
     exchangeRate: localCurrency && Number.isFinite(rate) && rate > 0 ? rate : undefined,
     roundingIncrement: Number(form.roundingIncrement) || 0,
@@ -196,7 +194,6 @@ function openEdit(event: SalesEvent): void {
     city: event.venue.city ?? '',
     country: event.venue.country ?? '',
     tin: event.venue.tin ?? '',
-    currency: event.currency,
     localCurrency: event.localCurrency ?? '',
     exchangeRate: event.exchangeRate != null ? String(event.exchangeRate) : '',
     roundingIncrement: String(event.roundingIncrement ?? 0),
@@ -223,7 +220,7 @@ async function saveEdit(): Promise<void> {
       country: form.country || undefined,
       tin: form.tin || undefined,
     },
-    currency: form.currency || settings.defaultCurrency,
+    currency: settings.defaultCurrency,
     localCurrency: localCurrency && Number.isFinite(rate) && rate > 0 ? localCurrency : undefined,
     exchangeRate: localCurrency && Number.isFinite(rate) && rate > 0 ? rate : undefined,
     roundingIncrement: Number(form.roundingIncrement) || 0,
@@ -434,29 +431,20 @@ function fmtDates(e: SalesEvent): string {
             <span class="text-slate-400">Country</span>
             <CountryPicker v-model="form.country" mode="name" class="mt-1" />
           </label>
-          <label class="block text-sm">
-            <span class="text-slate-400">Currency</span>
-            <input v-model="form.currency" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
-          </label>
         </div>
 
         <div class="rounded-lg bg-slate-800/40 p-3 ring-1 ring-slate-800">
           <p class="mb-2 text-xs font-medium text-slate-400">
-            Convention currency (optional) — display and charge prices converted from
-            {{ form.currency || 'the base currency' }}, leave blank to sell in
-            {{ form.currency || 'the base currency' }} directly.
+            Local currency (optional) — display and charge prices converted from your base currency
+            ({{ settings.defaultCurrency }}), leave blank to sell in {{ settings.defaultCurrency }} directly.
           </p>
           <div class="grid grid-cols-3 gap-3">
             <label class="block text-sm">
               <span class="text-slate-400">Local currency</span>
-              <input
-                v-model="form.localCurrency"
-                placeholder="e.g. SEK"
-                class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2 uppercase"
-              />
+              <CurrencyPicker v-model="form.localCurrency" placeholder="Search…" class="mt-1" />
             </label>
             <label class="block text-sm">
-              <span class="text-slate-400">Rate (1 {{ form.currency || 'base' }} =)</span>
+              <span class="text-slate-400">Rate (1 {{ settings.defaultCurrency }} =)</span>
               <input
                 v-model="form.exchangeRate"
                 type="number"
@@ -477,7 +465,7 @@ function fmtDates(e: SalesEvent): string {
             <button
               type="button"
               class="rounded-lg bg-slate-800 px-3 py-1.5 text-xs font-medium hover:bg-slate-700 disabled:opacity-40"
-              :disabled="!form.currency.trim() || !form.localCurrency.trim() || fetchingRate"
+              :disabled="!settings.defaultCurrency.trim() || !form.localCurrency.trim() || fetchingRate"
               @click="fetchRate"
             >
               {{ fetchingRate ? 'Fetching…' : "Fetch today's rate" }}

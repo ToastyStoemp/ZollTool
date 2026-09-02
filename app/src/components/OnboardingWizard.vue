@@ -20,6 +20,7 @@ import { uuidv7 } from '@/lib/uuid';
 import { showToast } from '@/lib/toast';
 import { syncNow, syncState } from '@/sync/engine';
 import CountryPicker from '@/components/CountryPicker.vue';
+import CurrencyPicker from '@/components/CurrencyPicker.vue';
 
 const settings = useSettingsStore();
 const data = useDataStore();
@@ -89,7 +90,7 @@ async function onImportFile(e: Event): Promise<void> {
 }
 
 // ── Event step ───────────────────────────────────────────────────────────────
-const eventForm = reactive({ name: '', dateStart: '', dateEnd: '', currency: '' });
+const eventForm = reactive({ name: '', dateStart: '', dateEnd: '' });
 
 async function createEventIfNamed(): Promise<void> {
   if (data.activeEvent || !eventForm.name.trim()) return;
@@ -99,7 +100,7 @@ async function createEventIfNamed(): Promise<void> {
     dateStart: eventForm.dateStart || undefined,
     dateEnd: eventForm.dateEnd || undefined,
     venue: {},
-    currency: eventForm.currency.trim().toUpperCase() || settings.defaultCurrency,
+    currency: settings.defaultCurrency,
     status: 'active',
     updatedAt: Date.now(),
   };
@@ -307,12 +308,8 @@ async function connect(): Promise<void> {
                 <input v-model="eventForm.dateEnd" type="date" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
               </label>
             </div>
-            <label class="block text-sm">
-              <span class="text-xs text-slate-400">Currency</span>
-              <input v-model="eventForm.currency" :placeholder="settings.defaultCurrency" class="mt-1 w-24 rounded-lg bg-slate-800 px-3 py-2 uppercase" />
-            </label>
           </div>
-          <p class="mt-4 text-xs text-slate-500">Leave the name empty to skip — events live under the Events tab.</p>
+          <p class="mt-4 text-xs text-slate-500">Sells in your base currency ({{ settings.defaultCurrency }}); add a local currency later under Events. Leave the name empty to skip.</p>
         </template>
 
         <!-- Artist -->
@@ -364,8 +361,8 @@ async function connect(): Promise<void> {
             <input v-model="deviceNameForm" placeholder="e.g. Wolf's tablet" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
           </label>
           <label class="mb-4 block text-sm">
-            <span class="text-xs text-slate-400">Default currency (prefilled for new events)</span>
-            <input v-model="currencyForm" placeholder="CHF" class="mt-1 w-24 rounded-lg bg-slate-800 px-3 py-2 uppercase" />
+            <span class="text-xs text-slate-400">Base currency (your accounting currency, shared across all events)</span>
+            <div class="mt-1 w-40"><CurrencyPicker v-model="currencyForm" placeholder="Search currency…" /></div>
           </label>
 
           <template v-if="settings.syncUser">

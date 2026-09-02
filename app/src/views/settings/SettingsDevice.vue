@@ -7,6 +7,8 @@ import { DisplayLink, ThermalPrinter, hasNativePlugin } from '@/native/plugins';
 import { DISPLAY_KEYS } from '@/lib/display';
 import { MonitorSmartphone } from 'lucide-vue-next';
 import SettingsShell from './SettingsShell.vue';
+import CurrencyPicker from '@/components/CurrencyPicker.vue';
+import { CURRENCY_BY_CODE } from '@/lib/currencies';
 
 const settings = useSettingsStore();
 
@@ -14,12 +16,14 @@ const deviceNameDraft = ref('');
 const currencyDraft = ref('');
 const roundingDraft = ref('0');
 
+// The picker commits a valid ISO code on select/blur — persist it then.
+watch(currencyDraft, (v) => {
+  const c = v.trim().toUpperCase();
+  if (CURRENCY_BY_CODE[c] && c !== settings.defaultCurrency) void settings.setDefaultCurrency(c);
+});
+
 async function saveDeviceName(): Promise<void> {
   await settings.setDeviceName(deviceNameDraft.value.trim());
-}
-async function saveCurrency(): Promise<void> {
-  await settings.setDefaultCurrency(currencyDraft.value);
-  currencyDraft.value = settings.defaultCurrency;
 }
 async function saveRounding(): Promise<void> {
   await settings.setDefaultRoundingIncrement(Number(roundingDraft.value));
@@ -90,13 +94,9 @@ async function forgetBtDisplay(): Promise<void> {
         />
       </label>
       <label class="mt-3 block text-sm">
-        <span class="text-slate-400">Default currency (prefilled for new events)</span>
-        <input
-          v-model="currencyDraft"
-          placeholder="CHF"
-          class="mt-1 w-24 zui-input uppercase"
-          @change="saveCurrency"
-        />
+        <span class="text-slate-400">Base currency</span>
+        <div class="mt-1 w-48"><CurrencyPicker v-model="currencyDraft" placeholder="Search currency…" /></div>
+        <span class="mt-1 block text-xs text-slate-500">Your accounting currency, shared across all events. Each event can add its own local charge currency.</span>
       </label>
       <label class="mt-3 block text-sm">
         <span class="text-slate-400">Default rounding increment (prefilled for new events)</span>
