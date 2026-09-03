@@ -143,7 +143,19 @@ export function buildPriceGroups(products: Product[], discounts: DiscountRule[],
     return [...new Set(out.filter(Boolean))];
   };
 
-  // 6 — group by type, ordered lines.
+  // 6 — types with a single product collapse into a shared "Other" group.
+  const OTHER = 'Other';
+  const productsPerType = new Map<string, Set<string>>();
+  for (const e of finals) {
+    let s = productsPerType.get(e.type);
+    if (!s) productsPerType.set(e.type, (s = new Set()));
+    e.units.forEach((u) => s!.add(u.pid));
+  }
+  for (const e of finals) {
+    if (e.type !== OTHER && (productsPerType.get(e.type)?.size ?? 0) <= 1) e.type = OTHER;
+  }
+
+  // 7 — group by type, ordered lines; "Other" sorts last.
   const byType = new Map<string, PriceLine[]>();
   for (const e of finals) {
     const line: PriceLine = { id: e.key, label: e.label, qual: e.qual, price: e.price, deals: dealsFor(e), units: e.units.map((u) => ({ pid: u.pid, vid: u.vid })) };
@@ -153,7 +165,7 @@ export function buildPriceGroups(products: Product[], discounts: DiscountRule[],
   }
   return [...byType.entries()]
     .map(([type, lines]) => ({ type, lines: lines.sort((a, b) => a.price - b.price || a.label.localeCompare(b.label)) }))
-    .sort((a, b) => a.type.localeCompare(b.type));
+    .sort((a, b) => (a.type === OTHER ? 1 : 0) - (b.type === OTHER ? 1 : 0) || a.type.localeCompare(b.type));
 }
 
 function dealText(d: DiscountRule, currency: string): string {
@@ -194,28 +206,36 @@ export function buildPriceSheetHtml(groups: PriceGroup[], opts: { title: string;
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${esc(opts.title)}</title>
 <style>
-  :root{--ink:#26221b;--muted:#8c8578;--faint:#bcb4a4;--line:#e6e0d3;--deal:#0c766b;--deal-bg:#e7f2ef;--deal-line:#c3e0d9;--paper:#fbfaf5;}
+  :root{--ink:#26221b;--muted:#8c8578;--faint:#bcb4a4;--line:#e6e0d3;--deal:#0c766b;--deal-bg:#e7f2ef;--deal-line:#c3e0d9;}
   *{box-sizing:border-box;}
-  body{margin:0;background:#f2efe6;color:var(--ink);font-family:"Hanken Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:15px;line-height:1.4;-webkit-font-smoothing:antialiased;}
-  .wrap{max-width:940px;margin:0 auto;padding:28px 24px 60px;}
-  .bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
-  h1{font-weight:700;font-size:1.7rem;letter-spacing:-.01em;margin:0;}
-  .sub{color:var(--muted);font-size:.9rem;margin:4px 0 0;}
-  button{margin-left:auto;font:inherit;font-weight:600;font-size:.85rem;background:var(--deal);color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer;}
-  .cols{columns:2;column-gap:24px;}
+  body{margin:0;background:#f2efe6;color:var(--ink);font-family:"Hanken Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:13px;line-height:1.32;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:940px;margin:0 auto;padding:22px 22px 48px;}
+  .bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;}
+  h1{font-weight:700;font-size:1.45rem;letter-spacing:-.01em;margin:0;}
+  .sub{color:var(--muted);font-size:.82rem;margin:3px 0 0;}
+  button{margin-left:auto;font:inherit;font-weight:600;font-size:.82rem;background:var(--deal);color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer;}
+  .cols{columns:2;column-gap:18px;}
   @media(max-width:640px){.cols{columns:1;}}
-  section{break-inside:avoid;background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin:0 0 20px;}
-  h2{font-weight:700;font-size:1.05rem;margin:0 0 8px;padding-bottom:7px;border-bottom:1px solid var(--line);}
+  section{break-inside:avoid;background:#fff;border:1px solid var(--line);border-radius:9px;padding:9px 12px;margin:0 0 12px;}
+  h2{font-weight:700;font-size:.95rem;margin:0 0 5px;padding-bottom:5px;border-bottom:1px solid var(--line);}
   ul{list-style:none;margin:0;padding:0;}
-  li{display:grid;grid-template-columns:1fr auto;align-items:baseline;column-gap:8px;padding:5px 0;}
+  li{display:grid;grid-template-columns:1fr auto;align-items:baseline;column-gap:8px;padding:3px 0;}
   li+li{border-top:1px dashed var(--line);}
   .nm{font-weight:500;}
-  .q{color:var(--muted);font-weight:400;font-size:.86em;}
+  .q{color:var(--muted);font-weight:400;font-size:.85em;}
   .dot{grid-column:auto;border-bottom:1px dotted var(--faint);transform:translateY(-3px);align-self:center;min-width:10px;}
   .pr{font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;}
-  .dl{grid-column:1 / -1;display:flex;flex-wrap:wrap;gap:5px;margin-top:4px;}
-  .tag{font-weight:600;font-size:.72rem;color:var(--deal);background:var(--deal-bg);border:1px solid var(--deal-line);border-radius:999px;padding:1px 8px;}
-  @media print{body{background:#fff;}.wrap{padding:0;max-width:none;}button,.noprint{display:none;}section{box-shadow:none;}@page{size:A4;margin:12mm;}}
+  .dl{grid-column:1 / -1;display:flex;flex-wrap:wrap;gap:4px;margin-top:3px;}
+  .tag{font-weight:600;font-size:.68rem;color:var(--deal);background:var(--deal-bg);border:1px solid var(--deal-line);border-radius:999px;padding:1px 7px;}
+  @media print{
+    html,body{background:#fff;font-size:10.5px;}
+    .wrap{padding:0;max-width:none;}
+    button,.noprint{display:none;}
+    section{box-shadow:none;border-radius:0;border:0;border-top:1.5px solid var(--ink);padding:6px 0 4px;margin:0 0 8px;background:transparent;break-inside:avoid;}
+    h2{font-size:.9rem;padding-bottom:3px;border-bottom:0;}
+    .cols{columns:2;column-gap:14px;}
+    @page{size:A4 portrait;margin:9mm;}
+  }
 </style></head>
 <body><div class="wrap">
   <div class="bar">

@@ -602,13 +602,20 @@ function discountTargets(d: DiscountRule): string {
 // ── Price sheet (merged, print-ready; from the live catalog + discounts) ──────
 const showPriceSheet = ref(false);
 const priceGroups = ref<PriceGroup[]>([]);
+const groupOrder = ref<string[]>([]);
 const excludedLines = ref<Set<string>>(new Set());
+const GROUP_ORDER_KEY = 'zt:priceSheetGroupOrder';
 
 function lineInStock(units: { pid: string; vid: string }[]): boolean {
   return units.some((u) => data.broughtQty(u.pid, u.vid || null) > 0);
 }
 function openPriceSheet(): void {
   priceGroups.value = buildPriceGroups(data.products, data.discounts, data.currency);
+  // Category order: remembered arrangement first, then any new categories.
+  const types = priceGroups.value.map((g) => g.type);
+  let saved: string[] = [];
+  try { saved = JSON.parse(localStorage.getItem(GROUP_ORDER_KEY) ?? '[]'); } catch { /* ignore */ }
+  groupOrder.value = [...saved.filter((t) => types.includes(t)), ...types.filter((t) => !saved.includes(t))];
   // Pre-fill: with an event active, start with anything not brought to it unticked.
   const ex = new Set<string>();
   if (settings.activeEventId) {
@@ -623,8 +630,20 @@ function toggleLine(id: string): void {
   else s.add(id);
   excludedLines.value = s;
 }
+const orderedGroups = computed(() =>
+  groupOrder.value.map((t) => priceGroups.value.find((g) => g.type === t)).filter((g): g is PriceGroup => !!g),
+);
+function moveGroup(type: string, dir: -1 | 1): void {
+  const arr = [...groupOrder.value];
+  const i = arr.indexOf(type);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= arr.length) return;
+  [arr[i], arr[j]] = [arr[j]!, arr[i]!];
+  groupOrder.value = arr;
+  try { localStorage.setItem(GROUP_ORDER_KEY, JSON.stringify(arr)); } catch { /* ignore */ }
+}
 const priceSheetIncluded = computed(() =>
-  priceGroups.value
+  orderedGroups.value
     .map((g) => ({ type: g.type, lines: g.lines.filter((l) => !excludedLines.value.has(l.id)) }))
     .filter((g) => g.lines.length),
 );
@@ -1118,8 +1137,28 @@ async function openPriceSheetDoc(): Promise<void> {
         Untick anything you’re not bringing<span v-if="settings.activeEventId"> — items with no stock for this event start unticked</span>.
       </p>
       <div class="space-y-4">
-        <div v-for="g in priceGroups" :key="g.type">
-          <p class="mb-1.5 text-sm font-semibold">{{ g.type }}</p>
+        <div v-for="(g, gi) in orderedGroups" :key="g.type">
+          <div class="mb-1.5 flex items-center gap-2">
+            <span class="text-sm font-semibold">{{ g.type }}</span>
+            <span class="ml-auto flex gap-0.5">
+              <button
+                class="rounded p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200 disabled:opacity-25"
+                :disabled="gi === 0"
+                title="Move category up"
+                @click="moveGroup(g.type, -1)"
+              >
+                <ArrowUp class="h-3.5 w-3.5" />
+              </button>
+              <button
+                class="rounded p-1 text-slate-500 hover:bg-slate-800 hover:text-slate-200 disabled:opacity-25"
+                :disabled="gi === orderedGroups.length - 1"
+                title="Move category down"
+                @click="moveGroup(g.type, 1)"
+              >
+                <ArrowDown class="h-3.5 w-3.5" />
+              </button>
+            </span>
+          </div>
           <ul class="divide-y divide-slate-800 overflow-hidden rounded-lg bg-slate-800/40 ring-1 ring-slate-800">
             <li
               v-for="l in g.lines"
