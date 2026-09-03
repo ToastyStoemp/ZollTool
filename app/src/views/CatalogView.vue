@@ -13,6 +13,7 @@ import { ArrowDown, ArrowUp, Boxes, Camera, FileDown, Image as ImageIcon, ListOr
 import { saveTextFile, shareTextFile } from '@/lib/download';
 import { isNative } from '@/native/plugins';
 import { buildPriceGroups, buildPriceSheetHtml, type PriceGroup } from '@/lib/priceSheet';
+import { loadReceiptConfig } from '@/lib/receipt';
 import { showToast } from '@/lib/toast';
 import { saveProductImage } from '@/lib/images';
 import ModalShell from '@/components/ModalShell.vue';
@@ -656,11 +657,17 @@ async function openPriceSheetDoc(): Promise<void> {
     showToast('Pick at least one item.', 'error');
     return;
   }
+  const cfg = await loadReceiptConfig();
+  const brandName = (cfg.artist.companyName || cfg.artist.fullName || '').trim();
   const eventName = data.activeEvent?.name;
   const html = buildPriceSheetHtml(groups, {
-    title: eventName ? `Price List — ${eventName}` : 'Price List',
+    title: brandName || (eventName ? `Price List — ${eventName}` : 'Price List'),
+    subtitle: brandName
+      ? [`Price list`, eventName].filter(Boolean).join(' · ') + ` · prices in ${data.currency}`
+      : `${priceLineShown.value} lines · prices in ${data.currency}`,
     currency: data.currency,
-    subtitle: `${priceLineShown.value} lines · prices in ${data.currency}`,
+    logo: cfg.logoScreenB64 || undefined,
+    footer: cfg.footerText || undefined,
   });
   if (isNative) {
     await shareTextFile('price_list.html', html, 'text/html');

@@ -186,7 +186,10 @@ const esc = (s: string): string =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
 
 /** A self-contained, print-ready HTML price sheet for the given (already filtered) groups. */
-export function buildPriceSheetHtml(groups: PriceGroup[], opts: { title: string; currency: string; subtitle?: string }): string {
+export function buildPriceSheetHtml(
+  groups: PriceGroup[],
+  opts: { title: string; currency: string; subtitle?: string; logo?: string; footer?: string },
+): string {
   const section = (g: PriceGroup): string => `
     <section>
       <h2>${esc(g.type)}</h2>
@@ -210,9 +213,13 @@ export function buildPriceSheetHtml(groups: PriceGroup[], opts: { title: string;
   *{box-sizing:border-box;}
   body{margin:0;background:#f2efe6;color:var(--ink);font-family:"Hanken Grotesk",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:13px;line-height:1.32;-webkit-font-smoothing:antialiased;}
   .wrap{max-width:940px;margin:0 auto;padding:22px 22px 48px;}
-  .bar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px;}
+  .bar{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;}
+  .logo{height:48px;width:auto;max-width:160px;object-fit:contain;flex:none;}
+  .head{min-width:0;}
   h1{font-weight:700;font-size:1.45rem;letter-spacing:-.01em;margin:0;}
   .sub{color:var(--muted);font-size:.82rem;margin:3px 0 0;}
+  footer{margin-top:14px;padding-top:10px;border-top:1px solid var(--line);color:var(--muted);font-size:.8rem;text-align:center;}
+  footer div{margin:1px 0;}
   button{margin-left:auto;font:inherit;font-weight:600;font-size:.82rem;background:var(--deal);color:#fff;border:0;border-radius:8px;padding:8px 14px;cursor:pointer;}
   .cols{columns:2;column-gap:18px;}
   @media(max-width:640px){.cols{columns:1;}}
@@ -231,6 +238,8 @@ export function buildPriceSheetHtml(groups: PriceGroup[], opts: { title: string;
     html,body{background:#fff;font-size:10.5px;}
     .wrap{padding:0;max-width:none;}
     button,.noprint{display:none;}
+    .logo{height:40px;}
+    footer{font-size:.72rem;margin-top:10px;}
     section{box-shadow:none;border-radius:0;border:0;border-top:1.5px solid var(--ink);padding:6px 0 4px;margin:0 0 8px;background:transparent;break-inside:avoid;}
     h2{font-size:.9rem;padding-bottom:3px;border-bottom:0;}
     .cols{columns:2;column-gap:14px;}
@@ -239,9 +248,11 @@ export function buildPriceSheetHtml(groups: PriceGroup[], opts: { title: string;
 </style></head>
 <body><div class="wrap">
   <div class="bar">
-    <div><h1>${esc(opts.title)}</h1>${opts.subtitle ? `<p class="sub">${esc(opts.subtitle)}</p>` : ''}</div>
+    ${opts.logo ? `<img class="logo" src="${opts.logo}" alt="">` : ''}
+    <div class="head"><h1>${esc(opts.title)}</h1>${opts.subtitle ? `<p class="sub">${esc(opts.subtitle)}</p>` : ''}</div>
     <button class="noprint" onclick="window.print()">Print / Save PDF</button>
   </div>
   <div class="cols">${groups.map(section).join('')}</div>
+  ${opts.footer ? `<footer>${opts.footer.split('\n').map((l) => `<div>${esc(l)}</div>`).join('')}</footer>` : ''}
 </div></body></html>`;
 }
