@@ -217,39 +217,54 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database, 
       return reply.code(403).send({ error: 'An invite code is required' });
     }
 
+    // Hash before any DB write so invite consumption and user creation are one
+    // synchronous, atomic step (no `await` in between). Combined with the
+    // conditional UPDATE below, an invite code can never be spent twice — not
+    // even by two registrations racing on the same code.
+    const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
+    const userId = randomUUID();
+    const role: UserRole = invite ? (invite.accountId ? invite.role : 'admin') : 'admin';
     let accountId = invite?.accountId ?? null;
-    let role: UserRole = invite ? (accountId ? invite.role : 'admin') : 'admin';
-    if (!accountId) {
-      accountId = randomUUID();
-      db.prepare('INSERT INTO accounts (id, name, createdAt) VALUES (?, ?, ?)').run(
-        accountId,
-        accountName?.trim() || emailLc.split('@')[0],
-        Date.now(),
-      );
+
+    try {
+      db.transaction(() => {
+        if (!accountId) {
+          accountId = randomUUID();
+          db.prepare('INSERT INTO accounts (id, name, createdAt) VALUES (?, ?, ?)').run(
+            accountId,
+            accountName?.trim() || emailLc.split('@')[0],
+            Date.now(),
+          );
+        }
+        db.prepare('INSERT INTO users (id, accountId, email, passwordHash, role, createdAt) VALUES (?, ?, ?, ?, ?, ?)').run(
+          userId,
+          accountId,
+          emailLc,
+          passwordHash,
+          role,
+          Date.now(),
+        );
+        if (invite) {
+          // Single-use: the UPDATE only matches while the code is still unspent.
+          // 0 rows changed means a concurrent registration just claimed it, so
+          // throw to roll the whole transaction back (no user/account created).
+          const claimed = db.prepare('UPDATE invites SET usedBy = ? WHERE code = ? AND usedBy IS NULL').run(userId, invite.code);
+          if (claimed.changes !== 1) throw new Error('INVITE_USED');
+          // A helper invite binds the new member to specific events (server-enforced isolation).
+          if (invite.allowedEventIds && invite.accountId) {
+            db.prepare('UPDATE users SET allowedEventIds = ? WHERE id = ?').run(invite.allowedEventIds, userId);
+          }
+        }
+      })();
+    } catch (e) {
+      if (e instanceof Error && e.message === 'INVITE_USED') {
+        return reply.code(409).send({ error: 'This invite code has already been used' });
+      }
+      throw e;
     }
 
-    const user: UserRow = {
-      id: randomUUID(),
-      accountId,
-      email: emailLc,
-      passwordHash: await argon2.hash(password, { type: argon2.argon2id }),
-      role,
-    };
-    db.prepare('INSERT INTO users (id, accountId, email, passwordHash, role, createdAt) VALUES (?, ?, ?, ?, ?, ?)').run(
-      user.id,
-      user.accountId,
-      user.email,
-      user.passwordHash,
-      user.role,
-      Date.now(),
-    );
-    if (invite) db.prepare('UPDATE invites SET usedBy = ? WHERE code = ?').run(user.id, invite.code);
-    // A helper invite binds the new member to specific events (server-enforced isolation).
-    if (invite?.allowedEventIds && invite.accountId) {
-      db.prepare('UPDATE users SET allowedEventIds = ? WHERE id = ?').run(invite.allowedEventIds, user.id);
-    }
-
-    bumpMetric(db, accountId, 'logins');
+    const user: UserRow = { id: userId, accountId: accountId!, email: emailLc, passwordHash, role };
+    bumpMetric(db, accountId!, 'logins');
     const b = (req.body ?? {}) as { flavor?: string };
     return issueTokens(app, db, user, {
       flavor: b.flavor ?? null,
@@ -437,6 +452,39 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database.Database, 
       Date.now() + 14 * 24 * 3600 * 1000,
     );
     return { code, expiresInDays: 14 };
+  });
+
+  // List this account's invite codes (admins/owner) with used/expiry status.
+  app.get('/api/invites', { preHandler: app.authenticate }, async (req, reply) => {
+    const claims = req.user as JwtClaims;
+    if (claims.role === 'member') return reply.code(403).send({ error: 'Admins only' });
+    const rows = db
+      .prepare('SELECT code, role, allowedEventIds, createdAt, expiresAt, usedBy FROM invites WHERE accountId = ? ORDER BY createdAt DESC')
+      .all(claims.accountId) as { code: string; role: UserRole; allowedEventIds: string | null; createdAt: number; expiresAt: number; usedBy: string | null }[];
+    return {
+      invites: rows.map((i) => ({
+        code: i.code,
+        role: i.role,
+        allowedEventIds: parseAllowedEvents(i.allowedEventIds),
+        createdAt: i.createdAt,
+        expiresAt: i.expiresAt,
+        used: !!i.usedBy,
+        usedByEmail: i.usedBy
+          ? ((db.prepare('SELECT email FROM users WHERE id = ?').get(i.usedBy) as { email?: string } | undefined)?.email ?? null)
+          : null,
+      })),
+    };
+  });
+
+  // Revoke / delete one of the account's invite codes (admins/owner).
+  app.delete('/api/invites/:code', { preHandler: app.authenticate }, async (req, reply) => {
+    const claims = req.user as JwtClaims;
+    if (claims.role === 'member') return reply.code(403).send({ error: 'Admins only' });
+    const { code } = req.params as { code: string };
+    const info = db
+      .prepare('DELETE FROM invites WHERE code = ? AND accountId = ?')
+      .run(String(code).trim().toUpperCase(), claims.accountId);
+    return { deleted: info.changes };
   });
 
   // Members of the caller's account (admins/owner) — for managing helpers.

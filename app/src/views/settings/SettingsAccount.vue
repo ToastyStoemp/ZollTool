@@ -16,15 +16,18 @@ import {
   getAccountUsers,
   setUserEvents,
   createInvite,
+  listInvites,
+  deleteInvite,
   type SessionInfo,
   type TotpSetup,
   type AccountUser,
+  type AccountInvite,
 } from '@/sync/api';
 import { connectQrDataUrl, decodeConnectQr, parseConnectQr, qrDataUrl, type ConnectPayload } from '@/lib/qr';
 import QrLiveScanner from '@/components/QrLiveScanner.vue';
 import { hashPin, pinState, setPin } from '@/lib/pin';
 import { isNative } from '@/native/plugins';
-import { Camera, QrCode } from 'lucide-vue-next';
+import { Camera, Copy, QrCode } from 'lucide-vue-next';
 import { useDataStore } from '@/stores/data';
 import ModalShell from '@/components/ModalShell.vue';
 import SettingsShell from './SettingsShell.vue';
@@ -74,8 +77,26 @@ const members = ref<AccountUser[]>([]);
 const teamMsg = ref('');
 const inviteEvents = ref<Set<string>>(new Set());
 const inviteCode = ref('');
+const invites = ref<AccountInvite[]>([]);
 async function loadMembers(): Promise<void> {
   try { members.value = (await getAccountUsers()).users; } catch { /* not a manager */ }
+}
+async function loadInvites(): Promise<void> {
+  try { invites.value = (await listInvites()).invites; } catch { /* not a manager */ }
+}
+async function removeInvite(code: string): Promise<void> {
+  try {
+    await deleteInvite(code);
+    invites.value = invites.value.filter((i) => i.code !== code);
+    if (inviteCode.value === code) inviteCode.value = '';
+  } catch (e) {
+    teamMsg.value = e instanceof Error ? e.message : 'Could not delete invite';
+  }
+}
+/** Human list of the events an invite is bound to (null = unrestricted). */
+function inviteEventNames(ids: string[] | null): string {
+  if (!ids || !ids.length) return 'All events';
+  return ids.map((id) => data.events.find((e) => e.id === id)?.name ?? id).join(', ');
 }
 function memberAllows(m: AccountUser, eventId: string): boolean {
   return !!m.allowedEventIds && m.allowedEventIds.includes(eventId);
@@ -105,8 +126,18 @@ async function generateHelperInvite(): Promise<void> {
     const { code } = await createInvite({ allowedEventIds: [...inviteEvents.value] });
     inviteCode.value = code;
     teamMsg.value = 'Invite created — share the code with your helper.';
+    void loadInvites();
   } catch (e) {
     teamMsg.value = e instanceof Error ? e.message : 'Could not create invite';
+  }
+}
+
+async function copyInvite(): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(inviteCode.value);
+    showToast('Invite code copied', 'success');
+  } catch {
+    showToast('Copy failed — tap the code to select it', 'error');
   }
 }
 
@@ -114,7 +145,7 @@ onMounted(() => {
   if (settings.syncUser) {
     void loadTwofa();
     void loadSessions();
-    if (isManager()) void loadMembers();
+    if (isManager()) { void loadMembers(); void loadInvites(); }
   }
 });
 
@@ -578,8 +609,47 @@ async function removePinSettings(): Promise<void> {
         <button class="mt-3 zui-btn zui-btn-primary" @click="generateHelperInvite">
           Generate invite code
         </button>
-        <div v-if="inviteCode" class="mt-2 rounded-lg bg-slate-950 px-3 py-2 font-mono text-sm text-emerald-300">{{ inviteCode }}</div>
+        <div v-if="inviteCode" class="mt-2 flex items-center gap-2 rounded-lg bg-slate-950 px-3 py-2">
+          <code class="flex-1 select-all break-all font-mono text-sm text-emerald-300">{{ inviteCode }}</code>
+          <button
+            type="button"
+            class="flex shrink-0 items-center gap-1 rounded-md bg-slate-800 px-2 py-1 text-xs font-medium text-slate-200 hover:bg-slate-700"
+            title="Copy invite code"
+            @click="copyInvite"
+          >
+            <Copy class="h-3.5 w-3.5" /> Copy
+          </button>
+        </div>
       </div>
+
+      <!-- Generated invite codes: status (active / used / expired) + revoke. -->
+      <div v-if="invites.length" class="mt-3">
+        <p class="mb-1.5 text-sm font-semibold">Invite codes</p>
+        <ul class="divide-y divide-slate-800 overflow-hidden rounded-lg bg-slate-800/40 ring-1 ring-slate-800">
+          <li v-for="inv in invites" :key="inv.code" class="flex items-center gap-2 px-3 py-2">
+            <div class="min-w-0 flex-1">
+              <p class="flex items-center gap-2">
+                <span class="font-mono text-sm">{{ inv.code }}</span>
+                <span v-if="inv.used" class="rounded bg-slate-700 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-slate-300">Used</span>
+                <span v-else-if="inv.expiresAt < Date.now()" class="rounded bg-red-950 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-red-400">Expired</span>
+                <span v-else class="rounded bg-emerald-950 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-400">Active</span>
+              </p>
+              <p class="truncate text-[11px] text-slate-500">
+                {{ inviteEventNames(inv.allowedEventIds) }}<span v-if="inv.used && inv.usedByEmail"> · used by {{ inv.usedByEmail }}</span><span v-else> · expires {{ new Date(inv.expiresAt).toLocaleDateString() }}</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              class="shrink-0 rounded-md px-2 py-1 text-xs text-red-400 hover:bg-red-950"
+              title="Delete invite code"
+              @click="removeInvite(inv.code)"
+            >
+              Delete
+            </button>
+          </li>
+        </ul>
+      </div>
+
       <p v-if="teamMsg" class="mt-2 text-xs text-slate-400">{{ teamMsg }}</p>
     </section>
 

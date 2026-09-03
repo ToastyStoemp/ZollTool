@@ -270,6 +270,21 @@ export function createInvite(opts: { allowedEventIds?: string[]; role?: 'admin' 
     body: JSON.stringify(opts),
   });
 }
+export interface AccountInvite {
+  code: string;
+  role: 'admin' | 'member';
+  allowedEventIds: string[] | null;
+  createdAt: number;
+  expiresAt: number;
+  used: boolean;
+  usedByEmail: string | null;
+}
+export function listInvites(): Promise<{ invites: AccountInvite[] }> {
+  return apiJson('/api/invites');
+}
+export function deleteInvite(code: string): Promise<{ deleted: number }> {
+  return apiJson(`/api/invites/${encodeURIComponent(code)}`, { method: 'DELETE' });
+}
 
 /** Permanently delete the whole account + all its data (admins/owner). Password-confirmed. */
 export function deleteAccount(password: string): Promise<{ ok: boolean }> {

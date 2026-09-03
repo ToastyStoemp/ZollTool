@@ -58,6 +58,50 @@ describe('helper event isolation', () => {
     expect(helper.user.allowedEventIds).toEqual(['E1']);
   });
 
+  it('spends an invite code only once', async () => {
+    const inv = await app.inject({ method: 'POST', url: '/api/invites', headers: { authorization: `Bearer ${owner.accessToken}` }, payload: { allowedEventIds: ['E1'] } });
+    const { code } = inv.json() as { code: string };
+    const first = await app.inject({ method: 'POST', url: '/api/auth/register', payload: { email: 'reuse1@acme.test', password: 'password123', inviteCode: code } });
+    expect(first.statusCode).toBe(200);
+    expect((first.json() as TokenResponse).user.accountId).toBe(owner.user.accountId);
+
+    // A second use of the same code must never join the account again — it's spent.
+    const second = await app.inject({ method: 'POST', url: '/api/auth/register', payload: { email: 'reuse2@acme.test', password: 'password123', inviteCode: code } });
+    if (second.statusCode === 200) {
+      // Open-registration mode: falls through to a brand-new standalone account.
+      const u = (second.json() as TokenResponse).user;
+      expect(u.accountId).not.toBe(owner.user.accountId);
+      expect(u.allowedEventIds ?? []).toEqual([]);
+    } else {
+      // Invite-only mode: rejected outright.
+      expect(second.statusCode).toBe(403);
+    }
+  });
+
+  it('lists invite codes with status and revokes them (admins only)', async () => {
+    const mk = async () =>
+      ((await app.inject({ method: 'POST', url: '/api/invites', headers: { authorization: `Bearer ${owner.accessToken}` }, payload: { allowedEventIds: ['E1'] } })).json() as { code: string }).code;
+    const usedCode = await mk();
+    await app.inject({ method: 'POST', url: '/api/auth/register', payload: { email: 'listed@acme.test', password: 'password123', inviteCode: usedCode } });
+    const openCode = await mk();
+
+    const listRes = await app.inject({ method: 'GET', url: '/api/invites', headers: { authorization: `Bearer ${owner.accessToken}` } });
+    expect(listRes.statusCode).toBe(200);
+    const { invites } = listRes.json() as { invites: { code: string; used: boolean; usedByEmail: string | null }[] };
+    expect(invites.find((i) => i.code === usedCode)).toMatchObject({ used: true, usedByEmail: 'listed@acme.test' });
+    expect(invites.find((i) => i.code === openCode)?.used).toBe(false);
+
+    // A member (helper) can't list invites.
+    expect((await app.inject({ method: 'GET', url: '/api/invites', headers: { authorization: `Bearer ${helper.accessToken}` } })).statusCode).toBe(403);
+
+    // Delete the unused code — it disappears from the list.
+    const del = await app.inject({ method: 'DELETE', url: `/api/invites/${openCode}`, headers: { authorization: `Bearer ${owner.accessToken}` } });
+    expect(del.statusCode).toBe(200);
+    expect((del.json() as { deleted: number }).deleted).toBe(1);
+    const after = ((await app.inject({ method: 'GET', url: '/api/invites', headers: { authorization: `Bearer ${owner.accessToken}` } })).json() as { invites: { code: string }[] }).invites;
+    expect(after.some((i) => i.code === openCode)).toBe(false);
+  });
+
   it('only syncs the catalog + E1 data to the helper (never E2)', async () => {
     const body = (await pull(helper.accessToken)).json() as PullResponse;
     const dump = body.ops.map((o) => JSON.stringify(o.payload)).join('|');
