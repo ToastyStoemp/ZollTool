@@ -9,8 +9,10 @@ import { uuidv7 } from '@/lib/uuid';
 import { fmtPrice } from '@/lib/money';
 import { typeColor } from '@/lib/search';
 import { isArtwork, isPurse } from '@/lib/artwork';
-import { ArrowDown, ArrowUp, Boxes, Camera, FileDown, Image as ImageIcon, ListOrdered, TriangleAlert, X } from 'lucide-vue-next';
-import { saveTextFile } from '@/lib/download';
+import { ArrowDown, ArrowUp, Boxes, Camera, FileDown, Image as ImageIcon, ListOrdered, Tags, TriangleAlert, X } from 'lucide-vue-next';
+import { saveTextFile, shareTextFile } from '@/lib/download';
+import { isNative } from '@/native/plugins';
+import { buildPriceGroups, buildPriceSheetHtml, type PriceGroup } from '@/lib/priceSheet';
 import { showToast } from '@/lib/toast';
 import { saveProductImage } from '@/lib/images';
 import ModalShell from '@/components/ModalShell.vue';
@@ -596,6 +598,58 @@ function discountTargets(d: DiscountRule): string {
   if (count) parts.push(`${count} product(s)`);
   return parts.join(' + ') || 'no targets';
 }
+
+// ── Price sheet (merged, print-ready; from the live catalog + discounts) ──────
+const showPriceSheet = ref(false);
+const priceGroups = ref<PriceGroup[]>([]);
+const excludedLines = ref<Set<string>>(new Set());
+
+function lineInStock(units: { pid: string; vid: string }[]): boolean {
+  return units.some((u) => data.broughtQty(u.pid, u.vid || null) > 0);
+}
+function openPriceSheet(): void {
+  priceGroups.value = buildPriceGroups(data.products, data.discounts, data.currency);
+  // Pre-fill: with an event active, start with anything not brought to it unticked.
+  const ex = new Set<string>();
+  if (settings.activeEventId) {
+    for (const g of priceGroups.value) for (const l of g.lines) if (!lineInStock(l.units)) ex.add(l.id);
+  }
+  excludedLines.value = ex;
+  showPriceSheet.value = true;
+}
+function toggleLine(id: string): void {
+  const s = new Set(excludedLines.value);
+  if (s.has(id)) s.delete(id);
+  else s.add(id);
+  excludedLines.value = s;
+}
+const priceSheetIncluded = computed(() =>
+  priceGroups.value
+    .map((g) => ({ type: g.type, lines: g.lines.filter((l) => !excludedLines.value.has(l.id)) }))
+    .filter((g) => g.lines.length),
+);
+const priceLineTotal = computed(() => priceGroups.value.reduce((n, g) => n + g.lines.length, 0));
+const priceLineShown = computed(() => priceSheetIncluded.value.reduce((n, g) => n + g.lines.length, 0));
+
+async function openPriceSheetDoc(): Promise<void> {
+  const groups = priceSheetIncluded.value;
+  if (!groups.length) {
+    showToast('Pick at least one item.', 'error');
+    return;
+  }
+  const eventName = data.activeEvent?.name;
+  const html = buildPriceSheetHtml(groups, {
+    title: eventName ? `Price List — ${eventName}` : 'Price List',
+    currency: data.currency,
+    subtitle: `${priceLineShown.value} lines · prices in ${data.currency}`,
+  });
+  if (isNative) {
+    await shareTextFile('price_list.html', html, 'text/html');
+    return;
+  }
+  const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
+  if (!window.open(url, '_blank')) showToast('Pop-up blocked — allow pop-ups and try again.', 'error');
+}
 </script>
 
 <template>
@@ -653,6 +707,13 @@ function discountTargets(d: DiscountRule): string {
           @click="showReorder = true"
         >
           <span class="flex items-center gap-1.5"><ListOrdered class="h-4 w-4" /> Reorder</span>
+        </button>
+        <button
+          class="rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
+          :disabled="!data.products.length"
+          @click="openPriceSheet"
+        >
+          <span class="flex items-center gap-1.5"><Tags class="h-4 w-4" /> Price sheet</span>
         </button>
       </div>
 
@@ -1046,6 +1107,47 @@ function discountTargets(d: DiscountRule): string {
           >
             Save stock
           </button>
+        </div>
+      </template>
+    </ModalShell>
+
+    <!-- Price sheet: merged, tick what's at the stand, then open a printable version -->
+    <ModalShell v-if="showPriceSheet" title="Price sheet" size="xl" @close="showPriceSheet = false">
+      <p class="mb-3 text-xs text-slate-400">
+        Merged price list for <b>{{ data.activeEvent?.name || 'your catalog' }}</b>. Same-type items at the same price share one line.
+        Untick anything you’re not bringing<span v-if="settings.activeEventId"> — items with no stock for this event start unticked</span>.
+      </p>
+      <div class="space-y-4">
+        <div v-for="g in priceGroups" :key="g.type">
+          <p class="mb-1.5 text-sm font-semibold">{{ g.type }}</p>
+          <ul class="divide-y divide-slate-800 overflow-hidden rounded-lg bg-slate-800/40 ring-1 ring-slate-800">
+            <li
+              v-for="l in g.lines"
+              :key="l.id"
+              class="flex cursor-pointer items-center gap-3 px-3 py-2"
+              :class="excludedLines.has(l.id) ? 'opacity-45' : ''"
+              @click="toggleLine(l.id)"
+            >
+              <input type="checkbox" class="pointer-events-none accent-emerald-500" :checked="!excludedLines.has(l.id)" />
+              <div class="min-w-0 flex-1">
+                <p class="text-sm" :class="excludedLines.has(l.id) ? 'line-through' : ''">
+                  {{ l.label }}<span v-if="l.qual" class="text-slate-500"> · {{ l.qual }}</span>
+                </p>
+                <p v-if="l.deals.length" class="mt-0.5 flex flex-wrap gap-1">
+                  <span v-for="d in l.deals" :key="d" class="rounded bg-emerald-950 px-1.5 py-0.5 text-[10px] font-medium text-emerald-400">{{ d }}</span>
+                </p>
+              </div>
+              <span class="shrink-0 text-sm font-semibold" :class="excludedLines.has(l.id) ? 'text-slate-500 line-through' : ''">{{ fmtPrice(l.price, data.currency) }}</span>
+            </li>
+          </ul>
+        </div>
+        <p v-if="!priceGroups.length" class="text-sm text-slate-500">No products to list yet.</p>
+      </div>
+      <template #footer>
+        <div class="flex items-center gap-2">
+          <span class="mr-auto text-xs text-slate-400">{{ priceLineShown }} of {{ priceLineTotal }} lines</span>
+          <button class="rounded-lg bg-slate-800 px-4 py-2 text-sm" @click="showPriceSheet = false">Cancel</button>
+          <button class="zui-btn zui-btn-primary" :disabled="!priceLineShown" @click="openPriceSheetDoc">Open / Print</button>
         </div>
       </template>
     </ModalShell>

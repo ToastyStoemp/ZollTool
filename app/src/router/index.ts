@@ -24,3 +24,24 @@ export const router = createRouter({
     { path: '/admin', name: 'admin', component: () => import('@/views/AdminView.vue') },
   ],
 });
+
+// Stale-deploy recovery. Route components are lazy-loaded from hashed chunk
+// files, so after the server ships a new web build a page still running the old
+// index.html requests chunk files that no longer exist. The dynamic import
+// rejects and navigation silently dies — the current view (and non-navigating
+// buttons like Edit/Close) keep working, but every nav button/link looks dead
+// until a manual refresh. Detect that failure and reload once to pull the fresh
+// index + chunks, landing on the intended route. A short cooldown avoids a
+// reload loop if the assets are genuinely broken rather than just stale.
+router.onError((err, to) => {
+  const msg = String((err as { message?: string } | undefined)?.message ?? err);
+  const staleChunk =
+    /dynamically imported module|Importing a module script failed|Failed to fetch dynamically|error loading dynamically imported|ChunkLoadError|Loading chunk [\w-]+ failed/i.test(msg);
+  if (!staleChunk || typeof window === 'undefined') return;
+  let last = 0;
+  try { last = Number(sessionStorage.getItem('zt:chunkReload') ?? '0'); } catch { /* private mode */ }
+  if (Date.now() - last < 10_000) return; // already reloaded very recently — don't loop
+  try { sessionStorage.setItem('zt:chunkReload', String(Date.now())); } catch { /* ignore */ }
+  if (to?.fullPath) window.location.hash = to.fullPath;
+  window.location.reload();
+});
