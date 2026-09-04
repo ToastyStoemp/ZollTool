@@ -39,6 +39,8 @@ export interface Variant {
   name: string;
   sku?: string;
   price?: number;
+  /** Per-unit production cost (base currency), maintained by cost batches. */
+  cost?: number;
   weightG?: number;
   unlisted?: boolean;
   /** Variant-specific photo; falls back to the product photo in the UI. */
@@ -53,6 +55,9 @@ export interface Product {
   forSale: boolean;
   unlisted: boolean;
   price: number;
+  /** Per-unit production cost (base currency) for products without variants,
+   *  maintained by cost batches. Variant-level cost lives on the variant. */
+  cost?: number;
   priceNote?: string;
   weightG?: number;
   tariffNo?: string;
@@ -109,6 +114,53 @@ export interface DiscountRule {
   tierContinue?: boolean;
   /** Don't show the derived "+N" quick-add chips on POS product cards. */
   hideQuickAdd?: boolean;
+  updatedAt: number;
+  deletedAt?: number;
+}
+
+/**
+ * One cost component of a batch. Import and production are often billed
+ * separately, so a batch sums several of these — entered by hand, or linked to
+ * a purchase invoice recorded in ZollTax.
+ */
+export interface CostSource {
+  id: string;
+  label: string;
+  amount: number;
+  kind: 'manual' | 'zolltax';
+  /** ZollTax invoice/expense id when kind='zolltax'. */
+  ref?: string;
+}
+
+/** One product/variant in a cost batch (a shipment/order that arrived). */
+export interface CostBatchLine {
+  pid: string;
+  /** '' for a product without variants (cost stored on the product). */
+  vid: string;
+  qty: number;
+  /** Known per-item production cost (base currency); blank = derive from the total. */
+  unitCost?: number;
+}
+
+/**
+ * A shipment/order whose one lump total (production + shipping + import + fees)
+ * is auto-distributed across its units to set each product/variant's per-unit
+ * cost. Recorded over time — a later batch (e.g. a bigger, cheaper order) simply
+ * updates the cost going forward.
+ */
+export interface CostBatch {
+  id: string;
+  /** yyyy-mm-dd the batch arrived / was ordered. */
+  date: string;
+  note?: string;
+  currency?: string;
+  /** Grand total for the whole shipment (base currency) — the sum of `sources`. */
+  total: number;
+  /** Itemized cost components (production, import, …); may link ZollTax invoices. */
+  sources?: CostSource[];
+  /** How the leftover (total − known unit costs) is spread across units. */
+  weighting: 'even' | 'value';
+  lines: CostBatchLine[];
   updatedAt: number;
   deletedAt?: number;
 }

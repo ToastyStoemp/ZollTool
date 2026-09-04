@@ -1,4 +1,5 @@
 import type {
+  CostBatch,
   DiscountRule,
   Op,
   OpType,
@@ -139,6 +140,37 @@ export async function deleteProduct(productId: string): Promise<void> {
     await db.products.put(tombstone);
     await appendOp('product.delete', { productId, updatedAt: tombstone.updatedAt });
   });
+}
+
+// ── Cost batches (local) + writing per-unit costs onto products (which sync) ──
+export async function upsertCostBatch(batch: CostBatch): Promise<void> {
+  await db.costBatches.put(plain(batch));
+}
+export async function deleteCostBatch(id: string): Promise<void> {
+  await db.costBatches.delete(id);
+}
+/** Apply computed per-unit costs to products/variants (syncs via product.upsert). */
+export async function applyProductCosts(costs: { pid: string; vid: string; cost: number }[]): Promise<void> {
+  const byPid = new Map<string, Map<string, number>>();
+  for (const c of costs) {
+    let m = byPid.get(c.pid);
+    if (!m) byPid.set(c.pid, (m = new Map()));
+    m.set(c.vid, c.cost);
+  }
+  for (const [pid, vmap] of byPid) {
+    const product = await db.products.get(pid);
+    if (!product) continue;
+    const next: Product = { ...product, variants: product.variants.map((v) => ({ ...v })), updatedAt: Date.now() };
+    for (const [vid, cost] of vmap) {
+      if (vid) {
+        const v = next.variants.find((x) => x.id === vid);
+        if (v) v.cost = cost;
+      } else {
+        next.cost = cost;
+      }
+    }
+    await upsertProduct(next);
+  }
 }
 
 export async function setStock(

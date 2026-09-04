@@ -33,6 +33,10 @@ export const useDataStore = defineStore('data', () => {
     () => db.discounts.filter((d) => !d.deletedAt).toArray(),
     [],
   );
+  const costBatches = useLive(
+    () => db.costBatches.filter((b) => !b.deletedAt).toArray(),
+    [],
+  );
   const allStock = useLive(() => db.eventStock.toArray(), []);
   const allTransactions = useLive(() => db.transactions.toArray(), []);
 
@@ -109,6 +113,14 @@ export const useDataStore = defineStore('data', () => {
     return soldByKey.value.get(stockKey(pid, vid))?.qty ?? 0;
   }
 
+  /** Per-unit production cost (base currency): variant cost, else product cost. */
+  function costOf(pid: string, vid: string | null): number {
+    const p = products.value.find((x) => x.id === pid);
+    if (!p) return 0;
+    if (vid) return p.variants.find((x) => x.id === vid)?.cost ?? p.cost ?? 0;
+    return p.cost ?? 0;
+  }
+
   /** Stock left ignoring the cart (the cart store subtracts its own reservations). */
   function stockLeft(product: Product, vid: string | null): number {
     if (vid) return broughtQty(product.id, vid) - soldQty(product.id, vid);
@@ -122,6 +134,7 @@ export const useDataStore = defineStore('data', () => {
     events,
     products,
     discounts,
+    costBatches,
     allStock,
     allTransactions,
     activeEvent,
@@ -139,6 +152,7 @@ export const useDataStore = defineStore('data', () => {
     soldByKey,
     broughtQty,
     soldQty,
+    costOf,
     stockLeft,
   };
 });

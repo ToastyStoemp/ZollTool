@@ -1,5 +1,6 @@
 import Dexie, { type EntityTable } from 'dexie';
 import type {
+  CostBatch,
   DiscountRule,
   EventStock,
   Op,
@@ -37,6 +38,7 @@ export const db = new Dexie('zolltool_v2') as Dexie & {
   transactions: EntityTable<Transaction, 'id'>;
   discounts: EntityTable<DiscountRule, 'id'>;
   images: EntityTable<ImageRec, 'id'>;
+  costBatches: EntityTable<CostBatch, 'id'>;
   ops: Dexie.Table<OutboxOp, number>;
   settings: Dexie.Table<SettingRow, string>;
 };
@@ -51,4 +53,9 @@ db.version(1).stores({
   images: 'id, productId',
   ops: '++seq, opId, synced',
   settings: 'key',
+});
+
+// v2 — cost batches (local: production-cost tracking; product.cost itself syncs).
+db.version(2).stores({
+  costBatches: 'id, date, updatedAt',
 });

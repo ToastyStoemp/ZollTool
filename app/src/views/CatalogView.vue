@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
-import type { DiscountRule, Product, Variant } from '@zolltool/shared';
+import type { CostBatch, DiscountRule, Product, Variant } from '@zolltool/shared';
 import { stockKey, useDataStore } from '@/stores/data';
 import { useSettingsStore } from '@/stores/settings';
 import { db } from '@/db/schema';
-import { deleteDiscount, deleteProduct, setStock, upsertDiscount, upsertProduct } from '@/db/repo';
+import { applyProductCosts, deleteCostBatch, deleteDiscount, deleteProduct, setStock, upsertCostBatch, upsertDiscount, upsertProduct } from '@/db/repo';
+import { computeBatch, resolveCurrentCosts } from '@/lib/costs';
 import { uuidv7 } from '@/lib/uuid';
 import { fmtPrice } from '@/lib/money';
 import { typeColor } from '@/lib/search';
 import { isArtwork, isPurse } from '@/lib/artwork';
-import { ArrowDown, ArrowUp, Boxes, Camera, FileDown, Image as ImageIcon, ListOrdered, Tags, TriangleAlert, X } from 'lucide-vue-next';
+import { ArrowDown, ArrowUp, Boxes, Camera, Coins, FileDown, Image as ImageIcon, ListOrdered, Tags, TriangleAlert, X } from 'lucide-vue-next';
 import { saveTextFile, shareTextFile } from '@/lib/download';
 import { isNative } from '@/native/plugins';
 import { buildPriceGroups, buildPriceSheetHtml, type PriceGroup } from '@/lib/priceSheet';
@@ -676,6 +677,121 @@ async function openPriceSheetDoc(): Promise<void> {
   const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
   if (!window.open(url, '_blank')) showToast('Pop-up blocked — allow pop-ups and try again.', 'error');
 }
+
+// ── Cost batches: spread a shipment's total across units → per-unit product cost ──
+interface CostRow { pid: string; vid: string; type: string; label: string; price: number; curCost?: number; qty: string; unitCost: string }
+const showCosts = ref(false);
+const editingBatchId = ref<string | null>(null);
+const costForm = reactive({ date: '', note: '', weighting: 'value' as 'even' | 'value' });
+const costRows = ref<CostRow[]>([]);
+function catalogPriceOf(pid: string, vid: string): number {
+  const p = data.products.find((x) => x.id === pid);
+  if (!p) return 0;
+  return vid ? (p.variants.find((x) => x.id === vid)?.price ?? p.price) : p.price;
+}
+// A batch sums several cost sources — import and production are often billed
+// separately (and later each can link a ZollTax invoice).
+const costSources = ref<{ id: string; label: string; amount: string; kind: 'manual' | 'zolltax'; ref?: string }[]>([]);
+const costTotalNum = computed(() => costSources.value.reduce((s, x) => s + (parseFloat(x.amount) || 0), 0));
+function addCostSource(): void {
+  costSources.value.push({ id: uuidv7(), label: '', amount: '', kind: 'manual' });
+}
+function removeCostSource(id: string): void {
+  costSources.value = costSources.value.filter((s) => s.id !== id);
+}
+
+function buildCostRows(): CostRow[] {
+  const rows: CostRow[] = [];
+  for (const p of data.products) {
+    const type = p.type?.trim() || 'Other';
+    if (p.variants.length) {
+      for (const v of p.variants)
+        rows.push({ pid: p.id, vid: v.id, type, label: `${p.title || '(untitled)'} · ${v.name || v.id}`, price: v.price ?? p.price, curCost: v.cost ?? p.cost, qty: '', unitCost: '' });
+    } else {
+      rows.push({ pid: p.id, vid: '', type, label: p.title || '(untitled)', price: p.price, curCost: p.cost, qty: '', unitCost: '' });
+    }
+  }
+  return rows;
+}
+function openCosts(batch?: CostBatch): void {
+  if (settings.isHelper) return; // costs are never shown to helpers
+  editingBatchId.value = batch?.id ?? null;
+  const rows = buildCostRows();
+  if (batch) {
+    const byKey = new Map(batch.lines.map((l) => [`${l.pid}:${l.vid}`, l]));
+    for (const r of rows) {
+      const l = byKey.get(`${r.pid}:${r.vid}`);
+      if (l) { r.qty = String(l.qty); r.unitCost = l.unitCost != null ? String(l.unitCost) : ''; }
+    }
+    costForm.date = batch.date;
+    costForm.note = batch.note ?? '';
+    costForm.weighting = batch.weighting;
+    costSources.value = batch.sources?.length
+      ? batch.sources.map((s) => ({ id: s.id, label: s.label, amount: String(s.amount), kind: s.kind, ref: s.ref }))
+      : [{ id: uuidv7(), label: 'Total', amount: String(batch.total), kind: 'manual' }];
+  } else {
+    costForm.date = new Date().toISOString().slice(0, 10);
+    costForm.note = '';
+    costForm.weighting = 'value';
+    costSources.value = [{ id: uuidv7(), label: '', amount: '', kind: 'manual' }];
+  }
+  costRows.value = rows;
+  showCosts.value = true;
+}
+const costGroups = computed(() => {
+  const m = new Map<string, CostRow[]>();
+  for (const r of costRows.value) {
+    let a = m.get(r.type);
+    if (!a) m.set(r.type, (a = []));
+    a.push(r);
+  }
+  return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([type, rows]) => ({ type, rows }));
+});
+const costBatchDraft = computed<CostBatch>(() => ({
+  id: 'draft',
+  date: costForm.date,
+  note: costForm.note,
+  total: costTotalNum.value,
+  sources: costSources.value
+    .filter((s) => (parseFloat(s.amount) || 0) !== 0 || s.label.trim())
+    .map((s) => ({ id: s.id, label: s.label.trim() || 'Cost', amount: parseFloat(s.amount) || 0, kind: s.kind, ref: s.ref })),
+  weighting: costForm.weighting,
+  lines: costRows.value
+    .filter((r) => (parseInt(r.qty) || 0) > 0)
+    .map((r) => ({ pid: r.pid, vid: r.vid, qty: parseInt(r.qty) || 0, unitCost: r.unitCost.trim() ? parseFloat(r.unitCost) || 0 : undefined })),
+  updatedAt: Date.now(),
+}));
+const costComputation = computed(() => computeBatch(costBatchDraft.value, catalogPriceOf));
+const costFinalMap = computed(() => {
+  const m = new Map<string, number>();
+  for (const l of costComputation.value.lines) m.set(`${l.pid}:${l.vid}`, l.final);
+  return m;
+});
+const sortedCostBatches = computed(() =>
+  [...data.costBatches].sort((a, b) => (b.date || '').localeCompare(a.date || '') || b.updatedAt - a.updatedAt),
+);
+async function applyCostBatch(): Promise<void> {
+  const comp = costComputation.value;
+  if (!comp.lines.length) {
+    showToast('Add quantities and at least one cost first.', 'error');
+    return;
+  }
+  const editing = editingBatchId.value;
+  const batch: CostBatch = { ...costBatchDraft.value, id: editing ?? uuidv7(), currency: data.currency, updatedAt: Date.now() };
+  await upsertCostBatch(batch);
+  // Recompute every product's cost from all batches (this one replaces its prior
+  // version), so a later batch — or a just-added import cost — takes effect.
+  const all = [...data.costBatches.filter((b) => b.id !== batch.id), batch];
+  await applyProductCosts(resolveCurrentCosts(all, catalogPriceOf));
+  showCosts.value = false;
+  editingBatchId.value = null;
+  showToast(editing ? 'Batch updated' : `Costs updated — ${comp.lines.length} line${comp.lines.length === 1 ? '' : 's'}`, 'success');
+}
+async function removeCostBatch(id: string): Promise<void> {
+  await deleteCostBatch(id);
+  if (editingBatchId.value === id) openCosts();
+  await applyProductCosts(resolveCurrentCosts(data.costBatches.filter((b) => b.id !== id), catalogPriceOf));
+}
 </script>
 
 <template>
@@ -740,6 +856,14 @@ async function openPriceSheetDoc(): Promise<void> {
           @click="openPriceSheet"
         >
           <span class="flex items-center gap-1.5"><Tags class="h-4 w-4" /> Price sheet</span>
+        </button>
+        <button
+          v-if="!settings.isHelper"
+          class="rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
+          :disabled="!data.products.length"
+          @click="openCosts()"
+        >
+          <span class="flex items-center gap-1.5"><Coins class="h-4 w-4" /> Costs</span>
         </button>
       </div>
 
@@ -1133,6 +1257,96 @@ async function openPriceSheetDoc(): Promise<void> {
           >
             Save stock
           </button>
+        </div>
+      </template>
+    </ModalShell>
+
+    <!-- Cost batch: a shipment's total spread across units → per-unit product cost -->
+    <ModalShell v-if="showCosts && !settings.isHelper" :title="editingBatchId ? 'Edit cost batch' : 'Cost batch'" size="xl" @close="showCosts = false">
+      <p class="mb-3 text-xs text-slate-400">
+        Record a shipment or order: enter its <b>total cost</b> (production + shipping + import) and how many of each item
+        arrived. The total is spread across the units to set each product’s per-unit cost. A later batch (e.g. a bigger,
+        cheaper order) just updates it. Enter a per-item cost on a row if you already know it — the rest is spread over the others.
+      </p>
+      <div v-if="editingBatchId" class="mb-3 flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-300 ring-1 ring-amber-500/30">
+        <span class="flex-1">Editing an existing batch — add or adjust a cost (e.g. import, invoiced later) and applying re-prices this same batch.</span>
+        <button class="shrink-0 rounded-md bg-slate-800 px-2 py-1 font-medium text-slate-200 hover:bg-slate-700" @click="openCosts()">New batch</button>
+      </div>
+      <div class="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+        <label class="block text-sm">
+          <span class="text-xs text-slate-400">Date</span>
+          <input v-model="costForm.date" type="date" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+        </label>
+        <label class="block text-sm">
+          <span class="text-xs text-slate-400">Spread by</span>
+          <select v-model="costForm.weighting" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2">
+            <option value="value">Item value</option>
+            <option value="even">Evenly / unit</option>
+          </select>
+        </label>
+        <label class="block text-sm">
+          <span class="text-xs text-slate-400">Note</span>
+          <input v-model="costForm.note" placeholder="e.g. Spring order" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" />
+        </label>
+      </div>
+
+      <!-- Cost sources: import + production are often billed separately. -->
+      <div class="mb-3 rounded-lg bg-slate-800/40 p-2.5 ring-1 ring-slate-800">
+        <div class="mb-1.5 flex items-baseline justify-between">
+          <span class="text-xs font-medium text-slate-400">Cost sources ({{ data.currency }})</span>
+          <span class="text-sm font-semibold">{{ fmtPrice(costTotalNum, data.currency) }}</span>
+        </div>
+        <div class="space-y-1.5">
+          <div v-for="s in costSources" :key="s.id" class="flex items-center gap-2">
+            <input v-model="s.label" placeholder="e.g. Production, Import, Shipping" class="min-w-0 flex-1 rounded-md bg-slate-800 px-2 py-1.5 text-sm" />
+            <input v-model="s.amount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" class="w-24 rounded-md bg-slate-800 px-2 py-1.5 text-right text-sm" />
+            <button class="shrink-0 rounded p-1 text-slate-500 hover:text-red-400" title="Remove cost" @click="removeCostSource(s.id)"><X class="h-4 w-4" /></button>
+          </div>
+        </div>
+        <button class="mt-1.5 text-xs font-medium text-emerald-400 hover:text-emerald-300" @click="addCostSource">+ Add cost</button>
+      </div>
+
+      <div v-if="sortedCostBatches.length" class="mb-3">
+        <p class="mb-1 text-xs text-slate-500">Past batches — tap to edit (re-price when import is invoiced)</p>
+        <div class="flex flex-wrap gap-1.5">
+          <span v-for="b in sortedCostBatches" :key="b.id" class="flex items-center gap-1 rounded-lg px-1 py-0.5 text-xs ring-1" :class="b.id === editingBatchId ? 'bg-amber-500/15 ring-amber-500/40' : 'bg-slate-800 ring-slate-700'">
+            <button class="px-1 hover:text-emerald-400" @click="openCosts(b)">{{ b.date }} · {{ fmtPrice(b.total, b.currency || data.currency) }}</button>
+            <button class="px-1 text-slate-500 hover:text-red-400" title="Delete batch" @click="removeCostBatch(b.id)"><X class="h-3 w-3" /></button>
+          </span>
+        </div>
+      </div>
+
+      <div class="space-y-4">
+        <div v-for="g in costGroups" :key="g.type">
+          <p class="mb-1.5 text-sm font-semibold">{{ g.type }}</p>
+          <ul class="divide-y divide-slate-800 overflow-hidden rounded-lg bg-slate-800/40 ring-1 ring-slate-800">
+            <li v-for="r in g.rows" :key="r.pid + ':' + r.vid" class="flex items-center gap-2 px-3 py-2">
+              <div class="min-w-0 flex-1">
+                <p class="truncate text-sm">{{ r.label }}</p>
+                <p class="text-[11px] text-slate-500">
+                  sells {{ fmtPrice(r.price, data.currency) }}<span v-if="r.curCost != null"> · cost now {{ fmtPrice(r.curCost, data.currency) }}</span>
+                </p>
+              </div>
+              <input v-model="r.qty" type="number" min="0" placeholder="Qty" class="w-14 rounded-md bg-slate-800 px-2 py-1.5 text-right text-sm" />
+              <input v-model="r.unitCost" type="number" min="0" step="0.01" placeholder="€/ea" title="Known per-item cost (optional)" class="w-16 rounded-md bg-slate-800 px-2 py-1.5 text-right text-sm" />
+              <span
+                class="w-16 shrink-0 text-right text-sm font-semibold"
+                :class="costFinalMap.has(r.pid + ':' + r.vid) ? 'text-emerald-400' : 'text-slate-600'"
+              >{{ costFinalMap.has(r.pid + ':' + r.vid) ? fmtPrice(costFinalMap.get(r.pid + ':' + r.vid) ?? 0, data.currency) : '—' }}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      <template #footer>
+        <div class="flex flex-wrap items-center gap-2">
+          <span
+            class="mr-auto text-xs"
+            :class="Math.abs(costComputation.allocated - costTotalNum) < 0.02 ? 'text-slate-400' : 'text-amber-400'"
+          >
+            Allocates {{ fmtPrice(costComputation.allocated, data.currency) }} of {{ fmtPrice(costTotalNum, data.currency) }} · {{ costComputation.lines.length }} item{{ costComputation.lines.length === 1 ? '' : 's' }}
+          </span>
+          <button class="rounded-lg bg-slate-800 px-4 py-2 text-sm" @click="showCosts = false">Cancel</button>
+          <button class="zui-btn zui-btn-primary" :disabled="!costComputation.lines.length" @click="applyCostBatch">{{ editingBatchId ? 'Update batch' : 'Apply costs' }}</button>
         </div>
       </template>
     </ModalShell>
