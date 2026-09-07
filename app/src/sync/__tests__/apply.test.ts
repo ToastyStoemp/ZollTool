@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { Product, SalesEvent, ServerOp, Transaction } from '@zolltool/shared';
+import type { Product, ProductMerge, SalesEvent, ServerOp, Transaction, TxItem } from '@zolltool/shared';
 import { db } from '@/db/schema';
 import { applyRemoteOps } from '../apply';
 
@@ -30,6 +30,26 @@ function makeTx(id: string): Transaction {
 
 function makeProduct(id: string, title: string, updatedAt: number): Product {
   return { id, title, forSale: true, unlisted: false, price: 10, variants: [], sortOrder: 0, updatedAt };
+}
+
+function txWithItem(id: string, item: Partial<TxItem>): Transaction {
+  return {
+    ...makeTx(id),
+    items: [{ pid: 'p1', vid: null, title: 'Print', qty: 1, unitPrice: 10, lineTotal: 10, ...item }],
+  };
+}
+
+// Fold p1 + p2 into p1 (reused container) with a variant each.
+function makeMerge(updatedAt = 5000): ProductMerge {
+  return {
+    id: 'mrg-1',
+    intoId: 'p1',
+    updatedAt,
+    sources: [
+      { fromKey: 'p1', toPid: 'p1', toVid: 'v-a', title: 'Combined', variantLabel: 'A' },
+      { fromKey: 'p2', toPid: 'p1', toVid: 'v-b', title: 'Combined', variantLabel: 'B' },
+    ],
+  };
 }
 
 beforeEach(async () => {
@@ -135,5 +155,64 @@ describe('applyRemoteOps', () => {
 
     // A device-local key (never sent as a synced op in practice) is unaffected.
     expect((await db.settings.get('deviceName'))?.value).toBe('Front counter');
+  });
+});
+
+describe('product.merge', () => {
+  it('re-attaches existing sales of merged products to their new variants', async () => {
+    await applyRemoteOps(
+      [
+        op('tx.create', txWithItem('tx-a', { pid: 'p1', vid: null })),
+        op('tx.create', txWithItem('tx-b', { pid: 'p2', vid: null, title: 'Other' })),
+      ],
+      OWN_DEVICE,
+    );
+    await applyRemoteOps([op('product.merge', makeMerge())], OWN_DEVICE);
+
+    const a = (await db.transactions.get('tx-a'))!.items[0]!;
+    expect([a.pid, a.vid, a.variantLabel, a.title]).toEqual(['p1', 'v-a', 'A', 'Combined']);
+    const b = (await db.transactions.get('tx-b'))!.items[0]!;
+    expect([b.pid, b.vid, b.variantLabel, b.title]).toEqual(['p1', 'v-b', 'B', 'Combined']);
+  });
+
+  it('remaps a sale that arrives AFTER the merge (order-independent)', async () => {
+    await applyRemoteOps([op('product.merge', makeMerge())], OWN_DEVICE);
+    await applyRemoteOps([op('tx.create', txWithItem('tx-late', { pid: 'p2', vid: null }))], OWN_DEVICE);
+    const late = (await db.transactions.get('tx-late'))!.items[0]!;
+    expect([late.pid, late.vid]).toEqual(['p1', 'v-b']);
+  });
+
+  it('does not remap genuine new variant sales of the reused container', async () => {
+    await applyRemoteOps([op('product.merge', makeMerge())], OWN_DEVICE);
+    // A real sale of variant B (pid p1, vid v-b) has stockKey "p1:v-b" — not a
+    // merge source key ("p1"/"p2"), so it must pass through untouched.
+    await applyRemoteOps([op('tx.create', txWithItem('tx-new', { pid: 'p1', vid: 'v-b' }))], OWN_DEVICE);
+    const fresh = (await db.transactions.get('tx-new'))!.items[0]!;
+    expect([fresh.pid, fresh.vid]).toEqual(['p1', 'v-b']);
+  });
+
+  it('re-keys event stock onto the merged variants', async () => {
+    await applyRemoteOps(
+      [
+        op('stock.set', { eventId: 'ev-1', productId: 'p1', variantId: '', broughtQty: 8, updatedAt: 1000 }),
+        op('stock.set', { eventId: 'ev-1', productId: 'p2', variantId: '', broughtQty: 5, updatedAt: 1000 }),
+      ],
+      OWN_DEVICE,
+    );
+    await applyRemoteOps([op('product.merge', makeMerge())], OWN_DEVICE);
+    expect((await db.eventStock.get(['ev-1', 'p1', 'v-a']))?.broughtQty).toBe(8);
+    expect((await db.eventStock.get(['ev-1', 'p1', 'v-b']))?.broughtQty).toBe(5);
+    expect(await db.eventStock.get(['ev-1', 'p1', ''])).toBeUndefined();
+    expect(await db.eventStock.get(['ev-1', 'p2', ''])).toBeUndefined();
+  });
+
+  it('applies a merge only once (idempotent on replay)', async () => {
+    await applyRemoteOps([op('tx.create', txWithItem('tx-a', { pid: 'p1', vid: null }))], OWN_DEVICE);
+    const merge = op('product.merge', makeMerge());
+    await applyRemoteOps([merge], OWN_DEVICE);
+    await applyRemoteOps([merge], OWN_DEVICE); // replay
+    expect(await db.productMerges.count()).toBe(1);
+    const a = (await db.transactions.get('tx-a'))!.items[0]!;
+    expect([a.pid, a.vid]).toEqual(['p1', 'v-a']);
   });
 });

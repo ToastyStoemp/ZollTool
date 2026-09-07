@@ -5,6 +5,7 @@ export type OpType =
   | 'tx.revert'
   | 'product.upsert'
   | 'product.delete'
+  | 'product.merge'
   | 'event.upsert'
   | 'event.close'
   | 'stock.set'

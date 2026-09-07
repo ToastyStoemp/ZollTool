@@ -1,16 +1,16 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
-import type { CostBatch, DiscountRule, Product, Variant } from '@zolltool/shared';
+import type { CostBatch, DiscountRule, MergeSource, Product, ProductMerge, Variant } from '@zolltool/shared';
 import { stockKey, useDataStore } from '@/stores/data';
 import { useSettingsStore } from '@/stores/settings';
 import { db } from '@/db/schema';
-import { applyProductCosts, deleteCostBatch, deleteDiscount, deleteProduct, setStock, upsertCostBatch, upsertDiscount, upsertProduct } from '@/db/repo';
+import { applyProductCosts, deleteCostBatch, deleteDiscount, deleteProduct, mergeProducts, setStock, upsertCostBatch, upsertDiscount, upsertProduct } from '@/db/repo';
 import { computeBatch, resolveCurrentCosts } from '@/lib/costs';
 import { uuidv7 } from '@/lib/uuid';
 import { fmtPrice } from '@/lib/money';
 import { typeColor } from '@/lib/search';
 import { isArtwork, isPurse } from '@/lib/artwork';
-import { ArrowDown, ArrowUp, Boxes, Camera, Coins, FileDown, Image as ImageIcon, ListOrdered, Tags, TriangleAlert, X } from 'lucide-vue-next';
+import { ArrowDown, ArrowUp, Boxes, Camera, Coins, Combine, FileDown, Image as ImageIcon, ListOrdered, Tags, TriangleAlert, X } from 'lucide-vue-next';
 import { saveTextFile, shareTextFile } from '@/lib/download';
 import { isNative } from '@/native/plugins';
 import { buildPriceGroups, buildPriceSheetHtml, type PriceGroup } from '@/lib/priceSheet';
@@ -287,6 +287,92 @@ async function saveProduct(): Promise<void> {
 }
 
 const confirmDeleteId = ref<string | null>(null);
+
+// ── Merge products (fold two+ plain products into one, one variant each) ────
+// Only variant-less products qualify: each becomes one variant of the merged
+// product, and their entire sales history re-attaches to that variant (via an
+// append-only product.merge op — no data is lost, no resync needed).
+interface MergeRow {
+  pid: string;
+  variantName: string;
+  sold: number;
+}
+
+const showMerge = ref(false);
+const mergeSel = ref<Set<string>>(new Set());
+const mergePrimaryId = ref('');
+const mergeTitle = ref('');
+const mergeRows = ref<MergeRow[]>([]);
+
+/** Products eligible as merge sources: no variants (their sales live at product level). */
+const mergeCandidates = computed(() => data.products.filter((p) => p.variants.length === 0));
+
+const mergeSelected = computed(() => mergeCandidates.value.filter((p) => mergeSel.value.has(p.id)));
+
+function openMerge(): void {
+  mergeSel.value = new Set();
+  mergePrimaryId.value = '';
+  mergeTitle.value = '';
+  mergeRows.value = [];
+  showMerge.value = true;
+}
+
+/** Rebuild the per-source rows, keeping any edited variant names and a valid primary. */
+function syncMergeRows(): void {
+  const sel = mergeSelected.value;
+  if (!mergePrimaryId.value || !mergeSel.value.has(mergePrimaryId.value)) {
+    mergePrimaryId.value = sel[0]?.id ?? '';
+  }
+  const primary = sel.find((p) => p.id === mergePrimaryId.value);
+  if (!mergeTitle.value.trim() && primary) mergeTitle.value = primary.title;
+  const prev = new Map(mergeRows.value.map((r) => [r.pid, r.variantName]));
+  mergeRows.value = sel.map((p) => ({
+    pid: p.id,
+    variantName: prev.get(p.id) ?? (p.title || '(untitled)'),
+    sold: data.soldQty(p.id, null),
+  }));
+}
+
+function toggleMergeSel(pid: string): void {
+  const s = new Set(mergeSel.value);
+  if (s.has(pid)) s.delete(pid);
+  else s.add(pid);
+  mergeSel.value = s;
+  syncMergeRows();
+}
+
+async function runMerge(): Promise<void> {
+  const sel = mergeSelected.value;
+  if (sel.length < 2) return;
+  const primary = sel.find((p) => p.id === mergePrimaryId.value) ?? sel[0]!;
+  const title = mergeTitle.value.trim() || primary.title;
+  const now = Date.now();
+
+  const variants: Variant[] = [];
+  const sources: MergeSource[] = [];
+  for (const p of sel) {
+    const vid = uuidv7();
+    const label = (mergeRows.value.find((r) => r.pid === p.id)?.variantName || p.title || '(untitled)').trim();
+    variants.push({
+      id: vid,
+      name: label,
+      sku: p.sku,
+      price: p.price,
+      cost: p.cost,
+      weightG: p.weightG,
+      imageId: p.imageId,
+    });
+    sources.push({ fromKey: p.id, toPid: primary.id, toVid: vid, title, variantLabel: label });
+  }
+
+  const merged: Product = { ...primary, id: primary.id, title, variants, updatedAt: now };
+  const removedIds = sel.filter((p) => p.id !== primary.id).map((p) => p.id);
+  const merge: ProductMerge = { id: uuidv7(), intoId: primary.id, sources, updatedAt: now };
+
+  await mergeProducts(merged, merge, removedIds);
+  showMerge.value = false;
+  showToast(`Merged ${sel.length} products into “${title}”`, 'success');
+}
 
 // ── Bulk stock editor (per-event brought quantities, grouped by type) ──────
 interface BulkRow {
@@ -865,6 +951,15 @@ async function removeCostBatch(id: string): Promise<void> {
         >
           <span class="flex items-center gap-1.5"><Coins class="h-4 w-4" /> Costs</span>
         </button>
+        <button
+          v-if="!settings.isHelper"
+          class="rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
+          :disabled="mergeCandidates.length < 2"
+          title="Combine plain products into one product with a variant each"
+          @click="openMerge"
+        >
+          <span class="flex items-center gap-1.5"><Combine class="h-4 w-4" /> Merge</span>
+        </button>
       </div>
 
       <!-- Low-stock filter (per active event) -->
@@ -1158,6 +1253,90 @@ async function removeCostBatch(id: string): Promise<void> {
     </ModalShell>
 
     <!-- Bulk stock editor -->
+    <!-- Merge products: fold plain products into one product with a variant each -->
+    <ModalShell v-if="showMerge && !settings.isHelper" title="Merge products" size="xl" @close="showMerge = false">
+      <p class="mb-3 text-xs text-slate-400">
+        Pick two or more products that are really variations of one thing. Each becomes a
+        <b>variant</b> of a single merged product, and <b>all past sales, stock and costs</b> re-attach
+        to that variant — nothing is lost. Only products without variants can be merged.
+      </p>
+
+      <!-- Step 1 · choose products -->
+      <div class="mb-4">
+        <p class="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-500">1 · Products to merge</p>
+        <ul class="max-h-60 divide-y divide-slate-800 overflow-y-auto rounded-lg bg-slate-800/40 ring-1 ring-slate-800">
+          <li
+            v-for="p in mergeCandidates"
+            :key="p.id"
+            class="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-slate-800/60"
+            @click="toggleMergeSel(p.id)"
+          >
+            <input type="checkbox" :checked="mergeSel.has(p.id)" class="pointer-events-none" />
+            <ProductThumb :image-id="p.imageId" :type="p.type" class="h-8 w-8" />
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm">{{ p.title || '(untitled)' }}</p>
+              <p class="truncate text-[11px] text-slate-500">
+                <span v-if="p.sku">{{ p.sku }} · </span>{{ data.soldQty(p.id, null) }} sold · {{ fmtPrice(p.price, data.currency) }}
+              </p>
+            </div>
+          </li>
+        </ul>
+        <p v-if="mergeCandidates.length < 2" class="mt-2 text-xs text-amber-400">
+          You need at least two variant-less products to merge.
+        </p>
+      </div>
+
+      <!-- Step 2 · name the merged product + its variants -->
+      <div v-if="mergeSelected.length >= 2" class="space-y-3">
+        <p class="text-xs font-semibold uppercase tracking-wide text-slate-500">2 · Merged product</p>
+        <label class="block text-sm">
+          <span class="text-xs text-slate-400">Merged product name</span>
+          <input v-model="mergeTitle" class="mt-1 w-full rounded-lg bg-slate-800 px-3 py-2" placeholder="e.g. Enamel Pin" />
+        </label>
+        <div>
+          <p class="mb-1 text-xs text-slate-400">
+            Variant name &amp; which one keeps the product record (its id, sort position and image carry over).
+          </p>
+          <ul class="divide-y divide-slate-800 overflow-hidden rounded-lg bg-slate-800/40 ring-1 ring-slate-800">
+            <li v-for="row in mergeRows" :key="row.pid" class="flex items-center gap-2 px-3 py-2">
+              <label class="flex items-center gap-1.5 text-[11px] text-slate-400">
+                <input
+                  type="radio"
+                  name="merge-primary"
+                  :value="row.pid"
+                  :checked="mergePrimaryId === row.pid"
+                  @change="mergePrimaryId = row.pid"
+                />
+                keep
+              </label>
+              <input
+                v-model="row.variantName"
+                class="min-w-0 flex-1 rounded-md bg-slate-800 px-2 py-1.5 text-sm ring-1 ring-slate-700"
+                placeholder="Variant name"
+              />
+              <span class="shrink-0 text-[11px] text-slate-500">{{ row.sold }} sold</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="flex items-center gap-2">
+          <span v-if="mergeSelected.length >= 2" class="text-xs text-slate-400">
+            {{ mergeSelected.length }} → 1 product with {{ mergeSelected.length }} variants
+          </span>
+          <button class="ml-auto rounded-lg bg-slate-800 px-4 py-2 text-sm" @click="showMerge = false">Cancel</button>
+          <button
+            class="zui-btn zui-btn-primary"
+            :disabled="mergeSelected.length < 2 || !mergeTitle.trim()"
+            @click="runMerge"
+          >
+            Merge {{ mergeSelected.length || '' }}
+          </button>
+        </div>
+      </template>
+    </ModalShell>
+
     <ModalShell v-if="showBulk" title="Bulk stock" @close="showBulk = false">
       <p class="mb-3 text-xs text-slate-400">
         Brought quantities for <b>{{ data.activeEvent?.name }}</b>, grouped by type. "Set all" fills

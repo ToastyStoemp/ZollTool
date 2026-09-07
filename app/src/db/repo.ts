@@ -4,11 +4,13 @@ import type {
   Op,
   OpType,
   Product,
+  ProductMerge,
   SalesEvent,
   Transaction,
 } from '@zolltool/shared';
 import { toRaw } from 'vue';
 import { db } from './schema';
+import { materializeMerge } from '@/sync/merge-local';
 import { uuidv7 } from '@/lib/uuid';
 
 /**
@@ -140,6 +142,42 @@ export async function deleteProduct(productId: string): Promise<void> {
     await db.products.put(tombstone);
     await appendOp('product.delete', { productId, updatedAt: tombstone.updatedAt });
   });
+}
+
+/**
+ * Merge one or more products into a single product with a variant per source.
+ *
+ * `merged` is the surviving container (its id is reused from the primary
+ * source); `merge` records how each source stockKey folds into a variant;
+ * `removedIds` are the non-primary source products to tombstone. Emits
+ * product.upsert (merged) + product.delete (each removed) + product.merge, and
+ * materializes the remap locally so historical sales re-attach immediately.
+ */
+export async function mergeProducts(
+  merged: Product,
+  merge: ProductMerge,
+  removedIds: string[],
+): Promise<void> {
+  const record = plain(merged);
+  const mergeRecord = plain(merge);
+  await db.transaction(
+    'rw',
+    [db.products, db.eventStock, db.transactions, db.discounts, db.events, db.costBatches, db.productMerges, db.ops, db.settings],
+    async () => {
+      const now = Date.now();
+      await db.products.put(record);
+      await appendOp('product.upsert', record);
+      for (const pid of removedIds) {
+        if (pid === merged.id) continue;
+        const product = await db.products.get(pid);
+        if (product) await db.products.put({ ...product, deletedAt: now, updatedAt: now });
+        await appendOp('product.delete', { productId: pid, updatedAt: now });
+      }
+      await db.productMerges.put(mergeRecord);
+      await appendOp('product.merge', mergeRecord);
+      await materializeMerge(mergeRecord);
+    },
+  );
 }
 
 // ── Cost batches (local) + writing per-unit costs onto products (which sync) ──

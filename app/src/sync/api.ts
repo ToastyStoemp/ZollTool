@@ -19,6 +19,7 @@ export const SYNC_KEYS = {
   refreshToken: 'sync.refreshToken',
   user: 'sync.user',
   lastServerSeq: 'sync.lastServerSeq',
+  syncEpoch: 'sync.epoch', // account log-rewrite epoch; a change forces a full re-pull
   deviceTrust: 'sync.deviceTrust', // per-device 2FA trust token (skip code on this device)
 } as const;
 
@@ -104,6 +105,9 @@ export async function resetLocalData(): Promise<void> {
     db.transactions.clear(),
     db.discounts.clear(),
     db.images.clear(),
+    // Merge remaps are re-derived from the ops on re-pull (and are baked into the
+    // payloads after a log rewrite), so they must not survive the wipe.
+    db.productMerges.clear(),
   ]);
   await setSetting(SYNC_KEYS.lastServerSeq, 0);
 }

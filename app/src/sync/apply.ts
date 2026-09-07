@@ -1,13 +1,18 @@
-import type {
-  DiscountRule,
-  EventStock,
-  Product,
-  SalesEvent,
-  ServerOp,
-  Transaction,
+import {
+  remapTxItems,
+  resolveMergedRef,
+  type DiscountRule,
+  type EventStock,
+  type MergeTarget,
+  type Product,
+  type ProductMerge,
+  type SalesEvent,
+  type ServerOp,
+  type Transaction,
 } from '@zolltool/shared';
 import { db } from '@/db/schema';
 import { base64ToBlob } from '@/lib/images';
+import { loadMergeMap, materializeMerge } from './merge-local';
 
 /**
  * Apply ops pulled from the server to the local Dexie database.
@@ -22,14 +27,20 @@ export async function applyRemoteOps(ops: ServerOp[], ownDeviceId: string): Prom
 
   await db.transaction(
     'rw',
-    [db.events, db.products, db.eventStock, db.transactions, db.discounts, db.images, db.settings],
+    [db.events, db.products, db.eventStock, db.transactions, db.discounts, db.images, db.settings, db.productMerges, db.costBatches],
     async () => {
+      // Resolve historical keys through any merges already materialized locally;
+      // kept fresh as product.merge ops are applied below (order-independent).
+      let mergeMap: Map<string, MergeTarget> = await loadMergeMap();
       for (const op of ops) {
         if (op.deviceId === ownDeviceId) continue;
         switch (op.type) {
           case 'tx.create': {
             const tx = op.payload as Transaction;
-            if (!(await db.transactions.get(tx.id))) await db.transactions.add(tx);
+            if (!(await db.transactions.get(tx.id))) {
+              const items = remapTxItems(tx.items, mergeMap);
+              await db.transactions.add(items === tx.items ? tx : { ...tx, items });
+            }
             break;
           }
           case 'tx.revert': {
@@ -68,10 +79,25 @@ export async function applyRemoteOps(ops: ServerOp[], ownDeviceId: string): Prom
             }
             break;
           }
+          case 'product.merge': {
+            const merge = op.payload as ProductMerge;
+            const existing = await db.productMerges.get(merge.id);
+            if (!existing || merge.updatedAt >= existing.updatedAt) {
+              await db.productMerges.put(merge);
+              await materializeMerge(merge);
+              mergeMap = await loadMergeMap();
+            }
+            break;
+          }
           case 'stock.set': {
             const row = op.payload as EventStock;
-            const existing = await db.eventStock.get([row.eventId, row.productId, row.variantId]);
-            if (!existing || row.updatedAt >= existing.updatedAt) await db.eventStock.put(row);
+            // Fold onto the merged variant if this row's line was merged away.
+            const t = resolveMergedRef(mergeMap, row.productId, row.variantId || null);
+            const target: EventStock = t
+              ? { ...row, productId: t.pid, variantId: t.vid || '' }
+              : row;
+            const existing = await db.eventStock.get([target.eventId, target.productId, target.variantId]);
+            if (!existing || target.updatedAt >= existing.updatedAt) await db.eventStock.put(target);
             break;
           }
           case 'discount.upsert': {

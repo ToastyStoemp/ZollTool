@@ -3,7 +3,7 @@ import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
 import type { DiscountRule, Product, SalesEvent, Transaction, Variant } from '@zolltool/shared';
 import type { JwtClaims } from '../auth';
-import { reduceDiscounts, reduceEvents, reduceProducts, reduceTransactions, type ReducibleOp } from '../reduce';
+import { reduceDiscounts, reduceEvents, reduceMerges, reduceProducts, reduceTransactions, type ReducibleOp } from '../reduce';
 import { storeFullImage } from './images';
 import type { Rooms } from '../ws';
 
@@ -107,7 +107,8 @@ export function registerDataRoutes(
       const claims = req.user as JwtClaims;
       const { eventId } = req.params as { eventId: string };
       const ops = loadOps(db, claims.accountId, ['tx.create', 'tx.revert']);
-      return reduceTransactions(ops).filter((t) => t.eventId === eventId);
+      const mergeMap = reduceMerges(loadOps(db, claims.accountId, ['product.merge']));
+      return reduceTransactions(ops, mergeMap).filter((t) => t.eventId === eventId);
     },
   );
 
@@ -118,7 +119,8 @@ export function registerDataRoutes(
     const fromTs = from ? dayStart(from) : -Infinity;
     const toTs = to ? dayEnd(to) : Infinity;
     const ops = loadOps(db, claims.accountId, ['tx.create', 'tx.revert']);
-    return reduceTransactions(ops).filter((t) => t.timestamp >= fromTs && t.timestamp <= toTs);
+    const mergeMap = reduceMerges(loadOps(db, claims.accountId, ['product.merge']));
+    return reduceTransactions(ops, mergeMap).filter((t) => t.timestamp >= fromTs && t.timestamp <= toTs);
   });
 
   // ── Write API (data:write) — external tooling pushes catalog edits back in ──
@@ -126,7 +128,7 @@ export function registerDataRoutes(
   // Scalar product fields the write API may overwrite. `variants` is merged
   // separately (by id); everything else on the product is preserved as-is.
   const SCALAR_FIELDS = [
-    'title', 'sku', 'type', 'forSale', 'unlisted', 'price', 'priceNote', 'weightG',
+    'title', 'sku', 'type', 'forSale', 'unlisted', 'price', 'cost', 'priceNote', 'weightG',
     'tariffNo', 'tariffRate', 'vatRate', 'packagingType', 'originCountry',
     'permitOverride', 'year', 'imageId',
   ] as const;
@@ -152,8 +154,10 @@ export function registerDataRoutes(
     return next;
   }
 
-  // Patch selected fields of one product (SKU, price, weight, title, imageId,
-  // and per-variant SKUs). Emits a product.upsert op (last-writer-wins).
+  // Patch selected fields of one product (SKU, price, cost, weight, title,
+  // imageId, and per-variant fields). Emits a product.upsert op (last-writer-wins).
+  // The cost writeback backs ZollSource pushing landed per-unit costs from a
+  // received reorder onto the catalog.
   app.patch('/api/data/products/:id', { preHandler: app.authenticateApiWrite }, async (req, reply) => {
     const claims = req.user as JwtClaims;
     const { id } = req.params as { id: string };

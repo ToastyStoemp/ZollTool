@@ -10,7 +10,7 @@ import type {
 } from '@zolltool/shared';
 import { db } from '@/db/schema';
 import { getSetting, setSetting } from '@/db/repo';
-import { SYNC_KEYS, fetchImage, getServerUrl, isLoggedIn, pullOps, pushOps, refreshCurrentUser, uploadImage } from './api';
+import { SYNC_KEYS, fetchImage, getServerUrl, isLoggedIn, pullOps, pushOps, refreshCurrentUser, resetLocalData, uploadImage } from './api';
 import { applyRemoteOps } from './apply';
 import { currentFlavor } from '@/lib/updates';
 import { isNative } from '@/native/plugins';
@@ -193,9 +193,23 @@ async function pushOutbox(): Promise<void> {
 async function pullAll(): Promise<void> {
   const deviceId = (await getSetting<string>('deviceId')) ?? 'unknown-device';
   let since = (await getSetting<number>(SYNC_KEYS.lastServerSeq)) ?? 0;
+  let knownEpoch = (await getSetting<number>(SYNC_KEYS.syncEpoch)) ?? 0;
 
   for (;;) {
-    const { ops, latestSeq } = await pullOps(since);
+    const { ops, latestSeq, epoch } = await pullOps(since);
+
+    // The server rewrote its op-log in place (e.g. baked product merges into the
+    // stored payloads). Everything cached below the cursor is stale — discard all
+    // local synced data and rebuild from seq 0. The outbox was already flushed by
+    // pushOutbox() earlier in syncNow, so no pending local op is lost here.
+    if (epoch != null && epoch !== knownEpoch) {
+      await resetLocalData();
+      await setSetting(SYNC_KEYS.syncEpoch, epoch);
+      knownEpoch = epoch;
+      since = 0;
+      continue;
+    }
+
     if (!ops.length) {
       if (latestSeq > since) await setSetting(SYNC_KEYS.lastServerSeq, latestSeq);
       break;

@@ -14,6 +14,7 @@ export function registerSyncRoutes(app: FastifyInstance, db: Database.Database, 
 
   // Per-user event restriction (server-enforced isolation for a "helper" member).
   const getAllowedEvents = db.prepare('SELECT allowedEventIds FROM users WHERE id = ?');
+  const getEpoch = db.prepare('SELECT syncEpoch FROM accounts WHERE id = ?');
   const txEventOf = db.prepare(
     `SELECT json_extract(payload, '$.eventId') AS eid FROM ops
      WHERE accountId = ? AND type = 'tx.create' AND json_extract(payload, '$.id') = ? LIMIT 1`,
@@ -29,7 +30,7 @@ export function registerSyncRoutes(app: FastifyInstance, db: Database.Database, 
     return null;
   }
   // Catalog + account config that every seller needs regardless of event.
-  const GLOBAL_TYPES = new Set(['product.upsert', 'product.delete', 'discount.upsert', 'discount.delete', 'image.meta', 'setting.upsert']);
+  const GLOBAL_TYPES = new Set(['product.upsert', 'product.delete', 'product.merge', 'discount.upsert', 'discount.delete', 'image.meta', 'setting.upsert']);
   const eventIdOf = (op: { type: string; payload: unknown }): string | undefined => {
     const p = op.payload as Record<string, unknown> | null;
     if (!p) return undefined;
@@ -137,7 +138,8 @@ export function registerSyncRoutes(app: FastifyInstance, db: Database.Database, 
     if (allowed) ops = ops.filter((op) => opReadable(claims.accountId, allowed, op));
 
     const latestSeq = (maxSeq.get(claims.accountId) as { m: number }).m;
-    const response: PullResponse = { ops, latestSeq };
+    const epoch = (getEpoch.get(claims.accountId) as { syncEpoch?: number } | undefined)?.syncEpoch ?? 0;
+    const response: PullResponse = { ops, latestSeq, epoch };
     return response;
   });
 }

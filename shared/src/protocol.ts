@@ -7,6 +7,7 @@ export const OpTypeSchema = z.enum([
   'tx.revert',
   'product.upsert',
   'product.delete',
+  'product.merge',
   'event.upsert',
   'event.close',
   'stock.set',
@@ -60,6 +61,13 @@ export interface PushResponse {
 export interface PullResponse {
   ops: ServerOp[];
   latestSeq: number;
+  /**
+   * Account-wide log epoch. Bumped when the server rewrites its op-log in place
+   * (e.g. baking product merges into the stored payloads). A client that sees an
+   * epoch different from the one it last stored must discard all local synced
+   * data and re-pull from seq 0 — the payloads it cached are no longer current.
+   */
+  epoch?: number;
 }
 
 // ── Auth ─────────────────────────────────────────────────────────────────────

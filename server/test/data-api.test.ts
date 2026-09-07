@@ -120,6 +120,47 @@ describe('data read API', () => {
     expect(txns.map((t) => t.id).sort()).toEqual(['t1', 't2']);
   });
 
+  it('remaps sale lines of merged products through product.merge', async () => {
+    // Reuse ev2 (existing, active) so we don't disturb the event-set assertions.
+    const t = Date.parse('2025-07-01T10:00:00Z');
+    const item = { pid: 'pm-a', vid: null, title: 'Blue', qty: 2, unitPrice: 5, lineTotal: 10 };
+    const merged = { ...tx('tm-1', 'ev2', t, 10), items: [item] };
+    // Explicit opIds — the shared `op()` helper's zero-padding can collapse
+    // distinct counters (op-10 → op-1…) and collide with earlier ops.
+    const wire = (opId: string, type: WireOp['type'], payload: unknown): WireOp => ({
+      opId: opId.padEnd(16, 'z'),
+      deviceId: DEV,
+      ts: Date.now(),
+      type,
+      payload,
+    });
+    const push = await app.inject({
+      method: 'POST',
+      url: '/api/sync/push',
+      headers: auth(),
+      payload: {
+        deviceId: DEV,
+        ops: [
+          wire('merge-tx-tm1', 'tx.create', merged),
+          wire('merge-op-mrgapi', 'product.merge', {
+            id: 'mrg-api',
+            intoId: 'pm-x',
+            updatedAt: 500,
+            sources: [{ fromKey: 'pm-a', toPid: 'pm-x', toVid: 'v-a', title: 'Colour Pin', variantLabel: 'Blue' }],
+          }),
+        ],
+      },
+    });
+    expect(push.statusCode).toBe(200);
+
+    const res = await app.inject({ method: 'GET', url: '/api/data/events/ev2/transactions', headers: auth() });
+    const mergedTx = (res.json() as Transaction[]).find((x) => x.id === 'tm-1')!;
+    const line = mergedTx.items[0]!;
+    expect([line.pid, line.vid, line.title, line.variantLabel]).toEqual(['pm-x', 'v-a', 'Colour Pin', 'Blue']);
+    // Money/qty are untouched by the remap.
+    expect(line.qty).toBe(2);
+  });
+
   it('isolates accounts', async () => {
     const reg = await app.inject({
       method: 'POST',

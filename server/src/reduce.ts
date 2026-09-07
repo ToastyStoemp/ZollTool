@@ -1,4 +1,13 @@
-import type { DiscountRule, Product, SalesEvent, Transaction } from '@zolltool/shared';
+import {
+  buildMergeMap,
+  remapTxItems,
+  type DiscountRule,
+  type MergeTarget,
+  type Product,
+  type ProductMerge,
+  type SalesEvent,
+  type Transaction,
+} from '@zolltool/shared';
 
 /**
  * Materialize current entities from the op-log. The server stores only ops
@@ -66,8 +75,18 @@ export function reduceDiscounts(ops: ReducibleOp[]): DiscountRule[] {
   return [...byId.values()];
 }
 
-/** Transactions by id: tx.create (insert-if-absent) + tx.revert (set marker once). */
-export function reduceTransactions(ops: ReducibleOp[]): Transaction[] {
+/** Source-stockKey → merged-target map from all product.merge ops. */
+export function reduceMerges(ops: ReducibleOp[]): Map<string, MergeTarget> {
+  const merges = ops.filter((o) => o.type === 'product.merge').map((o) => o.payload as ProductMerge);
+  return buildMergeMap(merges);
+}
+
+/**
+ * Transactions by id: tx.create (insert-if-absent) + tx.revert (set marker once).
+ * When a merge map is supplied, each sale line's `(pid, vid)`/title is resolved
+ * through it, so a reader sees historical sales under the merged product.
+ */
+export function reduceTransactions(ops: ReducibleOp[], mergeMap?: Map<string, MergeTarget>): Transaction[] {
   const byId = new Map<string, Transaction>();
   for (const op of ops) {
     if (op.type === 'tx.create') {
@@ -79,5 +98,10 @@ export function reduceTransactions(ops: ReducibleOp[]): Transaction[] {
       if (tx && !tx.revertedBy) byId.set(txId, { ...tx, revertedBy: op.opId, revertedAt });
     }
   }
-  return [...byId.values()];
+  const list = [...byId.values()];
+  if (!mergeMap || !mergeMap.size) return list;
+  return list.map((tx) => {
+    const items = remapTxItems(tx.items, mergeMap);
+    return items === tx.items ? tx : { ...tx, items };
+  });
 }

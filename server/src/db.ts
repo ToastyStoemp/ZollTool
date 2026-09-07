@@ -143,6 +143,10 @@ const MIGRATIONS: string[] = [
   ALTER TABLE users ADD COLUMN allowedEventIds TEXT;
   ALTER TABLE invites ADD COLUMN allowedEventIds TEXT;
   `,
+  // v7 — account log epoch. Bumped by an in-place op-log rewrite (e.g. baking
+  // product merges into stored tx payloads); the pull API returns it so clients
+  // detect the rewrite and re-pull from scratch. See scripts/rewrite-merges.mjs.
+  `ALTER TABLE accounts ADD COLUMN syncEpoch INTEGER NOT NULL DEFAULT 0;`,
 ];
 
 export function openDb(dataDir: string): Database.Database {

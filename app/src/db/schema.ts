@@ -5,6 +5,7 @@ import type {
   EventStock,
   Op,
   Product,
+  ProductMerge,
   SalesEvent,
   Transaction,
 } from '@zolltool/shared';
@@ -39,6 +40,7 @@ export const db = new Dexie('zolltool_v2') as Dexie & {
   discounts: EntityTable<DiscountRule, 'id'>;
   images: EntityTable<ImageRec, 'id'>;
   costBatches: EntityTable<CostBatch, 'id'>;
+  productMerges: EntityTable<ProductMerge, 'id'>;
   ops: Dexie.Table<OutboxOp, number>;
   settings: Dexie.Table<SettingRow, string>;
 };
@@ -58,4 +60,10 @@ db.version(1).stores({
 // v2 — cost batches (local: production-cost tracking; product.cost itself syncs).
 db.version(2).stores({
   costBatches: 'id, date, updatedAt',
+});
+
+// v3 — product merges (folds a product into another as a variant; the op syncs,
+// this table materializes the remap so late-arriving sales resolve correctly).
+db.version(3).stores({
+  productMerges: 'id, updatedAt',
 });
