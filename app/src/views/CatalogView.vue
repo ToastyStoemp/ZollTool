@@ -1164,8 +1164,13 @@ async function removeCostBatch(id: string): Promise<void> {
             <TariffPicker v-model="form.tariffNo" placeholder="e.g. 4911.9100" class="mt-1" />
           </label>
           <label class="block text-sm">
-            <span class="text-slate-400">Origin country</span>
-            <CountryPicker v-model="form.originCountry" mode="code" placeholder="Artist's country" class="mt-1" />
+            <span class="text-slate-400">{{ isArtwork(form.type) ? 'Artist country' : 'Origin country' }}</span>
+            <CountryPicker
+              v-model="form.originCountry"
+              mode="code"
+              :placeholder="isArtwork(form.type) ? 'Artist\'s country' : 'Country of origin'"
+              class="mt-1"
+            />
           </label>
         </div>
         <!-- Art prints (Type = "Art Print"): customs wants the artwork's name + production year. -->

@@ -7,6 +7,10 @@
 import type { EventStock, Product, SalesEvent, Transaction } from '@zolltool/shared';
 import type { CustomsArtist, CustomsEdec, CustomsForm1174, CustomsMeta, CustomsProduct, CustomsState } from './model';
 import { defaultCustomsArtist, defaultCustomsEdec, defaultCustomsForm1174, defaultCustomsMeta } from './model';
+import { HS_CODES } from './data';
+
+/** A value the user explicitly set (not blank/unset). */
+const hasVal = (v: unknown): boolean => v != null && v !== '';
 
 export interface CustomsBlob {
   meta?: Partial<CustomsMeta>;
@@ -53,6 +57,10 @@ export function buildCustomsState(
     .filter((p) => !p.deletedAt)
     .map((p) => {
       const plainSold = soldByKey.get(`${p.id}:`) ?? { qty: 0, value: 0 };
+      // Duty + VAT rate follow the HS code (customs tariff table) unless the
+      // product carries an explicit override — mirrors how permit is derived,
+      // so setting a Tariff no. is enough to fill the rates on every document.
+      const hs = p.tariffNo?.trim() ? HS_CODES.find((h) => h.code === p.tariffNo!.trim()) : undefined;
       return {
         id: p.id,
         title: p.title,
@@ -64,8 +72,8 @@ export function buildCustomsState(
         priceNote: p.priceNote,
         weightG: p.weightG,
         tariffNo: p.tariffNo,
-        tariffRate: p.tariffRate,
-        vatRate: p.vatRate,
+        tariffRate: hasVal(p.tariffRate) ? p.tariffRate : hs?.rate,
+        vatRate: hasVal(p.vatRate) ? p.vatRate : hs?.vatRate,
         packagingType: p.packagingType,
         originCountry: p.originCountry,
         permitOverride: p.permitOverride,
