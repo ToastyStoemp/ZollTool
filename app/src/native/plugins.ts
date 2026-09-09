@@ -46,6 +46,13 @@ export interface FileSharePluginApi {
     mimeType?: string;
     encoding?: 'base64';
   }): Promise<{ saved: boolean; cancelled?: boolean }>;
+  /** Open the file in the device's viewer (browser/PDF app) via ACTION_VIEW; shares if nothing can view it. */
+  openFile(options: {
+    filename: string;
+    content: string;
+    mimeType?: string;
+    encoding?: 'base64';
+  }): Promise<{ opened: boolean; shared?: boolean }>;
   /** Streamed save for large files: open SAF document, append base64 chunks, close. */
   beginSave(options: { filename: string; mimeType?: string }): Promise<{ opened: boolean; cancelled?: boolean }>;
   writeChunk(options: { data: string }): Promise<void>;

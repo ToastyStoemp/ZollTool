@@ -26,6 +26,27 @@ export async function shareTextFile(filename: string, content: string, mimeType:
   await saveTextFile(filename, content, mimeType);
 }
 
+/**
+ * Open a text document in the device's own viewer (a browser for HTML, a PDF
+ * app for PDF) instead of the share sheet. On the web, opens a new tab. Falls
+ * back to sharing/download when no viewer is available.
+ */
+export async function openTextFile(filename: string, content: string, mimeType: string): Promise<void> {
+  if (hasNativePlugin('FileShare')) {
+    try {
+      await FileShare.openFile({ filename, content, mimeType });
+      return;
+    } catch {
+      // Older build without openFile, or the intent failed — share instead.
+      await shareTextFile(filename, content, mimeType);
+      return;
+    }
+  }
+  const url = URL.createObjectURL(new Blob([content], { type: mimeType }));
+  const win = window.open(url, '_blank');
+  if (!win) showToast('Pop-up blocked - allow pop-ups and try again.', 'error');
+}
+
 /** Save a binary file (base64 payload): SAF dialog on Android, download on web. */
 export async function saveBinaryFile(filename: string, base64: string, mimeType: string): Promise<void> {
   if (hasNativePlugin('FileShare')) {

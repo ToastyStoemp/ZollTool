@@ -51,6 +51,43 @@ class FileSharePlugin : Plugin() {
         }
     }
 
+    // Open a document in the device's own viewer (browser for HTML, PDF app for
+    // PDF, …) via an ACTION_VIEW intent, instead of the share sheet. Falls back
+    // to sharing if no installed app can view the given mime type.
+    @PluginMethod
+    fun openFile(call: PluginCall) {
+        val filename = call.getString("filename") ?: run { call.reject("filename required"); return }
+        val bytes    = decodeContent(call)        ?: run { call.reject("content required");  return }
+        val mimeType = call.getString("mimeType") ?: "*/*"
+
+        try {
+            val file = File(activity.cacheDir, filename)
+            file.writeBytes(bytes)
+            val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.fileprovider", file)
+            val view = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, mimeType)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            try {
+                activity.startActivity(view)
+                call.resolve(JSObject().apply { put("opened", true) })
+            } catch (e: android.content.ActivityNotFoundException) {
+                // Nothing can view this type — fall back to the share sheet.
+                val share = Intent(Intent.ACTION_SEND).apply {
+                    type = mimeType
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    putExtra(Intent.EXTRA_SUBJECT, filename)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                activity.startActivity(Intent.createChooser(share, filename))
+                call.resolve(JSObject().apply { put("opened", false); put("shared", true) })
+            }
+        } catch (e: Exception) {
+            call.reject("Open failed: ${e.message}")
+        }
+    }
+
     @PluginMethod
     fun saveToDevice(call: PluginCall) {
         val filename = call.getString("filename") ?: run { call.reject("filename required"); return }

@@ -22,12 +22,41 @@ import { isArtwork, isPurse } from '../lib/artwork';
 
 export type GoodsDocNum = 1 | 2 | 3;
 
-/** Customs line name. Art prints (no SKU) read as "Title (Year)"; purses add their material. */
-function titleForCustoms(p: { title?: string; type?: string; year?: number; material?: string }): string {
+/**
+ * Customs line name. Art prints read as "Title (Year) - Artist" (the artist's
+ * full name attributes the work on the declaration); purses add their material.
+ */
+function titleForCustoms(
+  p: { title?: string; type?: string; year?: number; material?: string },
+  artistName?: string,
+): string {
   const t = esc(p.title || '');
-  if (isArtwork(p.type) && p.year) return `${t} (${p.year})`;
+  if (isArtwork(p.type)) {
+    const base = p.year ? `${t} (${p.year})` : t;
+    const artist = (artistName ?? '').trim();
+    return artist ? `${base} - ${esc(artist)}` : base;
+  }
   if (isPurse(p.type) && p.material) return `${t} - ${esc(p.material)}`;
   return t;
+}
+
+/**
+ * Name for the Sold / Return lists: art prints gain the year + artist so the
+ * attribution is consistent across every goods list; every other product keeps
+ * its plain title (unchanged from the legacy output).
+ */
+function soldReturnName(p: { title?: string; type?: string; year?: number }, artistName?: string): string {
+  return isArtwork(p.type) ? titleForCustoms(p, artistName) : esc(p.title || '');
+}
+
+/**
+ * By-type group label. When two groups share the same Type but differ by HS
+ * code, the code is appended so the rows are not identically named; a type with
+ * a single group is shown exactly as before.
+ */
+function byTypeGroupName(all: { type: string }[], g: { type: string; tariffNo?: string }): string {
+  const shared = all.filter((x) => x.type === g.type).length > 1;
+  return shared ? `${esc(g.type)} (${esc(g.tariffNo || 'no HS code')})` : esc(g.type);
 }
 export type GoodsFormat = 'detailed' | 'compressed' | 'bytype';
 
@@ -121,7 +150,7 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
           hasVal: boolean;
         }
       > = {};
-      state.products.filter(hasCustomsInfo).forEach((p) => {
+      state.products.filter((p) => hasCustomsInfo(p) && calcProduct(p).amount > 0).forEach((p) => {
         const c = calcProduct(p);
         const key = `${p.type || 'Other'}\x00${p.tariffNo || ''}`;
         if (!groups[key])
@@ -146,9 +175,10 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
         totWkg += c.totalWeightKg;
         if (c.totalValue != null) totVal += c.totalValue;
       });
-      Object.values(groups).forEach((g, i) => {
+      const groupList = Object.values(groups);
+      groupList.forEach((g, i) => {
         detailedRows.push(`<tr>
-          <td class="c">${i + 1}</td><td><strong>${esc(g.type)}</strong></td>
+          <td class="c">${i + 1}</td><td><strong>${byTypeGroupName(groupList, g)}</strong></td>
           <td class="r">${esc(g.tariffNo)}</td>
           <td class="r">${g.tariffRate != null ? g.tariffRate + '%' : ''}</td>
           <td class="r">${g.vatRate != null ? g.vatRate + '%' : ''}</td>
@@ -169,7 +199,7 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
   <td class="r" style="color:#c00">${Math.floor(totVal)}</td>
 </tr></tfoot></table>`;
     } else {
-      state.products.filter(hasCustomsInfo).forEach((p) => {
+      state.products.filter((p) => hasCustomsInfo(p) && calcProduct(p).amount > 0).forEach((p) => {
         const c = calcProduct(p);
         const pOrig =
           p.originCountry && p.originCountry.trim()
@@ -190,7 +220,7 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
             totAmt += varAmt;
             totWkg += varTotalWkg;
             if (varTotalVal != null) totVal += varTotalVal;
-            detailedRows.push(`<tr><td class="c">${i + 1}</td><td>${esc(v.sku || p.sku || '')}</td><td>${titleForCustoms(p)} - ${esc(v.name || '')}</td>
+            detailedRows.push(`<tr><td class="c">${i + 1}</td><td>${esc(v.sku || p.sku || '')}</td><td>${titleForCustoms(p, a.fullName)} - ${esc(v.name || '')}</td>
               <td>${p.forSale ? 'For Sale' : 'Not For Sale'}</td><td>${esc(p.type || '')}</td>
               <td class="r">${varAmt}</td><td class="r">${varWg != null ? varWg + ' g' : ''}</td>
               <td class="r">${fmtWeightKg(varTotalWkg)}</td><td class="r">${esc(pd)}</td>
@@ -208,8 +238,8 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
           totWkg += c.totalWeightKg;
           if (c.totalValue != null) totVal += c.totalValue;
           const titleDisplay = hasVariants(p)
-            ? `${titleForCustoms(p)} (${p.variants!.filter((v) => !v.unlisted).length} variants)`
-            : titleForCustoms(p);
+            ? `${titleForCustoms(p, a.fullName)} (${p.variants!.filter((v) => !v.unlisted).length} variants)`
+            : titleForCustoms(p, a.fullName);
           detailedRows.push(`<tr><td class="c">${i + 1}</td><td>${esc(p.sku || '')}</td><td>${titleDisplay}</td>
             <td>${p.forSale ? 'For Sale' : 'Not For Sale'}</td><td>${esc(p.type || '')}</td>
             <td class="r">${c.amount ?? ''}</td><td class="r">${c.effectiveUnitWeightG != null ? Math.round(c.effectiveUnitWeightG as number) + ' g' : ''}</td>
@@ -281,9 +311,10 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
         totSV += floorN(c.soldValue || 0, 2);
         totSWkg += c.soldWeightKg;
       });
-      Object.values(groups).forEach((g, i) => {
+      const groupList = Object.values(groups);
+      groupList.forEach((g, i) => {
         detailedRows.push(`<tr>
-          <td class="c">${i + 1}</td><td><strong>${esc(g.type)}</strong></td>
+          <td class="c">${i + 1}</td><td><strong>${byTypeGroupName(groupList, g)}</strong></td>
           <td class="r">${esc(g.tariffNo)}</td>
           <td class="r">${g.tariffRate != null ? g.tariffRate + '%' : ''}</td>
           <td class="r">${g.vatRate != null ? g.vatRate + '%' : ''}</td>
@@ -323,7 +354,7 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
             totSQ += v.soldQty || 0;
             totSV += rowSV;
             totSWkg += varSoldWkg;
-            detailedRows.push(`<tr><td class="c">${rowNum}</td><td>${esc(p.title || '')} - ${esc(v.name || '')}</td><td>${esc(p.type || '')}</td>
+            detailedRows.push(`<tr><td class="c">${rowNum}</td><td>${soldReturnName(p, a.fullName)} - ${esc(v.name || '')}</td><td>${esc(p.type || '')}</td>
               <td class="r">${esc(p.tariffNo || '')}</td>
               <td class="r">${v.soldQty || 0}</td>
               <td class="r">${formatNum(rowSV, 2)}</td>
@@ -339,8 +370,8 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
           totSV += rowSV;
           totSWkg += c.soldWeightKg;
           const titleDisplay = hasVariants(p)
-            ? `${esc(p.title || '')} (${p.variants!.filter((v) => !v.unlisted).length} variants)`
-            : esc(p.title || '');
+            ? `${soldReturnName(p, a.fullName)} (${p.variants!.filter((v) => !v.unlisted).length} variants)`
+            : soldReturnName(p, a.fullName);
           detailedRows.push(`<tr><td class="c">${rowNum}</td><td>${titleDisplay}</td><td>${esc(p.type || '')}</td>
             <td class="r">${esc(p.tariffNo || '')}</td>
             <td class="r">${c.soldQty || 0}</td>
@@ -419,9 +450,10 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
         totRetWkg += retWkg;
         if (retVal != null) totRetVal += retVal;
       });
-      Object.values(groups).forEach((g, i) => {
+      const groupList = Object.values(groups);
+      groupList.forEach((g, i) => {
         detailedRows.push(`<tr>
-          <td class="c">${i + 1}</td><td><strong>${esc(g.type)}</strong></td>
+          <td class="c">${i + 1}</td><td><strong>${byTypeGroupName(groupList, g)}</strong></td>
           <td class="r">${esc(g.tariffNo)}</td>
           <td class="r">${g.tariffRate != null ? g.tariffRate + '%' : ''}</td>
           <td class="r">${g.vatRate != null ? g.vatRate + '%' : ''}</td>
@@ -469,7 +501,7 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
             if (varRetVal != null) totRetVal += varRetVal;
             const pd = p.priceNote || (varPrice != null ? formatNum(floorN(varPrice, 2), 2) : '—');
             const retValStr = varRetVal != null ? varRetVal : '—';
-            detailedRows.push(`<tr><td class="c">${rowNum}</td><td>${esc(p.title || '')} - ${esc(v.name || '')}</td><td>${esc(p.type || '')}</td>
+            detailedRows.push(`<tr><td class="c">${rowNum}</td><td>${soldReturnName(p, a.fullName)} - ${esc(v.name || '')}</td><td>${esc(p.type || '')}</td>
               <td class="r">${v.amount || 0}</td><td class="r">${v.soldQty || 0}</td>
               <td class="r"><strong>${varRetQty}</strong></td>
               <td class="r">${varWg != null ? varWg + ' g' : ''}</td>
@@ -493,8 +525,8 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
           const pd = p.priceNote || (c.effectiveUnitPrice != null ? formatNum(floorN(c.effectiveUnitPrice, 2), 2) : '—');
           const retValStr = retVal != null ? retVal : '—';
           const titleDisplay = hasVariants(p)
-            ? `${esc(p.title || '')} (${p.variants!.filter((v) => !v.unlisted).length} variants)`
-            : esc(p.title || '');
+            ? `${soldReturnName(p, a.fullName)} (${p.variants!.filter((v) => !v.unlisted).length} variants)`
+            : soldReturnName(p, a.fullName);
           detailedRows.push(`<tr><td class="c">${rowNum}</td><td>${titleDisplay}</td><td>${esc(p.type || '')}</td>
             <td class="r">${c.amount ?? ''}</td><td class="r">${c.soldQty || 0}</td>
             <td class="r"><strong>${retQty}</strong></td>

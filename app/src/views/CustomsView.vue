@@ -13,7 +13,7 @@ import {
 import { useDataStore } from '@/stores/data';
 import { getSetting, upsertEvent } from '@/db/repo';
 import { isNative } from '@/native/plugins';
-import { saveTextFile, shareTextFile } from '@/lib/download';
+import { openTextFile, saveTextFile } from '@/lib/download';
 import { showToast } from '@/lib/toast';
 import { buildCustomsState, readCustomsBlob } from '@/customs/adapter';
 import { defaultCustomsArtist, defaultCustomsEdec, defaultCustomsForm1174 } from '@/customs/model';
@@ -193,14 +193,9 @@ function safeName(suffix: string): string {
 }
 
 async function openHtml(filename: string, html: string): Promise<void> {
-  if (isNative) {
-    // Share sheet: open in a browser to print, or save the file
-    await shareTextFile(filename, html, 'text/html');
-    return;
-  }
-  const url = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
-  const win = window.open(url, '_blank');
-  if (!win) showToast('Pop-up blocked - allow pop-ups and try again.', 'error');
+  // Opens in the device browser (native: ACTION_VIEW; web: new tab). The browser
+  // is where the user prints or saves the document as a PDF.
+  await openTextFile(filename, html, 'text/html');
 }
 
 async function exportEdec(): Promise<void> {
@@ -248,7 +243,7 @@ const TRANSPORT_MODES = [
         <h2 class="mb-1 zui-card-title">Documents</h2>
         <p class="mb-3 text-xs text-slate-500">
           LRP: <span class="font-mono text-slate-300">{{ lrp }}</span>
-          <span v-if="isNative"> · Documents open via the share sheet — open in a browser to print.</span>
+          <span v-if="isNative"> · Documents open in your browser - print or save as PDF from there.</span>
         </p>
         <div class="mb-3 flex flex-wrap items-center gap-2 text-sm">
           <span class="text-xs text-slate-400">Goods list format:</span>

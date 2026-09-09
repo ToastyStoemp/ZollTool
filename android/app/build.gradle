@@ -8,8 +8,8 @@ android {
         applicationId "com.phuongninjin.zolltool"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 29815922
-        versionName "2fd29d9-dirty"
+        versionCode 29816069
+        versionName "7d70803-dirty"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
