@@ -60,6 +60,19 @@ describe('import document — excludes zero-stock products', () => {
     const html = buildGoodsListHtml(state([p]), 1, 'detailed');
     expect(html).toContain('Variant Product');
   });
+
+  it('omits an individual zero-stock variant (detailed) while keeping stocked ones', () => {
+    const p: CustomsProduct = product({
+      id: 'v2', title: 'Pins', type: 'Pin', amount: 0, soldQty: 0, soldValue: 0,
+      variants: [
+        { name: 'Dragon', amount: 5, soldQty: 0, soldValue: 0 },
+        { name: 'Wolf', amount: 0, soldQty: 0, soldValue: 0 },
+      ],
+    });
+    const html = buildGoodsListHtml(state([p]), 1, 'detailed');
+    expect(html).toContain('Dragon');
+    expect(html).not.toContain('Wolf');
+  });
 });
 
 describe('goods list — by-type HS disambiguation', () => {

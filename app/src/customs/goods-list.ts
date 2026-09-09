@@ -207,8 +207,8 @@ export function buildGoodsListHtml(state: CustomsState, docNum: GoodsDocNum, for
             : countryToCode(a.countryOfOrigin) || '';
 
         if (format === 'detailed' && hasVariants(p)) {
-          // Detailed: each variant gets its own row (skip unlisted variants)
-          p.variants!.filter((v) => !v.unlisted).forEach((v) => {
+          // Detailed: each variant gets its own row (skip unlisted + zero-stock variants)
+          p.variants!.filter((v) => !v.unlisted && (v.amount || 0) > 0).forEach((v) => {
             const i = rowNum++;
             const varWg = v.weightG != null ? v.weightG : p.weightG;
             const varPrice = v.price != null ? v.price : p.price;
