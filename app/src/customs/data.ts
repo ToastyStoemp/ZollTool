@@ -26,6 +26,7 @@ export const HS_CODES: HsCode[] = [
   { code: '4016.92.00', desc: 'Floor coverings and mats of rubber, desk mats', rate: 8.1, vatRate: 8.1, permit: 0 },
   { code: '6109.10.00', desc: 'T-shirts, singlets of cotton', rate: 8.1, vatRate: 8.1, permit: 0 },
   { code: '6109.90.00', desc: 'T-shirts, singlets of other textile', rate: 8.1, vatRate: 8.1, permit: 0 },
+  { code: '6505.00.30', desc: 'Peaked caps (baseball caps)', rate: 8.1, vatRate: 8.1, permit: 0 },
   { code: '9503.00.00', desc: 'Toys, puzzles, games', rate: 8.1, vatRate: 8.1, permit: 2 },
   { code: '6301.40.00', desc: 'Blankets and throws', rate: 8.1, vatRate: 8.1, permit: 0 },
   { code: '6912.00.00', desc: 'Ceramic tableware, mugs', rate: 8.1, vatRate: 8.1, permit: 0 },
