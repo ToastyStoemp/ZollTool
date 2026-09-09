@@ -10,7 +10,7 @@ import { uuidv7 } from '@/lib/uuid';
 import { fmtPrice } from '@/lib/money';
 import { typeColor } from '@/lib/search';
 import { isArtwork, isPurse } from '@/lib/artwork';
-import { ArrowDown, ArrowUp, Boxes, Camera, Coins, Combine, FileDown, Image as ImageIcon, ListOrdered, Tags, TriangleAlert, X } from 'lucide-vue-next';
+import { ArrowDown, ArrowUp, Boxes, Camera, Coins, Combine, FileDown, Image as ImageIcon, ListOrdered, Menu, Tags, TriangleAlert, X } from 'lucide-vue-next';
 import { saveTextFile, shareTextFile } from '@/lib/download';
 import { isNative } from '@/native/plugins';
 import { buildPriceGroups, buildPriceSheetHtml, type PriceGroup } from '@/lib/priceSheet';
@@ -27,6 +27,9 @@ const settings = useSettingsStore();
 
 const tab = ref<'products' | 'discounts'>('products');
 const search = ref('');
+
+// Catalog actions live in a single overflow (hamburger) menu to keep the bar clean.
+const menuOpen = ref(false);
 
 // ── Product editor ─────────────────────────────────────────────────────────
 interface VariantForm extends Variant {
@@ -922,44 +925,65 @@ async function removeCostBatch(id: string): Promise<void> {
           placeholder="Search products…"
           class="min-w-0 flex-1 rounded-lg bg-slate-900 px-3 py-2 text-sm ring-1 ring-slate-800"
         />
-        <button
-          class="shrink-0 rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium ring-1 ring-slate-800 hover:bg-slate-800 disabled:opacity-40"
-          :disabled="!settings.activeEventId || !data.products.length"
-          @click="openBulk"
-        >
-          <span class="flex items-center gap-1.5"><Boxes class="h-4 w-4" /> Bulk stock</span>
-        </button>
-        <button
-          class="rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
-          :disabled="!data.products.length"
-          @click="showReorder = true"
-        >
-          <span class="flex items-center gap-1.5"><ListOrdered class="h-4 w-4" /> Reorder</span>
-        </button>
-        <button
-          class="rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
-          :disabled="!data.products.length"
-          @click="openPriceSheet"
-        >
-          <span class="flex items-center gap-1.5"><Tags class="h-4 w-4" /> Price sheet</span>
-        </button>
-        <button
-          v-if="!settings.isHelper"
-          class="rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
-          :disabled="!data.products.length"
-          @click="openCosts()"
-        >
-          <span class="flex items-center gap-1.5"><Coins class="h-4 w-4" /> Costs</span>
-        </button>
-        <button
-          v-if="!settings.isHelper"
-          class="rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium hover:bg-slate-700 disabled:opacity-40"
-          :disabled="mergeCandidates.length < 2"
-          title="Combine plain products into one product with a variant each"
-          @click="openMerge"
-        >
-          <span class="flex items-center gap-1.5"><Combine class="h-4 w-4" /> Merge</span>
-        </button>
+        <!-- Catalog actions overflow menu -->
+        <div class="relative shrink-0">
+          <button
+            class="flex h-full items-center gap-1.5 rounded-lg bg-slate-800 px-3 py-2 text-sm font-medium hover:bg-slate-700"
+            :class="menuOpen ? 'bg-slate-700 ring-1 ring-slate-600' : ''"
+            aria-label="Catalog options"
+            :aria-expanded="menuOpen"
+            @click="menuOpen = !menuOpen"
+          >
+            <Menu class="h-4 w-4" />
+            <span class="hidden sm:inline">Options</span>
+          </button>
+          <!-- click-away backdrop -->
+          <div v-if="menuOpen" class="fixed inset-0 z-40" @click="menuOpen = false" />
+          <div
+            v-if="menuOpen"
+            class="absolute right-0 top-full z-50 mt-1 w-56 overflow-hidden rounded-xl bg-slate-800 py-1 shadow-2xl ring-1 ring-slate-700"
+          >
+            <button
+              class="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-transparent"
+              :disabled="!settings.activeEventId || !data.products.length"
+              @click="menuOpen = false; openBulk()"
+            >
+              <Boxes class="h-4 w-4 shrink-0 text-slate-400" /> Bulk stock
+            </button>
+            <button
+              class="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-transparent"
+              :disabled="!data.products.length"
+              @click="menuOpen = false; showReorder = true"
+            >
+              <ListOrdered class="h-4 w-4 shrink-0 text-slate-400" /> Reorder
+            </button>
+            <button
+              class="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-transparent"
+              :disabled="!data.products.length"
+              @click="menuOpen = false; openPriceSheet()"
+            >
+              <Tags class="h-4 w-4 shrink-0 text-slate-400" /> Price sheet
+            </button>
+            <template v-if="!settings.isHelper">
+              <div class="my-1 border-t border-slate-700" />
+              <button
+                class="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-transparent"
+                :disabled="!data.products.length"
+                @click="menuOpen = false; openCosts()"
+              >
+                <Coins class="h-4 w-4 shrink-0 text-slate-400" /> Costs
+              </button>
+              <button
+                class="flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm hover:bg-slate-700 disabled:opacity-40 disabled:hover:bg-transparent"
+                :disabled="mergeCandidates.length < 2"
+                title="Combine plain products into one product with a variant each"
+                @click="menuOpen = false; openMerge()"
+              >
+                <Combine class="h-4 w-4 shrink-0 text-slate-400" /> Merge products
+              </button>
+            </template>
+          </div>
+        </div>
       </div>
 
       <!-- Low-stock filter (per active event) -->
