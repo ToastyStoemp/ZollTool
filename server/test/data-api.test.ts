@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
-import type { SalesEvent, TokenResponse, Transaction, WireOp } from '@zolltool/shared';
+import type { EventStock, SalesEvent, TokenResponse, Transaction, WireOp } from '@zolltool/shared';
 import { buildApp } from '../src/app';
 
 let app: FastifyInstance;
@@ -15,6 +15,10 @@ let opN = 0;
 function op(type: WireOp['type'], payload: unknown): WireOp {
   opN += 1;
   return { opId: `op-${opN}`.padEnd(16, '0'), deviceId: DEV, ts: Date.now(), type, payload };
+}
+
+function stockOp(opId: string, payload: unknown): WireOp {
+  return { opId: opId.padEnd(16, 'z'), deviceId: DEV, ts: Date.now(), type: 'stock.set', payload };
 }
 
 function event(id: string, updatedAt: number, extra: Partial<SalesEvent> = {}): SalesEvent {
@@ -69,6 +73,13 @@ beforeAll(async () => {
     op('tx.create', tx('t2', 'ev1', t0 + 3600_000, 41.06)),
     op('tx.create', tx('t3', 'ev2', Date.parse('2025-06-01T10:00:00Z'), 10)),
     op('tx.revert', { txId: 't2', revertedAt: t0 + 7200_000 }),
+    // Assigned stock for ev1: a plain product, one variant, and a later LWW bump.
+    // Explicit opIds — the shared op() helper's zero-padding collapses op-10 →
+    // op-1…, colliding with earlier ops so the deduped push would drop them.
+    stockOp('stk-p1-a', { eventId: 'ev1', productId: 'p1', variantId: '', broughtQty: 10, updatedAt: 100 }),
+    stockOp('stk-p1-b', { eventId: 'ev1', productId: 'p1', variantId: '', broughtQty: 25, updatedAt: 300 }),
+    stockOp('stk-p2', { eventId: 'ev1', productId: 'p2', variantId: 'v-a', broughtQty: 8, updatedAt: 100 }),
+    stockOp('stk-ev2', { eventId: 'ev2', productId: 'p1', variantId: '', broughtQty: 5, updatedAt: 100 }),
   ];
   const push = await app.inject({
     method: 'POST',
@@ -107,6 +118,14 @@ describe('data read API', () => {
     const t2 = txns.find((t) => t.id === 't2')!;
     expect(t2.revertedBy).toBeTruthy();
     expect(t2.revertedAt).toBeTruthy();
+  });
+
+  it("materializes an event's assigned stock (LWW; scoped to the event)", async () => {
+    const res = await app.inject({ method: 'GET', url: '/api/data/events/ev1/stock', headers: auth() });
+    expect(res.statusCode).toBe(200);
+    const stock = res.json() as EventStock[];
+    const byKey = Object.fromEntries(stock.map((s) => [`${s.productId}:${s.variantId}`, s.broughtQty]));
+    expect(byKey).toEqual({ 'p1:': 25, 'p2:v-a': 8 }); // later updatedAt (25) wins; ev2 excluded
   });
 
   it('windows transactions by timestamp', async () => {

@@ -1,0 +1,86 @@
+:root {
+  --bg: #323232;
+  --card: #3a3a3a;
+  --line: #4a4a4a;
+  --text: #e8e8e8;
+  --muted: #9a9a9a;
+  --accent: #4b9fff;
+  --print: #ffcf5c;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 12px/1.4 -apple-system, "Segoe UI", sans-serif;
+}
+
+#app { padding: 8px; display: flex; flex-direction: column; gap: 8px; }
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+details.card > summary { cursor: pointer; font-weight: 600; user-select: none; }
+details.card[open] > summary { margin-bottom: 4px; }
+
+label { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); }
+
+.row { display: flex; gap: 6px; align-items: center; }
+
+.hint { font-size: 10px; color: var(--muted); margin: 0; }
+.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+
+.status { font-size: 11px; color: var(--muted); min-height: 14px; }
+.status.error { color: #ff7a7a; }
+
+.summary {
+  font-weight: 600;
+  padding: 6px 8px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.summary .big { color: var(--print); font-size: 15px; }
+
+/* Result rows ---------------------------------------------------------- */
+.item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  padding: 7px 8px;
+  border-bottom: 1px solid var(--line);
+  align-items: center;
+}
+.item:last-child { border-bottom: none; }
+.item.done { opacity: 0.45; }
+
+.item .title { font-weight: 600; grid-column: 1; }
+.item .sub { font-size: 10px; color: var(--muted); grid-column: 1; grid-row: 2; }
+
+.item .nums {
+  grid-column: 2; grid-row: 1 / span 2;
+  display: flex; align-items: center; gap: 6px;
+}
+.item .print {
+  font-size: 16px; font-weight: 700; color: var(--print);
+  min-width: 26px; text-align: right;
+}
+.item .print.zero { color: var(--muted); }
+
+.have-field { width: 46px; }
+.meta { font-size: 10px; color: var(--muted); }
+
+.item .actions { grid-column: 1 / span 2; grid-row: 3; margin-top: 4px; display: flex; gap: 6px; align-items: center; }
+.file-hit { font-size: 10px; color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-hit.missing { color: #ff9a5c; }
+
+#results { display: flex; flex-direction: column; }

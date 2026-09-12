@@ -1,9 +1,9 @@
 import type { FastifyInstance } from 'fastify';
 import type Database from 'better-sqlite3';
 import { randomUUID } from 'node:crypto';
-import type { DiscountRule, Product, SalesEvent, Transaction, Variant } from '@zolltool/shared';
+import type { DiscountRule, EventStock, Product, SalesEvent, Transaction, Variant } from '@zolltool/shared';
 import type { JwtClaims } from '../auth';
-import { reduceDiscounts, reduceEvents, reduceMerges, reduceProducts, reduceTransactions, type ReducibleOp } from '../reduce';
+import { reduceDiscounts, reduceEvents, reduceMerges, reduceProducts, reduceStock, reduceTransactions, type ReducibleOp } from '../reduce';
 import { storeFullImage } from './images';
 import type { Rooms } from '../ws';
 
@@ -98,6 +98,20 @@ export function registerDataRoutes(
     const ops = loadOps(db, claims.accountId, ['discount.upsert', 'discount.delete']);
     return reduceDiscounts(ops).filter((d) => !d.deletedAt);
   });
+
+  // Assigned stock (broughtQty per product/variant) for one event — the planned
+  // amount to bring. Backs the Photoshop print planner, which subtracts real
+  // on-hand stock to work out how many of each print to produce.
+  app.get(
+    '/api/data/events/:eventId/stock',
+    { preHandler: app.authenticateApiOrJwt },
+    async (req): Promise<EventStock[]> => {
+      const claims = req.user as JwtClaims;
+      const { eventId } = req.params as { eventId: string };
+      const ops = loadOps(db, claims.accountId, ['stock.set']);
+      return reduceStock(ops).filter((s) => s.eventId === eventId && s.broughtQty !== 0);
+    },
+  );
 
   // Transactions belonging to one event.
   app.get(

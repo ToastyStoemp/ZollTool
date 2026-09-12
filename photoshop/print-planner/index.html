@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Settings ------------------------------------------------------->
+      <details id="settings" class="card">
+        <summary>Connection</summary>
+        <label>Server URL
+          <sp-textfield id="serverUrl" placeholder="https://sync.example.com"></sp-textfield>
+        </label>
+        <label>API token (data:read)
+          <sp-textfield id="token" type="password" placeholder="zt_…"></sp-textfield>
+        </label>
+        <div class="row">
+          <sp-button id="save" variant="primary">Save</sp-button>
+          <sp-button id="test" variant="secondary" quiet>Test</sp-button>
+        </div>
+        <p class="hint">Mint a read-only token in ZollTool → Admin → API tokens.</p>
+      </details>
+
+      <!-- Plan ----------------------------------------------------------->
+      <div class="card">
+        <label>Event to plan for
+          <sp-dropdown id="targetEvent" style="width:100%"><sp-menu slot="options"></sp-menu></sp-dropdown>
+        </label>
+        <label>Count leftovers from
+          <sp-dropdown id="sourceEvent" style="width:100%"><sp-menu slot="options"></sp-menu></sp-dropdown>
+        </label>
+        <sp-button id="compute" variant="primary" style="width:100%">Compute print list</sp-button>
+      </div>
+
+      <!-- Files ---------------------------------------------------------->
+      <div class="card">
+        <div class="row">
+          <sp-button id="pickFolder" variant="secondary" quiet>Prints folder…</sp-button>
+          <span id="folderName" class="hint ellipsis">no folder</span>
+        </div>
+      </div>
+
+      <!-- Results -------------------------------------------------------->
+      <div id="summary" class="summary" hidden></div>
+      <div id="results"></div>
+      <div id="status" class="status"></div>
+    </div>
+    <script src="main.js"></script>
+  </body>
+</html>
