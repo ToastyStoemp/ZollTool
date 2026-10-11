@@ -191,6 +191,25 @@
           </div>
           <span class="field-hint">Auto-generated · Format: {origin}CH_{code}_{YYYY}_{MM}_{001/002/003}</span>
         </div>
+        <div class="form-group">
+          <label for="event-booth">Booth / Table</label>
+          <input type="text" id="event-booth" placeholder="e.g. A12 or Artist Alley 34" data-key="meta.booth" />
+          <span class="field-hint">Shown in your Discord nickname</span>
+        </div>
+        <div class="form-group form-group-wide discord-nick" id="discord-nick-group">
+          <label>Discord Nickname</label>
+          <div class="discord-nick-inputs">
+            <input type="text" id="discord-name" data-key="meta.discordName" placeholder="Your name" aria-label="Name in nickname" />
+            <span class="discord-nick-at">@</span>
+            <input type="text" id="discord-event" data-key="meta.discordEvent" placeholder="Event" aria-label="Event in nickname" />
+          </div>
+          <div class="discord-nick-preview">
+            <code id="discord-nick-output" class="discord-nick-output">-</code>
+            <span id="discord-nick-count" class="discord-nick-count">0/32</span>
+            <button type="button" class="btn btn-secondary btn-sm" id="discord-nick-copy">Copy</button>
+          </div>
+          <span class="field-hint" id="discord-nick-hint">Format: Name @Event Booth · Discord allows 32 characters · blank fields use your artist name, the event name without the year, and the booth above</span>
+        </div>
       </div>
     </div>
   </section>

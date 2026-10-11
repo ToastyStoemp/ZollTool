@@ -262,6 +262,9 @@ const DEFAULT_STATE = {
     venueCountry:    'Switzerland',
     venueTIN:        'CHE222251936',
     currency:        'CHF',
+    booth:           '',
+    discordName:     '',
+    discordEvent:    '',
   },
   artist: {
     companyName:     '',
@@ -770,6 +773,7 @@ function updateSectionSummaries() {
       ? eventParts.join(' · ')
       : 'Click to expand';
   }
+  renderDiscordNick();
 
   // Artist summary
   const a = state.artist;
@@ -5556,6 +5560,8 @@ async function loadEventPresets() {
     Object.entries(metaMap).forEach(([jsonKey, stateKey]) => {
       if (ev[jsonKey] != null) state.meta[stateKey] = ev[jsonKey];
     });
+    // Optional short event label for the Discord nickname; cleared so it re-derives from the new name
+    state.meta.discordEvent = ev.discordEvent || '';
 
     syncFormFields();
     updateSectionSummaries();
@@ -5564,6 +5570,104 @@ async function loadEventPresets() {
     renderTotals();
     showToast('Event preset applied: ' + ev.name, 'success');
   });
+}
+
+/* =========================================================
+   DISCORD NICKNAME
+   Builds "Name @Event Booth" and fits it into Discord's 32-char limit.
+   ========================================================= */
+const DISCORD_NICK_MAX = 32;
+const nickLen = str => Array.from(str).length;   // count code points, so emoji count once
+
+function discordNickParts() {
+  const m = state.meta, a = state.artist;
+  const defaultName  = (a.companyName || a.fullName || '').trim();
+  const defaultEvent = (m.event || '').replace(/\s*\b(19|20)\d{2}\b\s*/g, ' ').trim();
+  return {
+    defaultName, defaultEvent,
+    name:  (m.discordName  || '').trim() || defaultName,
+    event: (m.discordEvent || '').trim() || defaultEvent,
+    booth: (m.booth || '').trim(),
+  };
+}
+
+function joinNick(name, event, booth) {
+  return [name, event ? '@' + event : '', booth].filter(Boolean).join(' ');
+}
+
+// Returns { full, nick, shortened }. Shortening steps, in order, until it fits:
+// "Booth A12" -> "#A12", drop spaces in the event name, then trim the name.
+function buildDiscordNick() {
+  const p = discordNickParts();
+  const full = joinNick(p.name, p.event, p.booth);
+  if (nickLen(full) <= DISCORD_NICK_MAX) return { full, nick: full, shortened: false };
+
+  let { name, event, booth } = p;
+  booth = booth.replace(/^(booth|table|stand|tisch|stall)\s*(no\.?|nr\.?|#)?\s*/i, '#');
+  let nick = joinNick(name, event, booth);
+  if (nickLen(nick) > DISCORD_NICK_MAX) {
+    event = event.replace(/\s+/g, '');
+    nick = joinNick(name, event, booth);
+  }
+  if (nickLen(nick) > DISCORD_NICK_MAX && name) {
+    const room = DISCORD_NICK_MAX - nickLen(joinNick('', event, booth)) - 1;
+    if (room >= 3) {
+      name = Array.from(name).slice(0, room).join('').trim();
+      nick = joinNick(name, event, booth);
+    }
+  }
+  return { full, nick, shortened: true };
+}
+
+function renderDiscordNick() {
+  const out = document.getElementById('discord-nick-output');
+  if (!out) return;
+  const p = discordNickParts();
+  const nameEl = document.getElementById('discord-name');
+  const evEl   = document.getElementById('discord-event');
+  if (nameEl) nameEl.placeholder = p.defaultName  || 'Your name';
+  if (evEl)   evEl.placeholder   = p.defaultEvent || 'Event';
+
+  const { full, nick, shortened } = buildDiscordNick();
+  const len = nickLen(nick);
+  const tooLong = len > DISCORD_NICK_MAX;
+  out.textContent = nick || '-';
+  out.classList.toggle('too-long', tooLong);
+
+  const count = document.getElementById('discord-nick-count');
+  count.textContent = `${len}/${DISCORD_NICK_MAX}`;
+  count.classList.toggle('too-long', tooLong);
+
+  const hint = document.getElementById('discord-nick-hint');
+  if (tooLong) {
+    hint.textContent = 'Too long for Discord even after shortening - pick a shorter name or event label above.';
+  } else if (shortened) {
+    hint.textContent = `Shortened to fit 32 characters (full: ${full}). Fill in the name or event label above to choose your own short version.`;
+  } else {
+    hint.textContent = 'Format: Name @Event Booth · Discord allows 32 characters · blank fields use your artist name, the event name without the year, and the booth above';
+  }
+  document.getElementById('discord-nick-copy').disabled = !nick;
+}
+
+function initDiscordNick() {
+  const btn = document.getElementById('discord-nick-copy');
+  if (!btn) return;
+  btn.addEventListener('click', async () => {
+    const { nick } = buildDiscordNick();
+    if (!nick) return;
+    try {
+      await navigator.clipboard.writeText(nick);
+    } catch {
+      // Fallback for file:// or iframes without clipboard permission
+      const ta = document.createElement('textarea');
+      ta.value = nick; document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); } finally { ta.remove(); }
+    }
+    showToast('Copied: ' + nick, 'success');
+  });
+  // Artist name changes feed the default, so re-render on any field edit
+  document.addEventListener('input', e => { if (e.target.matches('[data-key]')) renderDiscordNick(); });
+  renderDiscordNick();
 }
 
 /* =========================================================
@@ -5609,7 +5713,7 @@ function initHeightBridge() {
   postHeight();
 }
 
-document.addEventListener('DOMContentLoaded', () => { init(); initDisclaimer(); initHeightBridge(); loadEventPresets(); });
+document.addEventListener('DOMContentLoaded', () => { init(); initDisclaimer(); initHeightBridge(); loadEventPresets(); initDiscordNick(); });
 
 // Sync sold quantities if POS updates localStorage from another tab
 window.addEventListener('storage', e => {

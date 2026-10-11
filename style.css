@@ -2038,3 +2038,42 @@ tr.variant-row:hover {
 [data-theme="dark"] .variant-title {
   color: var(--gray-400);
 }
+
+/* =========================================================
+   DISCORD NICKNAME
+   ========================================================= */
+.discord-nick-inputs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.discord-nick-inputs input { flex: 1; min-width: 0; }
+.discord-nick-at { color: var(--gray-600); font-weight: 600; }
+.discord-nick-preview {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  background: var(--gray-100);
+  border: 1px solid var(--gray-200);
+  border-radius: 8px;
+}
+.discord-nick-output {
+  flex: 1;
+  min-width: 0;
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  color: var(--gray-800);
+  background: none;
+}
+.discord-nick-count {
+  font-size: 12px;
+  color: var(--gray-600);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.discord-nick-output.too-long,
+.discord-nick-count.too-long { color: #d03030; }
+[data-theme="dark"] .discord-nick-output.too-long,
+[data-theme="dark"] .discord-nick-count.too-long { color: #ff7070; }

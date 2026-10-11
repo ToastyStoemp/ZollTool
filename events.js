@@ -1,6 +1,7 @@
 // Add or edit events here — they appear in the "Load Event Preset" dropdown.
 // All fields are optional; omit any you don't want pre-filled.
 // dateStart / dateEnd must be ISO format: YYYY-MM-DD
+// discordEvent (optional): short event label for the Discord nickname, e.g. "ZPC"
 window.ZOLLTOOL_EVENTS = [
   {
     id:            "fantasy-basel-2026",
